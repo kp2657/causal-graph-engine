@@ -126,6 +126,31 @@ def estimate_gamma(
         gwas_enrichment:  S-LDSC enrichment result dict with {"tau", "tau_se", "enrichment_p"}
         twmr_result:      TWMR result dict with {"beta", "se", "p"}
     """
+    # Tier 0: GWAS heritability enrichment (heuristic S-LDSC, data-driven)
+    # Only attempted when program_gene_set and efo_id are provided.
+    if program_gene_set and efo_id:
+        try:
+            from pipelines.discovery.ldsc_pipeline import estimate_program_gamma_enrichment
+            enrich = estimate_program_gamma_enrichment(
+                program_gene_set=program_gene_set,
+                efo_id=efo_id,
+                program_id=program,
+                trait=trait,
+            )
+            if enrich.get("gamma") is not None:
+                return {
+                    "gamma":         enrich["gamma"],
+                    "gamma_se":      enrich.get("gamma_se"),
+                    "evidence_tier": enrich.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   enrich.get("data_source", "GWAS_enrichment"),
+                    "program":       program,
+                    "trait":         trait,
+                    "enrichment_z":  enrich.get("enrichment_z"),
+                    "n_program_hits": enrich.get("n_program_hits"),
+                }
+        except Exception:
+            pass
+
     # Tier 1: TWMR (causal estimate)
     if twmr_result and twmr_result.get("p") is not None:
         if twmr_result["p"] < 0.05:

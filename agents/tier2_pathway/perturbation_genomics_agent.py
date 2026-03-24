@@ -57,16 +57,21 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     """
     from mcp_servers.burden_perturb_server import (
         get_gene_perturbation_effect,
-        get_cnmf_program_info,
         get_program_gene_loadings,
     )
     from mcp_servers.gwas_genetics_server import query_gtex_eqtl
     from mcp_servers.open_targets_server import get_ot_genetic_instruments
     from mcp_servers.lincs_server import get_lincs_gene_signature
     from pipelines.ota_beta_estimation import estimate_beta
+    from pipelines.cnmf_programs import get_programs_for_disease
     from graph.schema import DISEASE_CELL_TYPE_MAP
 
-    programs_info = get_cnmf_program_info()
+    # Use discovery-aware program source: cNMF on disk → MSigDB Hallmark → hardcoded
+    disease_key_for_programs = _DISEASE_KEY_MAP.get(
+        disease_query.get("disease_name", "").lower(), ""
+    )
+    programs_info = get_programs_for_disease(disease_key_for_programs) if disease_key_for_programs \
+        else get_programs_for_disease("")
     raw_programs = programs_info.get("programs", [])
     # raw_programs is a list of strings (program names) from the registry
     program_ids = [

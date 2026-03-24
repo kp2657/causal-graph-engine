@@ -443,15 +443,55 @@ def run_cnmf_program_extraction(
 def get_program_gene_loadings(program_name: str, top_n: int = 20) -> dict:
     """
     Return the top gene loadings for a cNMF program.
-    Uses hardcoded top gene lists from published analyses.
-    Full loadings require cnmf_programs.py output.
+
+    Priority:
+      1. Computed NMF programs saved to data/cnmf_programs/ (from discovery pipeline)
+      2. MSigDB Hallmark gene set (universal; for Hallmark-mapped program names)
+      3. Hardcoded provisional registry
 
     Args:
-        program_name: cNMF program name from CNMF_PROGRAM_REGISTRY
+        program_name: cNMF program name (registry name or NMF program ID)
         top_n:        Number of top genes to return
     """
+    # 1 — Check disk-computed NMF programs
+    try:
+        from pipelines.discovery.cnmf_runner import get_program_gene_loadings_from_disk
+        disk_result = get_program_gene_loadings_from_disk(program_name)
+        if disk_result is not None:
+            disk_result["top_genes"] = disk_result["top_genes"][:top_n]
+            disk_result["n_returned"] = len(disk_result["top_genes"])
+            return disk_result
+    except Exception:
+        pass
+
+    # 2 — MSigDB Hallmark gene sets (live API, always available for Hallmark programs)
+    try:
+        from pipelines.cnmf_programs import HALLMARK_TO_PROGRAM
+        # Reverse lookup: find the Hallmark name for this program_id
+        _prog_to_hallmark = {v: k for k, v in HALLMARK_TO_PROGRAM.items()}
+        hallmark_name = _prog_to_hallmark.get(program_name)
+        if hallmark_name:
+            from pipelines.cnmf_programs import get_msigdb_hallmark_programs
+            hallmark_result = get_msigdb_hallmark_programs()
+            for prog in hallmark_result.get("programs", []):
+                if prog.get("hallmark_name") == hallmark_name:
+                    gene_set = prog.get("gene_set", [])[:top_n]
+                    if gene_set:
+                        return {
+                            "program_name": program_name,
+                            "top_genes":    gene_set,
+                            "n_returned":   len(gene_set),
+                            "n_total":      prog.get("n_genes", len(gene_set)),
+                            "data_tier":    "msigdb_hallmark",
+                            "source":       "MSigDB_Hallmark_v2024.1",
+                        }
+    except Exception:
+        pass
+
+    # 3 — Hardcoded provisional registry
     if program_name not in CNMF_PROGRAM_REGISTRY:
-        return {"program_name": program_name, "error": "Program not found"}
+        return {"program_name": program_name, "top_genes": [], "n_returned": 0,
+                "error": "Program not found in registry, MSigDB, or computed programs"}
 
     prog = CNMF_PROGRAM_REGISTRY[program_name]
     top_genes = prog["top_genes"][:top_n]

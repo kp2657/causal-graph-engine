@@ -369,9 +369,30 @@ def run(
         reverse=True,
     )[:10]
 
+    # -------------------------------------------------------------------------
+    # Novel discovery metric: edges involving genes NOT in prior anchor set
+    # This is the true discovery output — genes not pre-specified as anchors.
+    # -------------------------------------------------------------------------
+    _all_anchor_genes: set[str] = {
+        e["from"] for e in _ALL_ANCHORS
+        if not e["from"].endswith(("_chip", "_exposure", "_program"))
+    }
+    novel_edges = [
+        rec for rec in edges_to_write
+        if rec["gene"] not in _all_anchor_genes
+    ]
+    anchor_recovery_edges = [
+        rec for rec in edges_to_write
+        if rec["gene"] in _all_anchor_genes
+    ]
+    novel_genes = list({r["gene"] for r in novel_edges})
+
     return {
         "n_edges_written":  n_written,
         "n_edges_rejected": len(edges_rejected),
+        "n_novel_edges":    len(novel_edges),
+        "novel_genes":      novel_genes[:20],
+        "n_anchor_recovery_edges": len(anchor_recovery_edges),
         "top_genes": [
             {
                 "gene":               r["gene"],

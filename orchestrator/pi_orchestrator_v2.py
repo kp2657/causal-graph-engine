@@ -111,7 +111,8 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     replace the hardcoded PROVISIONAL_GAMMAS table (estimate_gamma_live path).
     """
     from pipelines.ota_gamma_estimation import estimate_gamma
-    from mcp_servers.burden_perturb_server import get_cnmf_program_info, get_program_gene_loadings
+    from mcp_servers.burden_perturb_server import get_program_gene_loadings
+    from pipelines.cnmf_programs import get_programs_for_disease
     from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
 
     disease_name = disease_query.get("disease_name", "coronary artery disease")
@@ -119,7 +120,8 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     short_name   = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), disease_name.upper())
     traits       = DISEASE_TRAIT_MAP.get(short_name, [short_name])
 
-    programs_info = get_cnmf_program_info()
+    # Use discovery-aware program source: cNMF on disk → MSigDB Hallmark → hardcoded fallback
+    programs_info = get_programs_for_disease(short_name)
     raw_programs  = programs_info.get("programs", [])
     program_names = [
         p if isinstance(p, str) else (p.get("program_id") or p.get("name", ""))
