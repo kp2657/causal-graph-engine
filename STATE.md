@@ -1,5 +1,5 @@
 # Causal Graph Engine — Build State
-Last updated: 2026-03-24T12:00:00Z  (Session 14)
+Last updated: 2026-03-24T13:00:00Z  (Session 15)
 
 ---
 
@@ -23,6 +23,23 @@ Last updated: 2026-03-24T12:00:00Z  (Session 14)
       mode_overrides={"causal_discovery_agent": "sdk"},
   )
   ```
+
+## LINCS Tier3 β ACTIVATED ✓ (2026-03-24, Session 15)
+
+### What changed
+- `perturbation_genomics_agent.py`: pre-fetches LINCS L1000 KD signature per gene via `get_lincs_gene_signature(gene, "KD", cell_line=lincs_cell_line)`
+- `lincs_cell_line` comes from `DISEASE_CELL_TYPE_MAP[disease_key]["lincs_cell_line"]` (HT29 for IBD, VCAP for CAD, HEPG2 for T2D)
+- `lincs_signature` and `program_gene_set` now passed to `estimate_beta()` — activates `estimate_beta_tier3()`
+- `ota_beta_estimation.py` line 314: fixed format mismatch — `estimate_beta_tier3` now handles both `{gene: float}` (iLINCS flat) and `{gene: {"log2fc": float}}` shapes
+
+### β fallback chain now active for all live tiers
+1. Tier1 Perturb-seq — qualitative ±1.0 for 9 known genes (h5ad not downloaded)
+2. Tier2a GTEx eQTL-MR — `nes × program_loading` (working for genes with GTEx eQTLs)
+3. Tier2b OT credible sets — beta from GWAS fine-mapping (working when efo_id available)
+4. **Tier3 LINCS L1000** — mean log2FC in disease-matched cell line KD (NOW LIVE)
+5. Virtual — pathway proxy ±1.0 (final fallback only)
+
+### Tests: 447 passing
 
 ## LIVE γ ESTIMATION ACTIVATED ✓ (2026-03-24, Session 14)
 

@@ -8,6 +8,36 @@ Successive sessions that skip this end up repeating dead ends.
 
 ---
 
+## 2026-03-24 — Session 15: LINCS Tier3 β activated
+
+### Problem
+`estimate_beta_tier3()` was never reached — `perturbation_genomics_agent` called `estimate_beta()` without `lincs_signature` or `program_gene_set`, so the tier3 guard (`if lincs_signature is None`) returned `None` every call. Also, the iLINCS API returns `{gene: float}` flat signatures but `estimate_beta_tier3` tried to access `lincs_signature[g]["log2fc"]` — a dict key on a float.
+
+### Fix (2 files)
+**`agents/tier2_pathway/perturbation_genomics_agent.py`**:
+- Added `lincs_cell_line` extraction from `DISEASE_CELL_TYPE_MAP` context
+- Per-gene LINCS pre-fetch: `get_lincs_gene_signature(gene, "KD", cell_line=lincs_cell_line)` (one REST call per gene via iLINCS, no API key required)
+- `lincs_signature_for_gene` and `program_gene_sets.get(pid)` now passed to `estimate_beta()` per program
+
+**`pipelines/ota_beta_estimation.py`**:
+- `estimate_beta_tier3` line 314: added `_extract_log2fc(v)` helper — handles both `float` (iLINCS flat) and `{"log2fc": float}` (structured) input shapes
+
+### What this activates
+For every disease with a `lincs_cell_line` configured (all 6 registered diseases have one), genes that survive without a Perturb-seq/eQTL/OT hit now get a LINCS-derived β from shRNA KD response. Coverage depends on L1000 landmark gene overlap with program gene sets (~978 landmarks vs 6-14 program genes → typically 1-5 hits per program).
+
+### β chain status after this session
+| Tier | Status |
+|---|---|
+| Tier1 Perturb-seq | Qualitative ±1.0 (9 genes); h5ad not downloaded |
+| Tier2a GTEx eQTL-MR | **LIVE** — NES × loading for GTEx-covered genes |
+| Tier2b OT credible sets | **LIVE** — GWAS fine-mapped beta when efo_id available |
+| Tier3 LINCS L1000 | **LIVE** — iLINCS shRNA KD mean log2FC |
+| Virtual | Pathway proxy ±1.0 — final fallback only |
+
+### Tests: 447 passing
+
+---
+
 ## 2026-03-24 — Session 14: live γ estimation — broke PROVISIONAL_GAMMAS circularity
 
 ### Problem

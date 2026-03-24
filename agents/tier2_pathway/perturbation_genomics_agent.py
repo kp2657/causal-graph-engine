@@ -62,6 +62,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     )
     from mcp_servers.gwas_genetics_server import query_gtex_eqtl
     from mcp_servers.open_targets_server import get_ot_genetic_instruments
+    from mcp_servers.lincs_server import get_lincs_gene_signature
     from pipelines.ota_beta_estimation import estimate_beta
     from graph.schema import DISEASE_CELL_TYPE_MAP
 
@@ -83,8 +84,9 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     disease_name = disease_query.get("disease_name", "").lower()
     disease_key = _DISEASE_KEY_MAP.get(disease_name, "")
     ctx = DISEASE_CELL_TYPE_MAP.get(disease_key, {})
-    gtex_tissue = ctx.get("gtex_tissue", "Whole_Blood")
-    efo_id: str = disease_query.get("efo_id", "")
+    gtex_tissue   = ctx.get("gtex_tissue", "Whole_Blood")
+    lincs_cell_line = ctx.get("lincs_cell_line")
+    efo_id: str   = disease_query.get("efo_id", "")
 
     # ------------------------------------------------------------------
     # Pre-fetch program gene loadings once per program (cached)
@@ -159,6 +161,23 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 warnings.append(f"{gene}: OT instruments prefetch failed: {exc}")
 
         # --------------------------------------------------------------
+        # Pre-fetch LINCS L1000 KD signature for this gene (Tier 3).
+        # One API call per gene; reused across all programs.
+        # Only attempted when a disease-matched cell line is configured.
+        # --------------------------------------------------------------
+        lincs_signature_for_gene: dict | None = None
+        if lincs_cell_line:
+            try:
+                lincs_result = get_lincs_gene_signature(
+                    gene, perturbation_type="KD", cell_line=lincs_cell_line
+                )
+                sig = lincs_result.get("signature")
+                if sig:
+                    lincs_signature_for_gene = sig
+            except Exception as exc:
+                warnings.append(f"{gene}: LINCS pre-fetch failed: {exc}")
+
+        # --------------------------------------------------------------
         # Main β estimation via 4-tier fallback (Tier1 → Tier2 → ... )
         # estimate_beta now receives eqtl_data and program_loading so
         # Tier 2 (eQTL-MR) activates when Tier 1 data is absent.
@@ -184,6 +203,9 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     perturbseq_data=perturbseq_data,
                     eqtl_data=eqtl_data_for_gene,
                     ot_instruments=ot_instruments_for_gene,
+                    lincs_signature=lincs_signature_for_gene,
+                    program_gene_set=program_gene_sets.get(pid),
+                    cell_line=lincs_cell_line,
                     program_loading=loading,
                     pathway_member=pathway_member,
                 )

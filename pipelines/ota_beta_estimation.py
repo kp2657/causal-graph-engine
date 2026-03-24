@@ -309,9 +309,15 @@ def estimate_beta_tier3(
     if lincs_signature is None or program_gene_set is None:
         return None
 
-    # Compute weighted overlap: mean |log2fc| of program genes in KD signature
+    # Compute weighted overlap: mean log2fc of program genes in KD signature.
+    # Handles both {gene: float} (iLINCS flat) and {gene: {"log2fc": float}} shapes.
+    def _extract_log2fc(v: object) -> float:
+        if isinstance(v, dict):
+            return float(v.get("log2fc") or v.get("Value") or 0.0)
+        return float(v)
+
     program_hits = {
-        g: lincs_signature[g]["log2fc"]
+        g: _extract_log2fc(lincs_signature[g])
         for g in program_gene_set
         if g in lincs_signature
     }
