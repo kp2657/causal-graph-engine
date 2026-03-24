@@ -377,6 +377,34 @@ def estimate_gamma_live(
     if not efo_id or not program_gene_set:
         return None
 
+    # Primary: OT eQTL–GWAS colocalization (proper MR-like γ, Tier2_Convergent)
+    # H4-weighted betaRatioSignAverage across program genes gives causal direction.
+    try:
+        from mcp_servers.open_targets_server import get_ot_colocalisation_for_program
+        coloc_result = get_ot_colocalisation_for_program(
+            program_gene_set=list(program_gene_set)[:_LIVE_GAMMA_MAX_GENES],
+            efo_id=efo_id,
+        )
+        gamma_coloc = coloc_result.get("gamma_coloc")
+        if gamma_coloc is not None:
+            n_hits = coloc_result.get("n_coloc_hits", 0)
+            gamma_se_coloc = round(abs(gamma_coloc) * 0.30 / max(n_hits, 1) ** 0.5, 4)
+            return {
+                "gamma":         gamma_coloc,
+                "gamma_se":      gamma_se_coloc,
+                "evidence_tier": "Tier2_Convergent",
+                "data_source":   f"OT_coloc_H4_weighted_{n_hits}_pairs",
+                "program":       program,
+                "trait":         trait,
+                "note":          (
+                    f"Live estimate: H4-weighted betaRatioSignAverage from "
+                    f"{n_hits} eQTL–GWAS coloc pairs in program gene set."
+                ),
+            }
+    except Exception:
+        pass
+
+    # Fallback: OT genetic association score proxy (Tier3_Provisional)
     try:
         from mcp_servers.open_targets_server import get_ot_genetic_scores_for_gene_set
         genes = list(program_gene_set)[:_LIVE_GAMMA_MAX_GENES]

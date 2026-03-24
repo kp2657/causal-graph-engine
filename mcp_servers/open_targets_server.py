@@ -726,6 +726,161 @@ def get_ot_genetic_scores_for_gene_set(
     }
 
 
+@_tool
+def get_ot_colocalisation_for_program(
+    program_gene_set: list[str],
+    efo_id: str,
+    h4_min: float = 0.5,
+    max_gwas_studies: int = 10,
+    max_credsets: int = 30,
+) -> dict:
+    """
+    Estimate γ_{program→trait} via eQTL–GWAS colocalization from Open Targets Platform.
+
+    For each GWAS credible set associated with the disease (efo_id), retrieves
+    pre-computed eQTL colocalisations (H4 score + betaRatioSignAverage).
+
+    γ_proxy = mean(H4 × betaRatioSignAverage) across colocs where:
+      - the eQTL gene is in program_gene_set
+      - H4 ≥ h4_min (strong colocalisation evidence)
+
+    betaRatioSignAverage (±1) captures causal direction; H4 weights confidence.
+    Evidence tier: Tier2_Convergent (convergent genetic + eQTL evidence).
+
+    Args:
+        program_gene_set: Gene symbols defining the cNMF program
+        efo_id:           EFO disease ID, e.g. "EFO_0001645"
+        h4_min:           Minimum H4 posterior probability to include (default 0.5)
+        max_gwas_studies: Max GWAS studies to query per disease (default 10)
+        max_credsets:     Max credible sets per study batch (default 30)
+
+    Returns:
+        {
+            "efo_id": str,
+            "gamma_coloc": float | None,   # H4-weighted betaRatioSignAverage
+            "n_coloc_hits": int,           # coloc pairs passing H4 threshold
+            "coloc_genes": list[str],      # eQTL gene symbols in program_gene_set
+            "evidence_tier": str,
+            "data_source": str,
+        }
+    """
+    import re
+
+    _EMPTY: dict = {
+        "efo_id": efo_id, "gamma_coloc": None, "n_coloc_hits": 0,
+        "coloc_genes": [], "evidence_tier": "provisional_virtual",
+        "data_source": "OT_Platform_v4_colocalisation",
+    }
+
+    if not program_gene_set or not efo_id:
+        return {**_EMPTY, "note": "Missing program_gene_set or efo_id"}
+
+    # 1. Fetch GWAS study IDs for this disease
+    studies_q = """
+    query Studies($efoId: String!, $size: Int!) {
+      studies(diseaseIds: [$efoId] page: {size: $size, index: 0}) {
+        rows { id studyType }
+      }
+    }
+    """
+    studies_data = _gql_request(OT_PLATFORM_GQL, studies_q, {"efoId": efo_id, "size": max_gwas_studies})
+    if "error" in studies_data:
+        return {**_EMPTY, "note": f"studies query failed: {studies_data['error']}"}
+
+    gwas_ids = [row["id"] for row in (studies_data.get("studies", {}).get("rows") or [])]
+    if not gwas_ids:
+        return {**_EMPTY, "note": "No GWAS studies found for EFO"}
+
+    # 2. Query credible sets + eQTL colocalisations in batches of 5 study IDs
+    _ENSG_RE = re.compile(r'(ensg\d+)', re.IGNORECASE)
+    coloc_raw: list[dict] = []  # {h4, brs, ensg_id}
+
+    credsets_q = """
+    query CredSets($studyIds: [String!]!, $size: Int!) {
+      credibleSets(studyIds: $studyIds page: {size: $size, index: 0}) {
+        rows {
+          colocalisation(studyTypes: [eqtl] page: {size: 10, index: 0}) {
+            rows {
+              h4
+              betaRatioSignAverage
+              otherStudyLocus { studyId qtlGeneId }
+            }
+          }
+        }
+      }
+    }
+    """
+    for i in range(0, len(gwas_ids), 5):
+        batch = gwas_ids[i:i + 5]
+        cs_data = _gql_request(OT_PLATFORM_GQL, credsets_q, {"studyIds": batch, "size": max_credsets})
+        if "error" in cs_data:
+            continue
+        for cs_row in (cs_data.get("credibleSets", {}).get("rows") or []):
+            for coloc in (cs_row.get("colocalisation", {}).get("rows") or []):
+                h4 = coloc.get("h4")
+                brs = coloc.get("betaRatioSignAverage")
+                if h4 is None or brs is None or float(h4) < h4_min:
+                    continue
+                other = coloc.get("otherStudyLocus") or {}
+                # qtlGeneId is the direct Ensembl ID field (preferred over regex)
+                ensg = other.get("qtlGeneId") or ""
+                if not ensg:
+                    m = _ENSG_RE.search(other.get("studyId", ""))
+                    ensg = m.group(1) if m else ""
+                if ensg:
+                    coloc_raw.append({
+                        "h4":     float(h4),
+                        "brs":    float(brs),
+                        "ensg_id": ensg.upper(),
+                    })
+
+    if not coloc_raw:
+        return {**_EMPTY, "note": "No eQTL colocalisations found for GWAS loci"}
+
+    # 3. Batch-resolve unique Ensembl IDs → gene symbols via OT targets query
+    unique_ensg = list({r["ensg_id"] for r in coloc_raw})
+    ensg_to_symbol: dict[str, str] = {}
+    targets_q = """
+    query Targets($ids: [String!]!) {
+      targets(ensemblIds: $ids) {
+        rows { id approvedSymbol }
+      }
+    }
+    """
+    for i in range(0, len(unique_ensg), 50):
+        batch_ensg = unique_ensg[i:i + 50]
+        t_data = _gql_request(OT_PLATFORM_GQL, targets_q, {"ids": batch_ensg})
+        if "error" not in t_data:
+            for row in (t_data.get("targets", {}).get("rows") or []):
+                if row.get("id") and row.get("approvedSymbol"):
+                    ensg_to_symbol[row["id"].upper()] = row["approvedSymbol"].upper()
+
+    # 4. Filter coloc hits by program gene set intersection
+    program_upper = {g.upper() for g in program_gene_set}
+    hits: list[float] = []
+    coloc_genes: list[str] = []
+    for rec in coloc_raw:
+        symbol = ensg_to_symbol.get(rec["ensg_id"], "")
+        if symbol and symbol in program_upper:
+            hits.append(rec["h4"] * rec["brs"])
+            if symbol not in coloc_genes:
+                coloc_genes.append(symbol)
+
+    if not hits:
+        return {**_EMPTY, "note": "No coloc hits overlap with program gene set"}
+
+    gamma_coloc = round(sum(hits) / len(hits), 4)
+    return {
+        "efo_id":        efo_id,
+        "gamma_coloc":   gamma_coloc,
+        "n_coloc_hits":  len(hits),
+        "coloc_genes":   coloc_genes,
+        "evidence_tier": "Tier2_Convergent",
+        "data_source":   "OT_Platform_v4_eQTL_colocalisation",
+        "note":          f"H4-weighted betaRatioSignAverage over {len(hits)} coloc pairs",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------

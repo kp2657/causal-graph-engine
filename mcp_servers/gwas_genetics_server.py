@@ -995,15 +995,134 @@ def query_encode_accessibility(cell_type: str) -> dict:
 
 
 @_tool
-def query_eqtl_catalogue(gene: str) -> dict:
+def query_eqtl_catalogue(
+    gene: str,
+    tissue_category: str | None = None,
+    p_threshold: float = 1e-4,
+    max_results_per_dataset: int = 5,
+) -> dict:
     """
-    Query eQTL Catalogue for eQTL associations across 100+ datasets.
-    STUB — eQTL Catalogue API at https://www.ebi.ac.uk/eqtl/api/
+    Query eQTL Catalogue v3 for gene expression QTLs across immune cell types.
+
+    Uses the confirmed-working v3 REST endpoint:
+      GET /eqtl/api/v3/datasets/{dataset_id}/associations?gene_id={ensembl_id}
+
+    Queried datasets (immune-focused for IBD/RA/SLE relevance):
+      QTD000001: Alasoo_2018 macrophage_naive
+      QTD000021: BLUEPRINT monocyte
+      QTD000026: BLUEPRINT neutrophil
+      QTD000379: Nedelec_2016 macrophage_naive
+      QTD000409: Quach_2016 monocyte
+      QTD000499: Schmiedel_2018 CD16+_monocyte
+
+    Args:
+        gene:                    HGNC gene symbol, e.g. "NOD2"
+        tissue_category:         Optional filter: "macrophage", "monocyte", "neutrophil"
+        p_threshold:             Maximum p-value to include (default 1e-4)
+        max_results_per_dataset: Max eQTL hits to return per dataset
+
+    Returns:
+        {
+            "gene_symbol": str,
+            "ensembl_id": str | None,
+            "best_beta": float | None,
+            "best_se": float | None,
+            "best_pvalue": float | None,
+            "best_dataset": str | None,
+            "eqtls": list[{beta, se, pvalue, dataset_id, tissue, rsid}],
+            "n_significant": int,
+            "data_source": str,
+        }
     """
+    _EQTL_CATALOGUE_BASE = "https://www.ebi.ac.uk/eqtl/api"
+
+    # Hardcoded immune cell datasets confirmed working via v3 API
+    _IMMUNE_DATASETS: list[dict] = [
+        {"id": "QTD000001", "tissue": "macrophage_naive",  "category": "macrophage"},
+        {"id": "QTD000021", "tissue": "monocyte",          "category": "monocyte"},
+        {"id": "QTD000026", "tissue": "neutrophil",        "category": "neutrophil"},
+        {"id": "QTD000379", "tissue": "macrophage_naive",  "category": "macrophage"},
+        {"id": "QTD000409", "tissue": "monocyte",          "category": "monocyte"},
+        {"id": "QTD000499", "tissue": "CD16+_monocyte",    "category": "monocyte"},
+    ]
+
+    datasets = _IMMUNE_DATASETS
+    if tissue_category:
+        tc = tissue_category.lower()
+        filtered = [d for d in _IMMUNE_DATASETS if d["category"] == tc]
+        if filtered:
+            datasets = filtered
+
+    # Resolve gene symbol → Ensembl ID via GTEx gene endpoint (strips version suffix)
+    ensembl_id: str | None = None
+    try:
+        gene_info = resolve_gtex_gene_id(gene)
+        gencode_id = gene_info.get("gencode_id", "")
+        if gencode_id:
+            ensembl_id = gencode_id.split(".")[0]  # strip version, e.g. "ENSG00000167207.8" → "ENSG00000167207"
+    except Exception:
+        pass
+
+    if not ensembl_id:
+        return {
+            "gene_symbol": gene, "ensembl_id": None,
+            "best_beta": None, "best_se": None, "best_pvalue": None,
+            "best_dataset": None, "eqtls": [], "n_significant": 0,
+            "data_source": "eQTL_Catalogue_v3_immune_datasets",
+            "note": "Could not resolve Ensembl ID via GTEx",
+        }
+
+    eqtls: list[dict] = []
+    for ds in datasets:
+        try:
+            resp = httpx.get(
+                f"{_EQTL_CATALOGUE_BASE}/v3/datasets/{ds['id']}/associations",
+                params={"gene_id": ensembl_id, "size": max_results_per_dataset},
+                headers={"Accept": "application/json"},
+                timeout=20,
+            )
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            # v3 returns a list directly or nested under "results"/"associations"
+            assocs = data if isinstance(data, list) else data.get("results", data.get("associations", []))
+            for a in (assocs or []):
+                pval = a.get("pvalue")
+                beta = a.get("beta")
+                if beta is None or pval is None:
+                    continue
+                try:
+                    pval_f = float(pval)
+                except (TypeError, ValueError):
+                    continue
+                if pval_f > p_threshold:
+                    continue
+                eqtls.append({
+                    "beta":       float(beta),
+                    "se":         a.get("se"),
+                    "pvalue":     pval_f,
+                    "dataset_id": ds["id"],
+                    "tissue":     ds["tissue"],
+                    "rsid":       a.get("rsid"),
+                    "chromosome": a.get("chromosome"),
+                    "position":   a.get("position"),
+                })
+        except Exception:
+            continue
+
+    eqtls.sort(key=lambda x: x["pvalue"])
+    best = eqtls[0] if eqtls else None
+
     return {
-        "gene":        gene,
-        "eqtl_studies": [],
-        "note":         "STUB — eQTL Catalogue REST API at https://www.ebi.ac.uk/eqtl/api/swagger-ui.html",
+        "gene_symbol":  gene,
+        "ensembl_id":   ensembl_id,
+        "best_beta":    best["beta"] if best else None,
+        "best_se":      best.get("se") if best else None,
+        "best_pvalue":  best["pvalue"] if best else None,
+        "best_dataset": best["dataset_id"] if best else None,
+        "eqtls":        eqtls[:max_results_per_dataset * len(datasets)],
+        "n_significant": len(eqtls),
+        "data_source":  "eQTL_Catalogue_v3_immune_datasets",
     }
 
 

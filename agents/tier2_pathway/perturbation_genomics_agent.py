@@ -146,6 +146,25 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         except Exception as exc:
             warnings.append(f"{gene}: GTEx eQTL prefetch failed: {exc}")
 
+        # eQTL Catalogue fallback: immune datasets (IBD/RA/SLE relevance)
+        # Only attempted when GTEx returned no eQTLs and disease is immune-relevant.
+        if eqtl_data_for_gene is None:
+            _IMMUNE_DISEASE_KEYS = frozenset({"IBD", "RA", "SLE", "MS", "T1D"})
+            if disease_key in _IMMUNE_DISEASE_KEYS:
+                try:
+                    from mcp_servers.gwas_genetics_server import query_eqtl_catalogue
+                    catalogue_result = query_eqtl_catalogue(gene)
+                    best_beta = catalogue_result.get("best_beta")
+                    if best_beta is not None:
+                        eqtl_data_for_gene = {
+                            "nes":    float(best_beta),
+                            "se":     catalogue_result.get("best_se"),
+                            "tissue": catalogue_result.get("best_dataset", "immune_catalogue"),
+                            "source": "eQTL_Catalogue",
+                        }
+                except Exception as exc:
+                    warnings.append(f"{gene}: eQTL Catalogue fallback failed: {exc}")
+
         # --------------------------------------------------------------
         # Pre-fetch OT genetic instruments (Tier 2b): GWAS credible sets
         # and eQTL catalogue betas from Open Targets.

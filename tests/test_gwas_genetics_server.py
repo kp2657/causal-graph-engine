@@ -350,7 +350,11 @@ class TestLiveGammaUnit:
         from unittest.mock import patch
         from pipelines.ota_gamma_estimation import estimate_gamma_live
 
+        # Mock both: coloc (primary, returns no data → falls through) and score proxy (fallback)
         with patch(
+            "mcp_servers.open_targets_server.get_ot_colocalisation_for_program",
+            return_value={"gamma_coloc": None, "n_coloc_hits": 0},
+        ), patch(
             "mcp_servers.open_targets_server.get_ot_genetic_scores_for_gene_set",
             return_value={
                 "mean_genetic_score": 0.72,
@@ -366,6 +370,29 @@ class TestLiveGammaUnit:
         assert result is not None
         assert result["gamma"] == pytest.approx(0.72 * 0.65, abs=0.01)
         assert result["evidence_tier"] in ("Tier2_Convergent", "Tier3_Provisional")
+
+    def test_estimate_gamma_live_coloc_path(self):
+        """When coloc returns H4-weighted data, it is used as primary estimate."""
+        from unittest.mock import patch
+        from pipelines.ota_gamma_estimation import estimate_gamma_live
+
+        with patch(
+            "mcp_servers.open_targets_server.get_ot_colocalisation_for_program",
+            return_value={
+                "gamma_coloc": 0.38,
+                "n_coloc_hits": 5,
+                "evidence_tier": "Tier2_Convergent",
+            },
+        ):
+            result = estimate_gamma_live(
+                "inflammatory_NF-kB", "IBD",
+                program_gene_set={"TNF", "NOD2", "IL23R", "RELA"},
+                efo_id="EFO_0003767",
+            )
+
+        assert result is not None
+        assert result["gamma"] == pytest.approx(0.38, abs=0.01)
+        assert result["evidence_tier"] == "Tier2_Convergent"
 
     def test_estimate_gamma_falls_back_to_provisional_when_live_absent(self):
         from unittest.mock import patch
