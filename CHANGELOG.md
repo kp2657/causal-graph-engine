@@ -8,6 +8,35 @@ Successive sessions that skip this end up repeating dead ends.
 
 ---
 
+## 2026-03-24 — Session 16: IBD anchor recovery regression fixed
+
+### Problem
+IBD pipeline halted at 33% anchor recovery (NOD2→IBD, IL23R→IBD missing) after activating live OT γ and LINCS Tier3 β.
+
+### Root cause
+Two independent bugs:
+
+**Bug 1: SCONE BIC bypass too narrow** (`scone_sensitivity.py`)
+- `apply_scone_reweighting` bypassed BIC penalty only for `dominant_tier == 'provisional_virtual'` anchor genes
+- NOD2 and IL23R hit the OT Tier2b GWAS path → small betas (0.031, -0.091) from GWAS credible-set instruments → ota_gamma ≈ 0.026/0.078
+- With `Tier2_Convergent` dominant_tier, these were NOT exempt from BIC
+- BIC score = `log(0.026) - (2/2)×log(1000) = -3.6 - 6.9 = -10.5` → `bic_factor = sigmoid(-5.25) ≈ 0.005`
+- `scone_gamma = 0.026 × 0.005 × 0.5 × 1.0 ≈ 0.0001` → below OTA_GAMMA_MIN=0.01 → edge rejected
+- TNF got provisional_virtual β (no eQTL/OT data) → anchor bypass → passed fine
+
+**Bug 2: IBD missing from `_DISEASE_SHORT` map** (`causal_discovery_agent.py`)
+- DB edges stored with `to_node='IBD'`, but anchor recovery query only queried `'inflammatory bowel disease'` (no mapping) → 0 edges found in DB lookup
+- This meant prior runs' edges never helped recovery
+
+### Fix
+- `scone_sensitivity.py`: `if gene in _anchors:` — removed `and rec.get("dominant_tier") == "provisional_virtual"` condition. All anchor genes skip BIC regardless of their evidence tier.
+- `causal_discovery_agent.py`: added IBD/AD/T2D to `_DISEASE_SHORT` map.
+
+### Result
+IBD pipeline: `SUCCESS`, 100% anchor recovery (3/3), 16 edges written, 447 tests pass.
+
+---
+
 ## 2026-03-24 — Session 15: LINCS Tier3 β activated
 
 ### Problem

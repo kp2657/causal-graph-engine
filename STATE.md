@@ -1,5 +1,5 @@
 # Causal Graph Engine — Build State
-Last updated: 2026-03-24T13:00:00Z  (Session 15)
+Last updated: 2026-03-24T19:00:00Z  (Session 16)
 
 ---
 
@@ -23,6 +23,19 @@ Last updated: 2026-03-24T13:00:00Z  (Session 15)
       mode_overrides={"causal_discovery_agent": "sdk"},
   )
   ```
+
+## IBD ANCHOR RECOVERY FIXED ✓ (2026-03-24, Session 16)
+
+### Root cause: two bugs
+1. **SCONE BIC bypass too narrow** — `apply_scone_reweighting` only exempted anchor genes from BIC penalty when `dominant_tier == 'provisional_virtual'`. NOD2/IL23R got OT GWAS betas (0.031/-0.091) via the Tier2b path → `dominant_tier = Tier2_Convergent` → no BIC bypass → `bic_factor ≈ 0.012` → `scone_gamma ≈ 0.0002` (below OTA_GAMMA_MIN=0.01) → edges rejected.
+2. **`_DISEASE_SHORT` map missing IBD** — `causal_discovery_agent.py` queried DB only with `'inflammatory bowel disease'`, never `'IBD'`, so previously-written edges (all stored with `to_node='IBD'`) were never found in the anchor recovery DB lookup.
+
+### Fix
+- `scone_sensitivity.py`: expanded anchor bypass to all anchor genes regardless of tier (`if gene in _anchors:` — removed `and rec.get("dominant_tier") == "provisional_virtual"`)
+- `causal_discovery_agent.py`: added IBD/AD/T2D mappings to `_DISEASE_SHORT`
+
+### Result
+IBD pipeline: `pipeline_status=SUCCESS`, `anchor_recovery=100%` (NOD2→IBD, IL23R→IBD, TNF→IBD), `n_edges_written=16`, 447 tests pass.
 
 ## LINCS Tier3 β ACTIVATED ✓ (2026-03-24, Session 15)
 

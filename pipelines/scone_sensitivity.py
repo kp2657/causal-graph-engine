@@ -306,11 +306,12 @@ def apply_scone_reweighting(
         # Normalize to [0.5, 1.0] range — never zero a strong edge entirely
         sens_factor = 0.5 + 0.5 * min(max_sens / (max_sens + 0.1), 1.0)
 
-        # Anchor genes bypass the BIC multiplicative penalty.
+        # Anchor genes bypass the BIC multiplicative penalty regardless of tier.
         # Their disease association is validated by independent GWAS/clinical
-        # evidence; the virtual β reflects missing Perturb-seq data, not an
-        # uncertain causal claim.  Apply only sensitivity × bootstrap scaling.
-        if gene in _anchors and rec.get("dominant_tier") == "provisional_virtual":
+        # evidence; a small ota_gamma reflects a narrow program pathway, not a
+        # spurious edge.  Tier2/Tier3 anchor genes have the same BIC bypass as
+        # provisional_virtual anchors.  Apply only sensitivity × bootstrap scaling.
+        if gene in _anchors:
             scone_gamma = ota * sens_factor * bc
             bic_factor  = float("nan")  # not applicable
             scone_flags = ["anchor_scone_exempt"]

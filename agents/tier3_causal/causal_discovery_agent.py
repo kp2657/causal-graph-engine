@@ -284,6 +284,12 @@ def run(
         "myocardial infarction": "CAD",
         "rheumatoid arthritis": "RA",
         "systemic lupus erythematosus": "SLE",
+        "inflammatory bowel disease": "IBD",
+        "crohn's disease": "IBD",
+        "crohns disease": "IBD",
+        "ulcerative colitis": "IBD",
+        "alzheimer's disease": "AD",
+        "type 2 diabetes": "T2D",
     }
     disease_ids_to_query = {disease_name}
     short = _DISEASE_SHORT.get(disease_name.lower())
