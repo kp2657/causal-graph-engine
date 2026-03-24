@@ -1,5 +1,5 @@
 # Causal Graph Engine — Build State
-Last updated: 2026-03-24T11:00:00Z  (Session 13)
+Last updated: 2026-03-24T12:00:00Z  (Session 14)
 
 ---
 
@@ -23,6 +23,29 @@ Last updated: 2026-03-24T11:00:00Z  (Session 13)
       mode_overrides={"causal_discovery_agent": "sdk"},
   )
   ```
+
+## LIVE γ ESTIMATION ACTIVATED ✓ (2026-03-24, Session 14)
+
+### Problem identified (architectural audit)
+- `_get_gamma_estimates()` called `estimate_gamma(prog, trait)` with no `efo_id` or `program_gene_set`
+- `estimate_gamma_live()` returned `None` at line 377 on every call (guard: `if not efo_id`)
+- Result: every γ came from hardcoded `PROVISIONAL_GAMMAS` table — circular with anchor list
+- SCONE assumed `{trait: float}` gamma shape, would crash on `{trait: dict}`
+
+### Fix
+- `_get_gamma_estimates()` now pre-fetches program gene sets via `get_program_gene_loadings()`
+- Passes `efo_id` (from `disease_query`) and `program_gene_set` to `estimate_gamma()`
+- Returns `{program: {trait: dict}}` — full gamma dict with evidence_tier, gamma_se, data_source
+- `scone_sensitivity.py` lines 112 and 217: both updated to handle `{trait: dict}` shape
+- `causal_discovery_agent.py` line 97: comment updated (code already handled both shapes)
+
+### Effect
+- γ now comes from live OT genetic association scores when data is available
+- Falls through to `PROVISIONAL_GAMMAS` only when OT returns nothing for that (program, disease) pair
+- Evidence tier preserved end-to-end: OT-derived γ gets `Tier3_Provisional`; FinnGen-replicated gets `Tier2_Convergent`
+- The circularity (anchors in PROVISIONAL_GAMMAS = anchors in REQUIRED_ANCHORS) is broken
+
+### Tests: 447 passing
 
 ## CAUSAL_DISCOVERY_AGENT SDK TRIAL ✓ READY (2026-03-24, Session 13)
 

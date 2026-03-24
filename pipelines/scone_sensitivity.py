@@ -108,8 +108,13 @@ def compute_cross_regime_sensitivity(
             q_beta = _TIER_QUALITY.get(beta_tier, q_beta_max)
 
             # Max |γ| across traits for this program
+            # Supports both {trait: float} and {trait: dict} gamma_matrix shapes.
             prog_gammas = gamma_matrix.get(program, {})
-            max_gamma   = max((abs(v) for v in prog_gammas.values()), default=0.0)
+            max_gamma   = max(
+                (abs(v.get("gamma", 0.0) if isinstance(v, dict) else v)
+                 for v in prog_gammas.values()),
+                default=0.0,
+            )
 
             gamma_ij = abs(beta_val) * max_gamma * q_beta * q_gamma
             sensitivity[gene][program] = round(gamma_ij, 6)
@@ -211,11 +216,15 @@ def bootstrap_edge_confidence(
             }
 
         # Build tier-matched γ format for compute_ota_gamma
+        # Handles both {trait: float} and {trait: dict} gamma_matrix shapes.
         for trait in traits:
             trait_gammas: dict[str, dict] = {}
             for prog, prog_gammas in gamma_matrix.items():
-                g_val = prog_gammas.get(trait, 0.0)
-                trait_gammas[prog] = {"gamma": g_val, "evidence_tier": "Tier3_Provisional"}
+                g_entry = prog_gammas.get(trait, 0.0)
+                if isinstance(g_entry, dict):
+                    trait_gammas[prog] = g_entry  # already full dict with evidence_tier
+                else:
+                    trait_gammas[prog] = {"gamma": float(g_entry or 0.0), "evidence_tier": "Tier3_Provisional"}
 
             try:
                 result = ota_gamma_fn(

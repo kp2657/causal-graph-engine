@@ -104,13 +104,18 @@ def _write_somatic_edges(somatic_output: AgentOutput, disease_name: str) -> list
 def _get_gamma_estimates(disease_query: dict) -> dict:
     """
     Compute program→trait γ estimates using DISEASE_TRAIT_MAP + ThreadPoolExecutor.
-    Returns {program: {trait: gamma_float}}.
+
+    Returns {program: {trait: gamma_dict}} where each gamma_dict includes
+    gamma, gamma_se, evidence_tier, and data_source.  When efo_id is present
+    and program gene sets are available, live OT genetic association scores
+    replace the hardcoded PROVISIONAL_GAMMAS table (estimate_gamma_live path).
     """
     from pipelines.ota_gamma_estimation import estimate_gamma
-    from mcp_servers.burden_perturb_server import get_cnmf_program_info
+    from mcp_servers.burden_perturb_server import get_cnmf_program_info, get_program_gene_loadings
     from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
 
     disease_name = disease_query.get("disease_name", "coronary artery disease")
+    efo_id       = disease_query.get("efo_id") or None
     short_name   = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), disease_name.upper())
     traits       = DISEASE_TRAIT_MAP.get(short_name, [short_name])
 
@@ -121,17 +126,37 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
         for p in raw_programs
     ]
 
+    # Pre-fetch program gene sets once — needed for live OT γ estimation.
+    program_gene_sets: dict[str, set[str]] = {}
+    for pid in program_names:
+        try:
+            loadings_info = get_program_gene_loadings(pid)
+            program_gene_sets[pid] = {
+                g if isinstance(g, str) else g.get("gene", "")
+                for g in loadings_info.get("top_genes", [])
+                if g
+            }
+        except Exception:
+            program_gene_sets[pid] = set()
+
     work = [(prog, trait) for prog in program_names for trait in traits]
 
-    def _fetch(prog_trait: tuple[str, str]) -> tuple[str, str, float]:
+    def _fetch(prog_trait: tuple[str, str]) -> tuple[str, str, dict]:
         prog, trait = prog_trait
         try:
-            result = estimate_gamma(prog, trait)
-            return prog, trait, float(result.get("gamma", 0.0))
+            result = estimate_gamma(
+                prog, trait,
+                program_gene_set=program_gene_sets.get(prog) or None,
+                efo_id=efo_id,
+            )
+            return prog, trait, result
         except Exception:
-            return prog, trait, 0.0
+            return prog, trait, {
+                "gamma": 0.0, "gamma_se": None,
+                "evidence_tier": "provisional_virtual", "data_source": "error",
+            }
 
-    gamma_matrix: dict[str, dict[str, float]] = {p: {} for p in program_names}
+    gamma_matrix: dict[str, dict[str, dict]] = {p: {} for p in program_names}
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         for prog, trait, val in pool.map(_fetch, work):
             gamma_matrix[prog][trait] = val

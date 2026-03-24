@@ -8,6 +8,44 @@ Successive sessions that skip this end up repeating dead ends.
 
 ---
 
+## 2026-03-24 — Session 14: live γ estimation — broke PROVISIONAL_GAMMAS circularity
+
+### Problem
+Architectural audit revealed that γ estimation was entirely circular:
+- `_get_gamma_estimates()` called `estimate_gamma(prog, trait)` with no `efo_id` or `program_gene_set`
+- `estimate_gamma_live()` returned `None` immediately every call (line 377 guard: `if not efo_id`)
+- Every γ fell through to `PROVISIONAL_GAMMAS` hardcoded table
+- `PROVISIONAL_GAMMAS` was populated with the exact (program, trait) pairs that `REQUIRED_ANCHORS` checks
+- Anchor recovery "≥80%" was guaranteed by construction, not discovered
+
+### Fix (3 files)
+**`orchestrator/pi_orchestrator_v2.py`** — `_get_gamma_estimates()`:
+- Pre-fetches program gene sets via `get_program_gene_loadings()` (one per program)
+- Passes `efo_id` (from `disease_query`) and `program_gene_set` per call to `estimate_gamma()`
+- Returns `{program: {trait: dict}}` — full gamma dicts with evidence_tier, gamma_se, data_source
+
+**`pipelines/scone_sensitivity.py`**:
+- Line 112: `max_gamma` extraction now handles `{trait: dict}` — extracts `v.get("gamma", 0.0)` when dict
+- Line 217: bootstrap trait_gammas construction now passes full dict when available, preserving evidence tier
+
+**`agents/tier3_causal/causal_discovery_agent.py`**:
+- Comment updated (code already handled both float and dict shapes via isinstance checks)
+
+### What this activates
+`estimate_gamma_live()` now runs for every (program, disease) pair where:
+1. The disease has an EFO ID (all current diseases do)
+2. The program has gene set members (all 6 registered programs do)
+It calls `get_ot_genetic_scores_for_gene_set(efo_id, program_genes)` → mean OT genetic score × 0.65
+
+### Remaining gaps (next priorities)
+- β is still mostly pathway proxy (±1.0) — needs GTEx eQTL-MR data flowing through
+- `PROVISIONAL_GAMMAS` still used as fallback when OT returns score < 0.05 (acceptable)
+- S-LDSC and TWMR paths still empty — require GWAS sumstats download
+
+### Tests: 447 passing, no regressions
+
+---
+
 ## 2026-03-24 — Session 13: causal_discovery_agent SDK trial
 
 ### Completed

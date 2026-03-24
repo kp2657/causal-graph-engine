@@ -94,9 +94,10 @@ def run(
         gene_beta = beta_matrix.get(gene, {})
         for trait in traits:
             try:
-                # gamma_estimates is {program: {trait: float}} from chief_of_staff.
-                # compute_ota_gamma expects {program: {"gamma": float, "evidence_tier": str}}.
-                # Build trait-specific view.
+                # gamma_estimates is {program: {trait: dict|float}}.
+                # dict shape: {"gamma": float, "evidence_tier": str, ...} — from live OT path.
+                # float shape: legacy / test mocks.
+                # Build trait-specific view for compute_ota_gamma.
                 trait_gammas: dict[str, dict] = {}
                 for prog, prog_gammas in gamma_estimates.items():
                     if isinstance(prog_gammas, dict):
