@@ -1,5 +1,5 @@
 # Causal Graph Engine — Build State
-Last updated: 2026-03-24T19:00:00Z  (Session 16)
+Last updated: 2026-03-24T20:30:00Z  (Session 17)
 
 ---
 
@@ -23,6 +23,21 @@ Last updated: 2026-03-24T19:00:00Z  (Session 16)
       mode_overrides={"causal_discovery_agent": "sdk"},
   )
   ```
+
+## LIVE γ + β SOURCES UPGRADED ✓ (2026-03-24, Session 17)
+
+### Task A — OT eQTL–GWAS colocalisation as primary γ estimate
+- Added `get_ot_colocalisation_for_program(program_gene_set, efo_id)` to `open_targets_server.py`
+- Queries OT Platform v4: GWAS study IDs → credible sets → eQTL colocalisations (H4 + betaRatioSignAverage)
+- γ_proxy = mean(H4 × betaRatioSignAverage) for program genes with H4 ≥ 0.5
+- Evidence tier: `Tier2_Convergent` (proper MR-like estimate, not a crude score proxy)
+- Wired as **primary path** in `estimate_gamma_live()`; OT genetic score proxy is now fallback
+
+### Task B — eQTL Catalogue v3 as immune-disease β fallback
+- Replaced stub `query_eqtl_catalogue()` in `gwas_genetics_server.py` with real v3 REST implementation
+- 6 immune datasets: Alasoo_2018 macrophage, BLUEPRINT monocyte/neutrophil, Nedelec_2016, Quach_2016, Schmiedel_2018 CD16+ monocyte
+- Wired in `perturbation_genomics_agent.py` as fallback when GTEx returns 0 eQTLs for immune diseases (IBD/RA/SLE/MS/T1D)
+- 448 tests passing (1 new coloc-path unit test added)
 
 ## IBD ANCHOR RECOVERY FIXED ✓ (2026-03-24, Session 16)
 
