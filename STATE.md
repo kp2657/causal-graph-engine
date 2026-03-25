@@ -1,28 +1,46 @@
 # Causal Graph Engine — Build State
-Last updated: 2026-03-24T20:30:00Z  (Session 17)
+Last updated: 2026-03-24T22:00:00Z  (Session 18)
 
 ---
 
-## CURRENT OBJECTIVE
-  68. Add RA and T2D to `graph/schema.py` ANCHOR_EDGES + REQUIRED_ANCHORS_BY_DISEASE
-      → run `main.py analyze "rheumatoid arthritis"` and `main.py analyze "type 2 diabetes"`
-      → target: ≥80% anchor recovery for both new diseases
-  69. Download disease-matched Perturb-seq data for IBD (immune cell screen)
-      → Replogle K562 is metabolic/essential only; need immune cell β for NOD2/IL23R/TNF
-      → Candidate: Dixit 2016 PBMC (GSE90063) or Papalexi 2021 T cell screen
-  70. Add ≥3 new CNMF programs for IBD biology:
-      → "Th17_differentiation", "mucosal_barrier_function", "innate_immune_sensing" (already in gammas but not as programs)
-  71. Integrate chemistry_agent with ChEMBL drug-target data for IBD repurposing candidates
-      → Currently n_repurposing=2; should surface vedolizumab (anti-α4β7) for IBD
+## CURRENT OBJECTIVE — Discovery engine activation
 
-  **MULTIAGENT TRIAL — READY TO RUN:**
-  ```python
-  from orchestrator.pi_orchestrator_v2 import analyze_disease_v2
-  result = analyze_disease_v2(
-      "inflammatory bowel disease",
-      mode_overrides={"causal_discovery_agent": "sdk"},
-  )
-  ```
+Architecture pivot complete. The pipeline now supports data-driven discovery.
+Immediate next steps to activate real data flow:
+
+**Step A — Download sc-RNA + run NMF (activates data-driven programs)**
+```bash
+conda run -n causal-graph pip install cellxgene-census scikit-learn anndata scanpy
+conda run -n causal-graph python -c "
+from pipelines.discovery import run_discovery_pipeline
+result = run_discovery_pipeline('IBD', 'EFO_0003767')
+print(result['n_programs'], 'programs discovered')
+"
+```
+
+**Step B — Download disease Perturb-seq (activates real β for immune diseases)**
+```bash
+# IBD: Papalexi 2021 PBMC (recommended)
+conda run -n causal-graph python -c "
+from pipelines.discovery.perturb_registry import get_download_commands
+print('\n'.join(get_download_commands('IBD')))
+"
+```
+
+**Step C — Full LDSC γ (when LD scores + sumstats available)**
+```bash
+conda run -n causal-graph python -c "
+from pipelines.discovery.ldsc_pipeline import download_ld_scores
+download_ld_scores('./data/ldsc')
+"
+```
+
+**Success criterion (discovery engine)**:
+- `n_novel_edges > 0` in causal_discovery_agent output (genes not in anchor set)
+- `novel_genes` list contains biologically plausible new targets
+- Anchor recovery ≥ 80% (quality control check, not the goal)
+
+**Previously: anchor recovery was the goal. Now it is a quality control check.**
 
 ## LIVE γ + β SOURCES UPGRADED ✓ (2026-03-24, Session 17)
 

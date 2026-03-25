@@ -1,5 +1,45 @@
 # Causal Graph Engine — Session Changelog
 
+---
+
+## 2026-03-24 — Session 18: Discovery engine pivot
+
+### Problem
+The pipeline was a framework implementation, not a discovery engine:
+- Programs pre-specified in a hardcoded registry (not from data)
+- γ values were curated literature numbers or OT score proxies (not computed)
+- Success metric = recover pre-specified anchor genes → reconstruction, not discovery
+- Novel gene→trait edges had no first-class representation in the output
+
+### What changed
+
+**New: `pipelines/discovery/` package**
+- `cellxgene_downloader.py`: downloads disease-matched sc-RNA from CELLxGENE census API (macrophage for IBD/CAD, fibroblast for RA, microglia for AD, beta cell for T2D). Cached as h5ad in `data/cellxgene/{disease}/`.
+- `cnmf_runner.py`: runs NMF on downloaded h5ad to discover gene programs de novo. sklearn NMF (always) or `cnmf` package (consensus). Saves to `data/cnmf_programs/{disease}_programs.json`.
+- `ldsc_pipeline.py`: GWAS Catalog enrichment γ per program — queries gene-level GWAS hits, computes fold-enrichment z-score → calibrated γ. No LD score download required. Stub for full partitioned LDSC when LD scores are available.
+- `perturb_registry.py`: catalog of 8 Perturb-seq datasets (Replogle K562, Papalexi PBMC, Schmidt T cell, Ursu neuron, etc.) with disease-priority ordering and download commands.
+
+**Program source routing upgraded**
+- `orchestrator/pi_orchestrator_v2.py` + `perturbation_genomics_agent.py`: now call `get_programs_for_disease(disease)` instead of `get_cnmf_program_info()`.
+- Priority: cNMF on disk → MSigDB Hallmark (live REST) → hardcoded provisional.
+- `get_program_gene_loadings()` in `burden_perturb_server.py`: checks NMF disk cache + MSigDB before falling back to provisional registry.
+
+**γ estimation Tier0 added**
+- `pipelines/ota_gamma_estimation.py`: GWAS heritability enrichment (heuristic S-LDSC) fires as the highest-priority γ source when `program_gene_set` and `efo_id` are provided. Evidence tier: Tier3_Provisional (upgrades to Tier2_Convergent when full LDSC implemented).
+
+**Novel discovery metric**
+- `causal_discovery_agent.py`: output now includes `n_novel_edges` (gene not in any ANCHOR_EDGES) and `novel_genes` list. Anchor recovery is now a quality control check; novel edges are the primary discovery output.
+
+### Result
+470 tests passing, 4 skipped (sklearn/anndata not in env). Architecture now supports data-driven discovery — run `pipelines/discovery/run_discovery_pipeline(disease, efo_id)` to produce programs + γ from real data.
+
+### Next steps to fully activate discovery
+1. `pip install cellxgene-census scikit-learn` → download sc-RNA + run NMF
+2. `pip install ldsc` + download LD scores → full S-LDSC γ
+3. Download preferred Perturb-seq h5ad per disease (`get_download_commands("IBD")`) → real β
+
+---
+
 This file is the project's **portable long-term memory**, functioning as lab notes.
 It tracks completed milestones, failed approaches, and accuracy checkpoints.
 

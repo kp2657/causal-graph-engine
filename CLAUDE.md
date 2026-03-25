@@ -78,12 +78,18 @@ When starting a new session:
 
 ## Success Criteria
 
-The pipeline is working when:
-- `main.py analyze "coronary artery disease"` completes with `pipeline_status: SUCCESS`
-- `anchor_edge_recovery ≥ 0.80` (4/5 CAD REQUIRED_ANCHORS)
-- `n_edges_written ≥ 8` (Ota γ composite edges)
-- `data/analyze_coronary_artery_disease.md` exists with ranked target table
-- `data/exports/coronary_artery_disease.ttl` exists (RDF export)
+**Discovery engine (primary goal):**
+- `n_novel_edges > 0` — genes not in pre-specified ANCHOR_EDGES with Tier2+ evidence
+- Programs come from `get_programs_for_disease()` (cNMF/MSigDB), not hardcoded registry
+- γ values come from GWAS enrichment / OT coloc, not PROVISIONAL_GAMMAS table
+
+**Quality control (anchor recovery):**
+- `anchor_edge_recovery ≥ 0.80` — confirms pipeline recovers known positives
+- `n_edges_written ≥ 8` — sufficient signal density
+- `data/analyze_{disease}.md` exists with ranked target table (anchor + novel genes)
+- `data/exports/{disease}.ttl` exists (RDF export)
+
+**Anchor recovery is now a QC check, not the success criterion.**
 
 ---
 
@@ -179,7 +185,7 @@ These 2 tests fail intermittently due to external API instability — not code b
 
 ```
 ANTHROPIC_API_KEY=<key>         # For SDK mode agent dispatch
-OPENGWAS_JWT=<jwt>              # Expires 2026-04-06 — renew at api.opengwas.io
+OPENGWAS_JWT=<jwt>              # Expires 2026-05-06 — renew at api.opengwas.io
 NCBI_API_KEY=<key>
 CROSSREF_MAILTO=kenneth.pham@columbia.edu
 GRAPH_DB_PATH=./data/graph.kuzu
