@@ -17,7 +17,29 @@ if ! conda run -n "$CONDA_ENV" python -c "import causal_graph_engine" 2>/dev/nul
     conda run -n "$CONDA_ENV" pip install -e . -q
 fi
 
-# --- 2. Optional: download Replogle K562 h5ad (~370 MB) ---
+# --- 2a. Preferred: Schnitzler 2023 HCASMC/HAEC Perturb-seq (CAD-relevant vascular cells) ---
+# 332 CAD GWAS risk genes perturbed in human coronary artery smooth muscle cells.
+# This is the disease-relevant Tier1 data source for CAD; K562 (below) is a myeloid fallback.
+# Download from GEO GSE210681 and preprocess before running the pipeline.
+SCHNITZLER_DIR="data/perturbseq/schnitzler_cad_vascular"
+SCHNITZLER_FILE="$SCHNITZLER_DIR/GSE210681_ALL_log2fcs.txt.gz"
+if [ ! -f "$SCHNITZLER_FILE" ]; then
+    echo "[data] Downloading Schnitzler 2023 HCASMC Perturb-seq (GSE210681, ~150 MB)..."
+    mkdir -p "$SCHNITZLER_DIR"
+    wget -q --show-progress \
+        -O "$SCHNITZLER_FILE" \
+        "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE210nnn/GSE210681/suppl/GSE210681_ALL_log2fcs_dup4_s4n3.99x.txt.gz" \
+        && conda run -n "$CONDA_ENV" python -m mcp_servers.perturbseq_server preprocess \
+            schnitzler_cad_vascular "$SCHNITZLER_FILE" \
+        || echo "[data] WARNING: Schnitzler download failed — pipeline will fall back to K562/eQTL-MR"
+else
+    echo "[data] Schnitzler HCASMC data found: $SCHNITZLER_FILE"
+fi
+
+# --- 2b. Fallback: Replogle K562 h5ad (~370 MB) ---
+# K562 is a leukemia cell line — NOT vascular biology. The pipeline demotes K562 β
+# for CAD from Tier1_Interventional → Tier3_Provisional automatically (cell-line mismatch).
+# Still useful for GPS signature generation and as a generic fallback.
 H5AD_PATH="data/perturb_seq/replogle_2022_k562/K562_gwps_normalized_bulk_01.h5ad"
 if [ ! -f "$H5AD_PATH" ]; then
     echo "[data] Downloading Replogle 2022 K562 h5ad (~370 MB)..."
@@ -25,7 +47,7 @@ if [ ! -f "$H5AD_PATH" ]; then
     wget -q --show-progress \
         -O "$H5AD_PATH" \
         "https://ndownloader.figshare.com/files/35773217" \
-        || echo "[data] WARNING: h5ad download failed — pipeline will fall back to eQTL-MR (Tier 2)"
+        || echo "[data] WARNING: K562 h5ad download failed — GPS will use OTA-derived signature"
 fi
 
 # --- 3. Optional: start GPS Docker ---

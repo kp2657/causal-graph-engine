@@ -64,6 +64,60 @@ from config.scoring_thresholds import COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX
 
 
 # ---------------------------------------------------------------------------
+# Cell-type relevance registry
+#
+# Maps disease short-key → set of dataset/cell_type identifiers that are
+# genuinely disease-relevant.  Any Perturb-seq data NOT in this set for the
+# disease is demoted from Tier1_Interventional → Tier3_Provisional (cell-line
+# mismatch) rather than silently claiming Tier1 status.
+#
+# Rationale:
+#   K562 is a CML leukemia line.  It is an acceptable generic screen for
+#   myeloid/blood biology (IBD macrophage, RA monocyte) but NOT for CAD
+#   vascular biology or AMD retinal biology.  Using K562 β for CAD and
+#   labelling it Tier1_Interventional inflates ranks for RNA-processing genes
+#   (BUD13, SF3A3) whose K562 signatures dominate all NMF programs.
+# ---------------------------------------------------------------------------
+
+_CELL_TYPE_MATCHED_DATASETS: dict[str, set[str]] = {
+    # AMD: RPE1 is retinal pigment epithelium — correct tissue match
+    "AMD":  {"replogle_2022_rpe1", "RPE1", "rpe1"},
+    # CAD: Schnitzler HCASMC/HAEC and Natsume HAEC are vascular cell matches
+    "CAD":  {"schnitzler_cad_vascular", "natsume_2023_haec", "HCASMC", "HAEC", "HCASMC_HAEC"},
+    # IBD: THP-1 monocyte and BMDC are gut-immune matches; K562 is also myeloid → accept
+    "IBD":  {"papalexi_2021_thp1", "dixit_2016_bmdc", "replogle_2022_k562", "K562", "k562"},
+    # RA: monocyte/immune match; K562 acceptable as myeloid proxy
+    "RA":   {"papalexi_2021_thp1", "frangieh_2021_a375", "replogle_2022_k562", "K562", "k562"},
+    # SLE: immune context; K562 acceptable as myeloid proxy
+    "SLE":  {"papalexi_2021_thp1", "frangieh_2021_a375", "replogle_2022_k562", "K562", "k562"},
+    # AD: iPSC neurons first; RPE1 and K562 are mismatched
+    "AD":   {"ursu_2022_ipsc_neuron"},
+    # T2D: no liver/pancreas match available; K562 accepted as best proxy for now
+    "T2D":  {"replogle_2022_k562", "K562", "k562"},
+}
+
+# K562 is the catch-all fallback cell type identifier
+_K562_IDENTIFIERS: frozenset[str] = frozenset({"K562", "k562", "replogle_2022_k562"})
+
+
+def _is_cell_type_matched(cell_type: str, disease: str | None) -> bool:
+    """Return True if cell_type is disease-relevant for the given disease."""
+    if not disease:
+        return True   # no context → don't penalise
+    disease_upper = disease.upper().replace("-", "").replace(" ", "_")
+    # Normalise common disease aliases
+    _alias = {"CORONARY_ARTERY_DISEASE": "CAD", "AGE_RELATED_MACULAR_DEGENERATION": "AMD",
+               "MACULAR_DEGENERATION": "AMD", "INFLAMMATORY_BOWEL_DISEASE": "IBD",
+               "RHEUMATOID_ARTHRITIS": "RA", "SYSTEMIC_LUPUS_ERYTHEMATOSUS": "SLE",
+               "ALZHEIMERS": "AD", "ALZHEIMERS_DISEASE": "AD", "TYPE_2_DIABETES": "T2D"}
+    disease_key = _alias.get(disease_upper, disease_upper)
+    matched = _CELL_TYPE_MATCHED_DATASETS.get(disease_key)
+    if matched is None:
+        return True   # unknown disease — don't penalise
+    return cell_type in matched
+
+
+# ---------------------------------------------------------------------------
 # Tier 1: Cell-type-matched Perturb-seq
 # ---------------------------------------------------------------------------
 
@@ -72,9 +126,15 @@ def estimate_beta_tier1(
     program: str,
     perturbseq_data: dict | None = None,
     cell_type: str = "K562",
+    cell_type_matched: bool = True,
 ) -> dict | None:
     """
-    Tier 1 β: Direct cell-type-matched Perturb-seq measurement.
+    Tier 1 β: Direct Perturb-seq measurement.
+
+    Returns Tier1_Interventional only when cell_type_matched=True (the cell line
+    is disease-relevant).  When cell_type_matched=False (e.g. K562 used for CAD
+    instead of Schnitzler HCASMC), returns Tier3_Provisional with a mismatch note
+    so the causal hierarchy is not inflated.
 
     Uses qualitative sign-level data from burden_perturb_server when the full
     h5ad has not been downloaded.  When quantitative data is available (h5ad
@@ -86,6 +146,13 @@ def estimate_beta_tier1(
         perturbseq_data: Pre-loaded Perturb-seq data dict (gene → program → {beta, se, ...})
         cell_type:       Cell line / type identifier; used to annotate data_source
     """
+    # Tier label depends on cell-type relevance for the disease
+    _tier      = "Tier1_Interventional" if cell_type_matched else "Tier3_Provisional"
+    _mismatch  = (
+        "" if cell_type_matched
+        else f"; cell-line mismatch ({cell_type} is not disease-relevant — use disease-matched data for Tier1)"
+    )
+
     if perturbseq_data is None:
         # Qualitative path — sign-level β from curated server data
         from mcp_servers.burden_perturb_server import get_gene_perturbation_effect
@@ -101,9 +168,9 @@ def estimate_beta_tier1(
                 "ci_lower":      None,
                 "ci_upper":      None,
                 "beta_sigma":    0.50,  # sign known, magnitude unknown
-                "evidence_tier": "Tier1_Interventional",
+                "evidence_tier": _tier,
                 "data_source":   f"Replogle2022_{cell_type}_qualitative",
-                "note":          "Sign-only β; download Figshare pseudo-bulk h5ad for quantitative estimate",
+                "note":          f"Sign-only β; download Figshare pseudo-bulk h5ad for quantitative estimate{_mismatch}",
             }
         if program in dn_progs:
             return {
@@ -112,9 +179,9 @@ def estimate_beta_tier1(
                 "ci_lower":      None,
                 "ci_upper":      None,
                 "beta_sigma":    0.50,  # sign known, magnitude unknown
-                "evidence_tier": "Tier1_Interventional",
+                "evidence_tier": _tier,
                 "data_source":   f"Replogle2022_{cell_type}_qualitative",
-                "note":          "Sign-only β; download Figshare pseudo-bulk h5ad for quantitative estimate",
+                "note":          f"Sign-only β; download Figshare pseudo-bulk h5ad for quantitative estimate{_mismatch}",
             }
         return None
 
@@ -129,8 +196,9 @@ def estimate_beta_tier1(
         "ci_lower":      prog_beta.get("ci_lower"),
         "ci_upper":      prog_beta.get("ci_upper"),
         "beta_sigma":    prog_beta.get("se") or abs(prog_beta["beta"]) * 0.15,
-        "evidence_tier": "Tier1_Interventional",
+        "evidence_tier": _tier,
         "data_source":   f"Perturb-seq_{cell_type}_quantitative",
+        **({"note": f"Cell-line mismatch{_mismatch}"} if not cell_type_matched else {}),
     }
 
 
@@ -1125,9 +1193,14 @@ def estimate_beta(
     burden_data: dict | None = None,
     current_disease_motif: Any | None = None,
     motif_library: dict | None = None,
+    disease: str | None = None,
 ) -> dict:
     """
     β fallback decision tree for the Ota framework.
+
+    Cell-type relevance: if cell_type is not disease-relevant (e.g. K562 for CAD),
+    Perturb-seq β is demoted from Tier1_Interventional → Tier3_Provisional.
+    Pass disease= to enable this check; omit for disease-agnostic use.
 
     Priority:
       1. Tier1    — cell-type-matched Perturb-seq (direct intervention)
@@ -1146,10 +1219,12 @@ def estimate_beta(
     Co-expression, GRN weights, and pathway-annotation-derived synthetic betas
     are intentionally absent from this chain — they do not provide causal evidence.
     """
-    # Tier 1
-    beta = estimate_beta_tier1(gene, program, perturbseq_data, cell_type=cell_type)
+    # Tier 1 — demote to Tier3 if cell type is not disease-relevant
+    _matched = _is_cell_type_matched(cell_type, disease)
+    beta = estimate_beta_tier1(gene, program, perturbseq_data, cell_type=cell_type, cell_type_matched=_matched)
     if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 1}
+        _tier_used = 1 if _matched else 3
+        return {**beta, "gene": gene, "program": program, "tier_used": _tier_used}
 
     # Tier 2a — GTEx eQTL-MR
     beta = estimate_beta_tier2(gene, program, eqtl_data, coloc_h4, program_loading)
@@ -1281,6 +1356,7 @@ def build_beta_matrix(
                 geneformer_result=gf_result,
                 pathway_member=pm if pm else None,
                 cell_type=cell_type,
+                disease=disease,
                 # Phase Z7
                 current_disease_motif=current_disease_motif,
                 motif_library=motif_library,
@@ -1309,6 +1385,7 @@ def build_beta_matrix(
                 coloc_h4=(coloc_data or {}).get(gene),
                 program_loading=(program_loadings or {}).get(program, {}).get(gene),
                 cell_type=cell_type,
+                disease=disease,
                 # Phase Z7
                 current_disease_motif=current_disease_motif,
                 motif_library=motif_library,

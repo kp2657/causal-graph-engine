@@ -1,6 +1,9 @@
 # Secrets — never commit
 .env
 
+# Internal development scripts — not part of the supported pipeline
+scripts/dev/
+
 # Data and graph databases (too large; download instructions in README/docs/DATA_SOURCES.md)
 data/
 # Exception: keep the two canonical validated output JSON files
