@@ -156,6 +156,9 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # Reuses program_gene_sets built above. Gracefully skipped if absent.
     # ------------------------------------------------------------------
     perturbseq_data: dict | None = None
+    # Cell type actually loaded — used for cell-type relevance check in estimate_beta.
+    # Defaults to "K562" because burden_perturb_server (qualitative fallback) is K562-based.
+    loaded_perturb_cell_type: str = "K562"
     try:
         from pipelines.replogle_parser import load_replogle_betas, _get_h5ad_path, _download_h5ad
         # Use disease-specific dataset (e.g. replogle_2022_rpe1 for AMD, replogle_2022_k562 generic)
@@ -178,6 +181,11 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     program_gene_sets=prog_gene_sets_list,
                     dataset_id=scperturb_dataset,
                 )
+            # Use the dataset ID as the cell_type token so _is_cell_type_matched can
+            # look it up in _CELL_TYPE_MATCHED_DATASETS (e.g. "Schnitzler_GSE210681"
+            # for CAD, "replogle_2022_rpe1" for AMD).
+            if scperturb_dataset:
+                loaded_perturb_cell_type = scperturb_dataset
         elif _h5ad_path:
             warnings.append(
                 f"Replogle h5ad not found for {scperturb_dataset}: {_h5ad_path}. "
@@ -445,6 +453,8 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     lincs_signature=lincs_signature_for_gene,
                     program_gene_set=program_gene_sets.get(pid),
                     cell_line=lincs_cell_line,
+                    cell_type=loaded_perturb_cell_type,
+                    disease=disease_key,
                     program_loading=loading,
                     pathway_member=pathway_member,
                     # Phase Z7: Latent Hijack

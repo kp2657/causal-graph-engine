@@ -81,9 +81,13 @@ from config.scoring_thresholds import COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX
 
 _CELL_TYPE_MATCHED_DATASETS: dict[str, set[str]] = {
     # AMD: RPE1 is retinal pigment epithelium — correct tissue match
-    "AMD":  {"replogle_2022_rpe1", "RPE1", "rpe1"},
+    # Include all known dataset IDs and cell_line strings that refer to RPE1 data
+    "AMD":  {"replogle_2022_rpe1", "RPE1", "rpe1", "RPE1_essential"},
     # CAD: Schnitzler HCASMC/HAEC and Natsume HAEC are vascular cell matches
-    "CAD":  {"schnitzler_cad_vascular", "natsume_2023_haec", "HCASMC", "HAEC", "HCASMC_HAEC"},
+    # Include dataset IDs, GEO accessions, and cell_line strings
+    "CAD":  {"schnitzler_cad_vascular", "natsume_2023_haec",
+             "HCASMC", "HAEC", "HCASMC_HAEC",
+             "Schnitzler_GSE210681", "GSE210681"},
     # IBD: THP-1 monocyte and BMDC are gut-immune matches; K562 is also myeloid → accept
     "IBD":  {"papalexi_2021_thp1", "dixit_2016_bmdc", "replogle_2022_k562", "K562", "k562"},
     # RA: monocyte/immune match; K562 acceptable as myeloid proxy
