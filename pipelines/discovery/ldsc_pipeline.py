@@ -20,12 +20,17 @@ from __future__ import annotations
 
 import math
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 _LDSC_OUTPUT_ROOT = Path("./data/ldsc_gammas")
+
+# Per-EFO cache so parallel ThreadPoolExecutor workers share a single HTTP hit.
+_GWAS_HIT_CACHE: dict[str, set[str]] = {}
+_GWAS_HIT_LOCK = threading.Lock()
 
 # Calibration: map enrichment z-score → γ range matching PROVISIONAL_GAMMAS (0.12–0.61)
 # Derived from empirical S-LDSC τ values in Ota 2026 / Finucane 2018 for similar programs.
@@ -131,40 +136,57 @@ def estimate_program_gamma_enrichment(
     }
 
 
+def _fetch_gwas_hit_genes(efo_id: str) -> set[str]:
+    """
+    Fetch all gene-level GWAS hit genes for an EFO ID from GWAS Catalog.
+    Result is cached per EFO ID — only ONE HTTP call is made per process,
+    regardless of how many parallel threads call this function.
+    """
+    with _GWAS_HIT_LOCK:
+        if efo_id in _GWAS_HIT_CACHE:
+            return _GWAS_HIT_CACHE[efo_id]
+
+    # Make the HTTP call outside the lock so only the first caller blocks.
+    genes_with_hits: set[str] = set()
+    try:
+        import httpx
+        url = f"https://www.ebi.ac.uk/gwas/rest/api/efoTraits/{efo_id}/associations"
+        resp = httpx.get(
+            url,
+            params={"size": 100, "page": 0, "projection": "associationByEfoTrait"},
+            headers={"User-Agent": "causal-graph-engine/0.1"},
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
+        )
+        if resp.status_code == 200:
+            raw_assocs = resp.json().get("_embedded", {}).get("associations", [])
+            for a in raw_assocs:
+                for locus in a.get("loci", []):
+                    for author_gene in locus.get("authorReportedGenes", []):
+                        gene = author_gene.get("geneName", "").upper()
+                        if gene:
+                            genes_with_hits.add(gene)
+                    for allele in locus.get("strongestRiskAlleles", []):
+                        gene = (allele.get("geneName") or "").upper()
+                        if gene:
+                            genes_with_hits.add(gene)
+    except Exception:
+        pass  # returns empty set; caller falls through to provisional γ
+
+    with _GWAS_HIT_LOCK:
+        _GWAS_HIT_CACHE[efo_id] = genes_with_hits
+    return genes_with_hits
+
+
 def _query_gwas_gene_hits(efo_id: str, program_gene_set: set[str]) -> dict | None:
     """
     Query GWAS Catalog for gene-level hits associated with the disease.
     Returns count of program genes that have at least one GWAS hit.
+    Result is cached per EFO ID — safe to call from parallel threads.
     """
     try:
-        import httpx
-        # GWAS Catalog gene-disease association endpoint
-        url = f"https://www.ebi.ac.uk/gwas/rest/api/efoTraits/{efo_id}/associations"
-        resp = httpx.get(
-            url,
-            params={"size": 200, "page": 0, "projection": "associationByEfoTrait"},
-            headers={"User-Agent": "causal-graph-engine/0.1"},
-            timeout=30,
-        )
-        if resp.status_code != 200:
+        genes_with_hits = _fetch_gwas_hit_genes(efo_id)
+        if not genes_with_hits:
             return None
-
-        data = resp.json()
-        raw_assocs = data.get("_embedded", {}).get("associations", [])
-
-        # Extract genes reported for each association
-        genes_with_hits: set[str] = set()
-        for a in raw_assocs:
-            for locus in a.get("loci", []):
-                for author_gene in locus.get("authorReportedGenes", []):
-                    gene = author_gene.get("geneName", "").upper()
-                    if gene:
-                        genes_with_hits.add(gene)
-                # Also check strongest risk allele gene annotations
-                for allele in locus.get("strongestRiskAlleles", []):
-                    gene = allele.get("geneName", "").upper() if allele.get("geneName") else ""
-                    if gene:
-                        genes_with_hits.add(gene)
 
         program_upper = {g.upper() for g in program_gene_set}
         n_hits_in_program = len(program_upper & genes_with_hits)

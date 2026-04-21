@@ -46,7 +46,6 @@ Add flags to each TargetRecord:
 |------|-----------|---------|
 | `repurposing_candidate` | max_phase ≥ 2 + ot_score > 0.5 | Existing drug, strong evidence |
 | `first_in_class` | max_phase = 0 + causal score > 0.7 | Novel target, strong causal |
-| `genetic_anchor` | In ANCHOR_EDGES + Tier1/2 | Gold-standard genetic evidence |
 | `chip_mechanism` | Gene is CHIP driver | CHIP-mediated CAD mechanism |
 | `provisional_virtual` | dominant_tier = provisional_virtual | Label required by protocol |
 

@@ -50,10 +50,20 @@ def run(causal_discovery_result: dict, disease_query: dict) -> dict:
     top_genes    = causal_discovery_result.get("top_genes", [])
     warnings: list[str] = []
 
+    def _safe_float(x, default: float = 0.0) -> float:
+        if x is None:
+            return default
+        if isinstance(x, (int, float)):
+            return float(x)
+        try:
+            return float(str(x).strip())
+        except Exception:
+            return default
+
     gene_names = [r["gene"] for r in top_genes[:MAX_TOP_GENES_KG]]
     high_gamma_genes = [
         r["gene"] for r in top_genes
-        if abs(r.get("ota_gamma", 0)) > OTA_GAMMA_KG_THRESHOLD
+        if abs(_safe_float(r.get("ota_gamma", 0.0))) > OTA_GAMMA_KG_THRESHOLD
     ]
 
     n_pathway_edges   = 0

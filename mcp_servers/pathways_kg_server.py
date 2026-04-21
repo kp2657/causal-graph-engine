@@ -93,7 +93,7 @@ def get_reactome_pathways_for_gene(gene_symbol: str, species: str = "Homo sapien
                 "types":   "Pathway",
                 "cluster": True,
             },
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -128,7 +128,7 @@ def get_reactome_pathway_genes(pathway_id: str) -> dict:
     try:
         resp = httpx.get(
             f"{REACTOME_API}/data/pathway/{pathway_id}/containedEvents",
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -173,7 +173,7 @@ def get_string_interactions(genes: list[str], min_score: int = 700, organism: in
                 "required_score": min_score,
                 "caller_identity": "CausalGraphEngine",
             },
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         interactions = resp.json()
@@ -200,7 +200,85 @@ def get_string_interactions(genes: list[str], min_score: int = 700, organism: in
 
 
 # ---------------------------------------------------------------------------
-# PrimeKG subgraph (hardcoded)
+# PrimeKG helpers — live Open Targets fallback for disease_gene edges
+# ---------------------------------------------------------------------------
+
+_OT_GQL = "https://api.platform.opentargets.org/api/v4/graphql"
+_OT_DISEASE_GENE_SCORE_MIN = 0.20   # minimum OT association score
+
+
+def _ot_gql(query: str, variables: dict | None = None) -> dict:
+    """Execute a GraphQL query against OT Platform v4. Returns data payload or {error: ...}."""
+    try:
+        resp = httpx.post(
+            "https://api.platform.opentargets.org/api/v4/graphql",
+            json={"query": query, "variables": variables or {}},
+            headers={"Content-Type": "application/json"},
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        if "errors" in result:
+            return {"error": result["errors"][0].get("message", str(result["errors"]))}
+        return result.get("data", {})
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def _ot_disease_gene_edges(gene: str) -> list[dict]:
+    """
+    Query Open Targets Platform v4 for disease associations of a gene.
+    Returns edges compatible with PrimeKG edge schema.
+    """
+    # Step 1: resolve gene symbol → Ensembl ID
+    search_q = """
+    query Search($s: String!) {
+      search(queryString: $s, entityNames: ["target"], page: {index: 0, size: 1}) {
+        hits { id }
+      }
+    }
+    """
+    data = _ot_gql(search_q, {"s": gene})
+    if "error" in data: return []
+    
+    hits = data.get("search", {}).get("hits", [])
+    if not hits: return []
+    ensembl_id = hits[0]["id"]
+
+    # Step 2: get top associated diseases
+    assoc_q = """
+    query AssocDiseases($id: String!) {
+      target(ensemblId: $id) {
+        associatedDiseases(page: {index: 0, size: 20}) {
+          rows {
+            disease { id name }
+            score
+          }
+        }
+      }
+    }
+    """
+    data2 = _ot_gql(assoc_q, {"id": ensembl_id})
+    if "error" in data2: return []
+    
+    rows = data2.get("target", {}).get("associatedDiseases", {}).get("rows", [])
+    edges = []
+    for row in rows:
+        score = row.get("score", 0.0) or 0.0
+        if score >= _OT_DISEASE_GENE_SCORE_MIN:
+            edges.append({
+                "from":       gene,
+                "to":         row["disease"]["name"],
+                "edge_type":  "disease_gene",
+                "source":     "OpenTargets_v4",
+                "score":      round(score, 3),
+                "disease_id": row["disease"]["id"],
+            })
+    return edges
+
+
+# ---------------------------------------------------------------------------
+# PrimeKG subgraph
 # ---------------------------------------------------------------------------
 
 @_tool
@@ -219,22 +297,41 @@ def query_primekg_subgraph(
         gene:      Filter by gene node, e.g. "PCSK9"
         edge_type: Filter by edge type: "disease_gene" | "drug_target" | "ppi" | "pathway"
     """
-    edges = PRIMEKG_CAD_SUBGRAPH
+    # Start with hardcoded edges (drug_target, ppi, pathway — stable across diseases)
+    static_edges = list(PRIMEKG_CAD_SUBGRAPH)
 
+    # For disease_gene edges: supplement with live Open Targets query
+    live_edges: list[dict] = []
+    wants_disease_gene = edge_type is None or edge_type == "disease_gene"
+    if wants_disease_gene and gene:
+        try:
+            live_edges = _ot_disease_gene_edges(gene.upper())
+        except Exception:
+            pass   # non-fatal; static edges still returned
+
+    # Merge: live edges first (de-duplicate static ones for same gene+disease pair)
+    live_pairs = {(e["from"].upper(), e["to"].lower()) for e in live_edges}
+    merged = list(live_edges) + [
+        e for e in static_edges
+        if not (e["edge_type"] == "disease_gene"
+                and (e["from"].upper(), e["to"].lower()) in live_pairs)
+    ]
+
+    # Apply filters
     if gene:
         gene_upper = gene.upper()
-        edges = [e for e in edges if e["from"].upper() == gene_upper or e["to"].upper() == gene_upper]
-
+        merged = [e for e in merged
+                  if e["from"].upper() == gene_upper or e["to"].upper() == gene_upper]
     if edge_type:
-        edges = [e for e in edges if e["edge_type"] == edge_type]
+        merged = [e for e in merged if e["edge_type"] == edge_type]
 
     return {
         "gene":        gene,
         "edge_type":   edge_type,
-        "n_edges":     len(edges),
-        "edges":       edges,
-        "source":      "PrimeKG CAD subgraph (Chandak 2023, doi:10.1038/s41597-023-01960-3)",
-        "data_tier":   "curated",
+        "n_edges":     len(merged),
+        "edges":       merged,
+        "source":      "OpenTargets_v4 (disease_gene live) + PrimeKG static (drug_target, ppi, pathway)",
+        "data_tier":   "mixed",
         "full_kg_url": "https://dataverse.harvard.edu/dataset.xhtml?persistentId=doi:10.7910/DVN/IXA7BM",
     }
 
@@ -274,7 +371,7 @@ def get_kegg_pathway_genes(pathway_id: str) -> dict:
         pathway_id: KEGG pathway ID, e.g. "hsa04975" (fat digestion and absorption)
     """
     try:
-        resp = httpx.get(f"{KEGG_API}/get/{pathway_id}", timeout=30)
+        resp = httpx.get(f"{KEGG_API}/get/{pathway_id}", timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0))
         resp.raise_for_status()
         text = resp.text
         # Parse GENE section from flat file

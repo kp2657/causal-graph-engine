@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 # Controlled vocabularies
 # ---------------------------------------------------------------------------
 
-EvidenceType = Literal["germline", "somatic_chip", "viral", "drug", "kg_completion"]
+EvidenceType = Literal["germline", "somatic_chip", "viral", "drug", "kg_completion", "state_space"]
 
 EvidenceTier = Literal[
     "Tier1_Interventional",
@@ -38,6 +38,15 @@ EdgeMethod = Literal[
     "biopathnet",
     "txgnn",
     "literature",
+    "trajectory",       # state-space transition-based causal evidence
+]
+
+# State-space-specific evidence tiers.  Parallel vocabulary to EvidenceTier —
+# do NOT extend the original Literal in Phase 1 so existing tier checks are unaffected.
+StateEvidenceTier = Literal[
+    "Tier1_TrajectoryDirect",    # observed state transition in matched perturbational data
+    "Tier2_TrajectoryInferred",  # pseudotime / velocity-inferred transition
+    "Tier3_TrajectoryProxy",     # kNN flow heuristic or beta-prior only
 ]
 
 
@@ -184,3 +193,210 @@ class GraphOutput(BaseModel):
     summary_report: str
     reasoning_trace: list[str]
     graph_version: str
+
+
+# ---------------------------------------------------------------------------
+# State-space models — added in Phase 1 (dynamical redesign)
+# These coexist with existing causal edge models; do not replace them yet.
+# ---------------------------------------------------------------------------
+
+class CellState(BaseModel):
+    state_id: str
+    disease: str
+    cell_type: str
+    resolution: str                                  # coarse | intermediate | fine
+    n_cells: int
+    centroid: list[float] | None = None              # mean latent coordinates
+    marker_genes: list[str] = Field(default_factory=list)
+    program_labels: list[str] = Field(default_factory=list)  # cNMF / Hallmark overlaps
+    context_tags: list[str] = Field(default_factory=list)
+    stability_score: float | None = None             # kNN purity [0, 1]
+    pathological_score: float | None = None          # fraction disease cells [0, 1]
+    evidence_sources: list[str] = Field(default_factory=list)
+
+
+class StateTransition(BaseModel):
+    from_state: str
+    to_state: str
+    disease: str
+    baseline_probability: float                      # [0, 1] row-normalised transition rate
+    uncertainty: float | None = None
+    dwell_time: float | None = None                  # mean pseudotime units in from_state
+    direction_evidence: list[str] = Field(default_factory=list)  # provenance markers
+    context_tags: list[str] = Field(default_factory=list)
+
+
+class PerturbationTransitionEffect(BaseModel):
+    perturbation_id: str
+    perturbation_type: str               # KO | KD | CRISPRa | drug | cytokine | exposure
+    disease: str
+    cell_type: str
+    from_state: str
+    to_state: str
+    delta_probability: float             # signed change in transition probability
+    effect_se: float | None = None
+    timepoint: str | None = None
+    durability_label: str | None = None  # transient | durable | rebound | escape | unknown
+    evidence_tier: StateEvidenceTier
+    data_source: str
+
+
+class FailureRecord(BaseModel):
+    failure_id: str
+    disease: str
+    perturbation_id: str
+    perturbation_type: str
+    cell_type: str | None = None
+    state_id: str | None = None
+    failure_mode: str   # no_effect | transient_only | non_responder | escape |
+                        # discordant_genetic_support | toxicity_limit |
+                        # disease_context_mismatch | cell_type_mismatch | donor_specific_resistance
+    phenotype_context: str | None = None
+    molecular_context: str | None = None
+    evidence_strength: float             # [0, 1]
+    explanation_candidates: list[str] = Field(default_factory=list)
+    data_source: str
+
+
+class TrajectoryRedirectionScore(BaseModel):
+    entity_id: str
+    entity_type: str                          # gene | drug | perturbation_set
+    disease: str
+    expected_pathology_reduction: float       # [0, 1]
+    durable_redirection_score: float          # [0, 1]
+    escape_risk_score: float                  # [0, 1]; higher = worse
+    non_response_risk_score: float            # [0, 1]; higher = worse
+    negative_memory_penalty: float            # [0, 1]; accumulated from FailureRecords
+    uncertainty: float | None = None
+    provenance: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# Phase G–J models — transition-aware scoring, controller classification,
+# disagreement profiling
+# ---------------------------------------------------------------------------
+
+class TransitionGeneProfile(BaseModel):
+    """
+    Transition-landscape decomposition for a single gene (Phase G).
+
+    Four independent scores describe where in the healthy↔pathological
+    transition a gene's expression is enriched.  Each score is accompanied
+    by a direction so the correct therapeutic action (activate vs inhibit)
+    can be inferred.
+
+    disease_axis_score is the legacy DAS (mean expression difference).
+    It is retained for comparison but is NOT used in any composite formula.
+    """
+    gene: str
+    disease: str
+    cell_type: str = "all"
+
+    # Transition scores [0, 1]
+    entry_score: float = 0.0               # enrichment in cells entering pathological basins
+    persistence_score: float = 0.0         # enrichment in cells dwelling in pathological basins
+    recovery_score: float = 0.0            # enrichment in cells exiting toward healthy basins
+    boundary_knn_score: float = 0.0        # enrichment at spatial healthy/pathological interface
+    boundary_pseudotime_score: float = 0.0 # enrichment at temporal inflection point
+    boundary_score: float = 0.0            # max(knn, pseudotime)
+
+    # Directions: +1 = higher expression in category cells, -1 = lower, 0 = no signal
+    entry_direction: int = 0        # +1 = gene elevated in entry cells (drives/marks entry)
+    persistence_direction: int = 0  # +1 = gene elevated in stuck cells (promotes persistence)
+    recovery_direction: int = 0     # +1 = gene elevated in exit cells (promotes recovery)
+    boundary_direction: int = 0     # +1 = gene elevated at boundary (marks transition zone)
+
+    # Category
+    mechanistic_category: str = "unknown"  # trigger | maintenance | recovery | mixed
+
+    # Support metadata (same for all genes in this context)
+    n_entry_cells: int = 0
+    n_persistence_cells: int = 0
+    n_recovery_cells: int = 0
+    n_boundary_cells: int = 0
+
+    # Legacy annotation only — NOT used in composite formula
+    disease_axis_score: float = 0.0
+
+
+class ControllerAnnotation(BaseModel):
+    """
+    Controller vs marker classification for a gene (Phase H).
+
+    Annotation nominates; only perturbation confirms.
+    controller_confidence encodes this: only T1/T2 perturbation evidence
+    yields confidence='high'.  TF annotation alone cannot exceed 'medium'
+    and caps controller_likelihood at 0.35.
+    """
+    gene: str
+    disease: str
+    controller_likelihood: float = 0.0            # [0, 1]
+    controller_confidence: str = "low"            # high | medium | low
+    category: str = "unknown"                     # upstream_controller | midstream_mediator | downstream_marker
+    supporting_signals: list[str] = Field(default_factory=list)
+    # e.g. ["perturbation_t1", "tf_annotation", "early_pseudotime", "network_hub"]
+
+
+class DisagreementProfile(BaseModel):
+    """
+    Structured multi-dimension disagreement profile for a gene (Phase I).
+
+    Replaces scalar confidence penalties with an explicit mechanistic label
+    and per-dimension support scores.  Disagreement is a signal, not noise.
+    """
+    gene: str
+    disease: str
+
+    # Per-dimension support scores [0, 1]
+    genetics_support: float = 0.0
+    expression_coupling: float = 0.0
+    perturbation_support: float = 0.0
+    cell_type_specificity: float = 0.0
+    cross_context_consistency: float = 0.0
+
+    # Pattern classification (strict rules — see evidence_disagreement.py)
+    mechanistic_label: str = "unknown"
+    # supported | discordant | context_dependent | likely_marker |
+    # likely_upstream_controller | likely_non_transportable
+
+    label_confidence: float = 0.0
+    supporting_evidence: list[str] = Field(default_factory=list)
+    contradicting_evidence: list[str] = Field(default_factory=list)
+
+
+class TauSpecificityResult(BaseModel):
+    """
+    Disease-state τ specificity result for a gene (Phase R).
+
+    τ_disease (Yanai 2005) computed across disease-group mean expressions within
+    a single cell type (e.g., IBD vs normal macrophages from the h5ad).
+
+    Range: 0 = expressed equally in all disease groups (ubiquitous);
+           1 = expressed exclusively in one disease group (perfectly specific).
+    """
+    gene: str
+    disease: str = ""
+
+    # Core τ index across disease groups
+    tau_disease: float = 0.5
+
+    # log2FC: mean(disease cells) / mean(normal cells); pseudocount added
+    disease_log2fc: float = 0.0
+
+    # Fraction of disease cells (non-normal) with count > 0
+    pct_disease: float = 0.0
+    pct_normal: float = 0.0
+
+    # Mean log-normalised expression
+    mean_disease: float = 0.0
+    mean_normal: float = 0.0
+
+    # Number of disease groups used in τ computation
+    n_groups: int = 0
+
+    # Specificity class
+    # disease_specific | normal_specific | moderately_specific | ubiquitous | lowly_expressed | unknown
+    specificity_class: str = "unknown"
+
+    # Per-group mean expression (informational)
+    group_means: dict[str, float] = Field(default_factory=dict)

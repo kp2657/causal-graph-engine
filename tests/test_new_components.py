@@ -65,57 +65,58 @@ class TestTahoeServer:
 
 
 # ===========================================================================
-# 2. LINCS L1000 MCP server
+# 2. Perturbation server (Perturb-seq → Enrichr cascade)
 # ===========================================================================
 
 class TestLincsServer:
-    def test_list_cell_lines(self):
-        from mcp_servers.lincs_server import list_lincs_cell_lines
-        result = list_lincs_cell_lines()
-        names = [cl["name"] for cl in result["cell_lines"]]
-        assert "HT29" in names
-        assert "HEPG2" in names
+    def test_list_data_sources(self):
+        from mcp_servers.lincs_server import list_perturbation_data_sources
+        result = list_perturbation_data_sources()
+        assert "sources" in result
+        assert "cascade" in result
+        names = [s["name"] for s in result["sources"]]
+        assert any("Perturb-seq" in n for n in names)
+        assert any("Enrichr" in n for n in names)
 
-    @patch("httpx.get")
-    def test_signature_returns_tier3(self, mock_get):
-        mock_resp = MagicMock()
-        mock_resp.status_code = 200
-        mock_resp.raise_for_status = MagicMock()
-        mock_resp.json.return_value = [
-            {"signatureid": "CPC004_A549_24H_X1_B14:A09", "cell_id": "A549", "numGenes": 978}
-        ]
-        mock_get.return_value = mock_resp
-
+    @patch("mcp_servers.lincs_server._query_enrichr_lincs")
+    @patch("mcp_servers.perturbseq_server._load_cached_signatures", return_value=None)
+    def test_signature_returns_tier3(self, mock_ps, mock_enrichr):
+        mock_enrichr.return_value = {
+            "gene": "PCSK9", "cell_line": "L1000_consensus",
+            "signature": {"LDLR": 1.0}, "n_genes_measured": 1,
+            "source": "enrichr_lincs_directional",
+        }
         from mcp_servers.lincs_server import get_lincs_gene_signature
-        result = get_lincs_gene_signature("PCSK9", cell_line="A549")
+        result = get_lincs_gene_signature("PCSK9")
         assert result["evidence_tier"] == "Tier3_Provisional"
         assert result["gene"] == "PCSK9"
 
-    @patch("mcp_servers.lincs_server._query_ilincs_signature")
-    def test_program_beta_coverage_below_5pct_returns_none(self, mock_sig):
+    @patch("mcp_servers.lincs_server._query_enrichr_lincs")
+    @patch("mcp_servers.perturbseq_server._load_cached_signatures", return_value=None)
+    def test_program_beta_coverage_below_5pct_returns_none(self, mock_ps, mock_enrichr):
         """Beta should be None when < 5% of program genes are in signature."""
-        mock_sig.return_value = {
-            "gene": "PCSK9", "cell_line": "A549",
-            "signature": {"GENE_A": 0.5},  # only 1 gene in signature
-            "source": "mock",
+        mock_enrichr.return_value = {
+            "gene": "PCSK9", "cell_line": "L1000_consensus",
+            "signature": {"GENE_A": 0.5},
+            "source": "enrichr_lincs_directional",
         }
         from mcp_servers.lincs_server import compute_lincs_program_beta
         program_genes = [f"GENE_{i}" for i in range(50)]  # 50 genes, only 1 in sig = 2%
-        result = compute_lincs_program_beta("PCSK9", program_genes, cell_line="A549")
+        result = compute_lincs_program_beta("PCSK9", program_genes)
         assert result["beta"] is None
         assert result["program_coverage"] < 0.05
 
-    @patch("mcp_servers.lincs_server._query_ilincs_signature")
-    def test_program_beta_computed_correctly(self, mock_sig):
+    @patch("mcp_servers.lincs_server._query_enrichr_lincs")
+    @patch("mcp_servers.perturbseq_server._load_cached_signatures", return_value=None)
+    def test_program_beta_computed_correctly(self, mock_ps, mock_enrichr):
         """Beta = mean log2fc of program genes in signature."""
-        mock_sig.return_value = {
-            "gene": "TET2", "cell_line": "K562",
+        mock_enrichr.return_value = {
+            "gene": "TET2", "cell_line": "L1000_consensus",
             "signature": {"NFKB1": 1.2, "RELA": 0.8, "IL6": 1.0},
-            "source": "mock",
+            "source": "enrichr_lincs_directional",
         }
         from mcp_servers.lincs_server import compute_lincs_program_beta
-        # 3 program genes, all in signature → coverage = 1.0
-        result = compute_lincs_program_beta("TET2", ["NFKB1", "RELA", "IL6"], cell_line="K562")
+        result = compute_lincs_program_beta("TET2", ["NFKB1", "RELA", "IL6"])
         assert result["beta"] is not None
         assert abs(result["beta"] - (1.2 + 0.8 + 1.0) / 3) < 0.01
         assert result["evidence_tier"] == "Tier3_Provisional"

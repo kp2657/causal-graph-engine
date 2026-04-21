@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import logging
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -39,7 +41,28 @@ logger = logging.getLogger("causal-graph-engine")
 # ---------------------------------------------------------------------------
 
 def _disease_slug(disease_name: str) -> str:
-    return disease_name.lower().replace(" ", "_")
+    # Conservative slug for filesystem paths: keep [a-z0-9_], collapse runs of junk.
+    s = disease_name.strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "unknown_disease"
+
+
+def _ensure_graph_db_path_for_disease(disease_name: str) -> str:
+    """
+    Ensure GRAPH_DB_PATH is set.
+
+    If the user hasn't provided GRAPH_DB_PATH, default to a per-disease DB file to
+    avoid Kùzu file lock conflicts when running multiple diseases concurrently.
+    """
+    existing = os.getenv("GRAPH_DB_PATH")
+    if existing:
+        return existing
+
+    slug = _disease_slug(disease_name)
+    default_path = str(Path("./data") / f"graph_{slug}.kuzu")
+    os.environ["GRAPH_DB_PATH"] = default_path
+    return default_path
 
 
 def _write_markdown_report(result: dict, path: Path) -> None:
@@ -131,6 +154,7 @@ def _write_markdown_report(result: dict, path: Path) -> None:
 
 def cmd_analyze(disease_name: str) -> None:
     """Run full Ota pipeline for a disease."""
+    _ensure_graph_db_path_for_disease(disease_name)
     from orchestrator.pi_orchestrator import analyze_disease
 
     print(f"\n[analyze] Running full pipeline for: {disease_name}")
@@ -194,6 +218,7 @@ def cmd_analyze(disease_name: str) -> None:
 
 def cmd_update(disease_name: str, update_type: str) -> None:
     """Run an incremental graph update."""
+    _ensure_graph_db_path_for_disease(disease_name)
     from graph.update_pipeline import run_update
 
     valid_types = {"gwas", "literature", "clinical_trials", "full"}
@@ -214,6 +239,7 @@ def cmd_update(disease_name: str, update_type: str) -> None:
 
 def cmd_validate(disease_name: str) -> None:
     """Run graph quality validation."""
+    _ensure_graph_db_path_for_disease(disease_name)
     from graph.validation import validate_graph, validation_report_to_dict
 
     print(f"\n[validate] Running quality checks for: {disease_name}")
@@ -240,6 +266,7 @@ def cmd_validate(disease_name: str) -> None:
 
 def cmd_export(disease_name: str, output_dir: str = "./data/exports") -> None:
     """Export graph to RDF/Turtle, JSON-LD, and CSV."""
+    _ensure_graph_db_path_for_disease(disease_name)
     from graph.export import export_disease_graph
 
     print(f"\n[export] Exporting graph for: {disease_name}")
@@ -311,6 +338,25 @@ def _usage() -> None:
     sys.exit(1)
 
 
+def cmd_analyze_v2(disease_name: str) -> None:
+    """Run full Phase Z7 multiagent pipeline (v2)."""
+    _ensure_graph_db_path_for_disease(disease_name)
+    from orchestrator.pi_orchestrator_v2 import analyze_disease_v2
+    result = analyze_disease_v2(disease_name)
+    
+    # Write JSON output
+    slug = _disease_slug(disease_name)
+    out_path = Path("./data") / f"analyze_{slug}.json"
+    with out_path.open("w") as f:
+        json.dump(result, f, indent=2, default=str)
+    print(f"  JSON output: {out_path}")
+
+    # Write Markdown report
+    md_path = Path("./data") / f"analyze_{slug}.md"
+    _write_markdown_report(result, md_path)
+    print(f"  MD report:   {md_path}")
+
+
 def main(argv: list[str] | None = None) -> None:
     args = argv if argv is not None else sys.argv[1:]
 
@@ -324,6 +370,12 @@ def main(argv: list[str] | None = None) -> None:
             print("[ERROR] Usage: main.py analyze <disease>")
             sys.exit(1)
         cmd_analyze(" ".join(args[1:]))
+
+    elif cmd == "analyze_v2":
+        if len(args) < 2:
+            print("[ERROR] Usage: main.py analyze_v2 <disease>")
+            sys.exit(1)
+        cmd_analyze_v2(" ".join(args[1:]))
 
     elif cmd == "update":
         if len(args) < 3:

@@ -330,6 +330,161 @@ class TestCausalDiscoveryAgentSdkTools:
 
 
 # ---------------------------------------------------------------------------
+# chemistry_agent + clinical_trialist_agent SDK tool tests
+# ---------------------------------------------------------------------------
+
+class TestChemistryAgentSdkTools:
+    """Verify SDK tooling for chemistry_agent is correctly wired."""
+
+    def test_chemistry_agent_has_sdk_tools(self):
+        runner = AgentRunner()
+        tools = runner._build_tool_list("chemistry_agent")
+        tool_names = {t["name"] for t in tools}
+        assert "return_result" in tool_names
+        assert "get_chembl_target_activities" in tool_names
+        assert "get_open_targets_targets_bulk" in tool_names
+        assert "search_chembl_compound" in tool_names
+        assert "get_pubchem_compound" in tool_names
+        assert "run_admet_prediction" in tool_names
+
+    def test_chemistry_agent_doesnt_get_causal_tools(self):
+        runner = AgentRunner()
+        tools = runner._build_tool_list("chemistry_agent")
+        tool_names = {t["name"] for t in tools}
+        assert "compute_ota_gammas" not in tool_names
+        assert "check_anchor_recovery" not in tool_names
+
+    def test_chemistry_agent_local_routes_importable(self):
+        runner = AgentRunner()
+        routes = runner._get_local_tool_routes()
+        assert "get_chembl_target_activities" in routes
+        assert "search_chembl_compound" in routes
+        assert "get_pubchem_compound" in routes
+        assert "run_admet_prediction" in routes
+        assert "get_open_targets_targets_bulk" in routes
+        assert callable(routes["get_chembl_target_activities"])
+
+    def test_chemistry_agent_sdk_dispatch_with_mock(self):
+        runner = AgentRunner()
+        runner.set_mode("chemistry_agent", "sdk")
+
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "return_result"
+        mock_block.input = {
+            "result": {
+                "target_chemistry": {"PCSK9": {"max_phase": 4, "best_ic50_nM": 0.5, "tractability": "antibody"}},
+                "repurposing_candidates": [{"drug": "evolocumab", "target": "PCSK9"}],
+                "warnings": [],
+            },
+            "warnings": [],
+            "edges_written": 0,
+        }
+        mock_response = MagicMock()
+        mock_response.stop_reason = "tool_use"
+        mock_response.content = [mock_block]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        runner._client = mock_client
+
+        agent_input = AgentInput(
+            disease_query={"disease_name": "coronary artery disease", "efo_id": "EFO_0001645"},
+            upstream_results={"target_prioritization_agent": {"targets": [{"target_gene": "PCSK9"}]}},
+            run_id="test-chem-sdk",
+        )
+        output = runner.dispatch("chemistry_agent", agent_input)
+
+        assert isinstance(output, AgentOutput)
+        assert output.agent_name == "chemistry_agent"
+        assert "target_chemistry" in output.results
+
+    def test_chemistry_agent_tool_schemas_are_valid(self):
+        """All tool schemas have required name/description/input_schema fields."""
+        runner = AgentRunner()
+        tools = runner._build_tool_list("chemistry_agent")
+        for tool in tools:
+            assert "name" in tool
+            assert "description" in tool
+            assert "input_schema" in tool
+            assert tool["input_schema"]["type"] == "object"
+
+
+class TestClinicalTrialistAgentSdkTools:
+    """Verify SDK tooling for clinical_trialist_agent is correctly wired."""
+
+    def test_clinical_trialist_agent_has_sdk_tools(self):
+        runner = AgentRunner()
+        tools = runner._build_tool_list("clinical_trialist_agent")
+        tool_names = {t["name"] for t in tools}
+        assert "return_result" in tool_names
+        assert "search_clinical_trials" in tool_names
+        assert "get_trial_details" in tool_names
+        assert "get_trials_for_target" in tool_names
+        assert "get_open_targets_drug_info" in tool_names
+
+    def test_clinical_trialist_doesnt_get_chemistry_tools(self):
+        runner = AgentRunner()
+        tools = runner._build_tool_list("clinical_trialist_agent")
+        tool_names = {t["name"] for t in tools}
+        assert "get_chembl_target_activities" not in tool_names
+        assert "run_admet_prediction" not in tool_names
+
+    def test_clinical_trialist_local_routes_importable(self):
+        runner = AgentRunner()
+        routes = runner._get_local_tool_routes()
+        assert "search_clinical_trials" in routes
+        assert "get_trial_details" in routes
+        assert "get_trials_for_target" in routes
+        assert "get_open_targets_drug_info" in routes
+        assert callable(routes["search_clinical_trials"])
+
+    def test_clinical_trialist_sdk_dispatch_with_mock(self):
+        runner = AgentRunner()
+        runner.set_mode("clinical_trialist_agent", "sdk")
+
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "return_result"
+        mock_block.input = {
+            "result": {
+                "trial_summary": {"PCSK9": {"n_trials_total": 5, "max_phase_reached": 4}},
+                "key_trials": [{"nct_id": "NCT01764633", "drug": "evolocumab", "status": "COMPLETED"}],
+                "development_risk": {"PCSK9": "low"},
+                "repurposing_opportunities": [],
+                "warnings": [],
+            },
+            "warnings": [],
+            "edges_written": 0,
+        }
+        mock_response = MagicMock()
+        mock_response.stop_reason = "tool_use"
+        mock_response.content = [mock_block]
+        mock_client = MagicMock()
+        mock_client.messages.create.return_value = mock_response
+        runner._client = mock_client
+
+        agent_input = AgentInput(
+            disease_query={"disease_name": "coronary artery disease", "efo_id": "EFO_0001645"},
+            upstream_results={"target_prioritization_agent": {"targets": [{"target_gene": "PCSK9", "known_drugs": ["evolocumab"]}]}},
+            run_id="test-ct-sdk",
+        )
+        output = runner.dispatch("clinical_trialist_agent", agent_input)
+
+        assert isinstance(output, AgentOutput)
+        assert output.agent_name == "clinical_trialist_agent"
+        assert "trial_summary" in output.results
+
+    def test_clinical_trialist_tool_schemas_are_valid(self):
+        runner = AgentRunner()
+        tools = runner._build_tool_list("clinical_trialist_agent")
+        for tool in tools:
+            assert "name" in tool
+            assert "description" in tool
+            assert "input_schema" in tool
+            assert tool["input_schema"]["type"] == "object"
+
+
+# ---------------------------------------------------------------------------
 # Integration test — real Anthropic API call
 # ---------------------------------------------------------------------------
 

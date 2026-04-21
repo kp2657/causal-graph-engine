@@ -164,6 +164,26 @@ class TestSIDApproximation:
         assert result == 1.0
 
 
+class TestGraphDbSidMetric:
+    """graph_db_server.compute_sid_metric must match validation SID approximation (not a fake zero)."""
+
+    def test_matches_validation_perfect(self):
+        from graph.schema import ANCHOR_EDGES
+        from mcp_servers.graph_db_server import compute_sid_metric
+
+        out = compute_sid_metric(ANCHOR_EDGES, ANCHOR_EDGES)
+        assert out["metric"] == "orientation_overlap"
+        assert out["sid"] == 1.0
+        assert out["n_reference"] == len(ANCHOR_EDGES)
+
+    def test_empty_pred_low_score(self):
+        from graph.schema import ANCHOR_EDGES
+        from mcp_servers.graph_db_server import compute_sid_metric
+
+        out = compute_sid_metric([], ANCHOR_EDGES)
+        assert out["sid"] == 0.0
+
+
 class TestEvalueSummary:
     def test_flags_low_evalue(self):
         from graph.validation import summarize_evalues

@@ -29,7 +29,6 @@ from mcp_servers.gwas_genetics_server import (
     list_available_gwas,
     get_ieu_open_gwas_summary_stats,
     run_mr_analysis,
-    run_mr_sensitivity,
     get_open_targets_genetics_credible_sets,
     get_l2g_scores,
     get_finngen_phenotype_definition,
@@ -49,20 +48,10 @@ def _has_required_keys(obj: dict, keys: list[str]) -> bool:
 
 class TestStubOutputSchemas:
 
-    def test_mr_analysis_returns_required_fields(self):
+    def test_mr_analysis_known_pair(self):
         result = run_mr_analysis("ieu-a-299", "ieu-a-7")
-        assert _has_required_keys(result, [
-            "exposure_id", "outcome_id", "mr_ivw", "mr_egger", "note"
-        ])
         assert result["exposure_id"] == "ieu-a-299"
-        assert result["outcome_id"] == "ieu-a-7"
-
-    def test_mr_sensitivity_returns_required_fields(self):
-        result = run_mr_sensitivity({})
-        assert _has_required_keys(result, [
-            "egger_intercept", "egger_intercept_p", "weighted_median_estimate",
-            "presso_global_test_p", "presso_outlier_snps",
-        ])
+        assert result["mr_ivw"] == pytest.approx(0.470)
 
     def test_l2g_stub_has_efo_id(self):
         result = get_l2g_scores("GCST003116")
@@ -91,9 +80,10 @@ class TestStubOutputSchemas:
         assert result["name"] == "Coronary artery disease"
         assert "sumstats_url" in result
 
-    def test_finngen_unknown_phenocode_returns_stub(self):
+    def test_finngen_unknown_phenocode_returns_error(self):
         result = get_finngen_phenotype_definition("NONEXISTENT_CODE")
-        assert "STUB" in result.get("note", "")
+        assert "note" in result
+        assert "NONEXISTENT_CODE" in result.get("note", "")
 
     def test_list_gwas_maps_cad_to_efo(self, monkeypatch):
         monkeypatch.setattr(
@@ -350,14 +340,11 @@ class TestLiveGammaUnit:
         from unittest.mock import patch
         from pipelines.ota_gamma_estimation import estimate_gamma_live
 
-        # Mock both: coloc (primary, returns no data → falls through) and score proxy (fallback)
         with patch(
-            "mcp_servers.open_targets_server.get_ot_colocalisation_for_program",
-            return_value={"gamma_coloc": None, "n_coloc_hits": 0},
-        ), patch(
-            "mcp_servers.open_targets_server.get_ot_genetic_scores_for_gene_set",
+            "mcp_servers.gwas_genetics_server.aggregate_l2g_scores_for_program_genes",
             return_value={
                 "mean_genetic_score": 0.72,
+                "mean_l2g_score": 0.72,
                 "n_genes_with_data": 4,
             },
         ):
@@ -370,29 +357,28 @@ class TestLiveGammaUnit:
         assert result is not None
         assert result["gamma"] == pytest.approx(0.72 * 0.65, abs=0.01)
         assert result["evidence_tier"] in ("Tier2_Convergent", "Tier3_Provisional")
+        assert "L2G" in (result.get("data_source") or "")
 
-    def test_estimate_gamma_live_coloc_path(self):
-        """When coloc returns H4-weighted data, it is used as primary estimate."""
+    def test_estimate_gamma_live_uses_l2g_not_coloc(self):
+        """Live γ comes from L2G aggregation; colocalisation is not consulted."""
         from unittest.mock import patch
         from pipelines.ota_gamma_estimation import estimate_gamma_live
 
         with patch(
-            "mcp_servers.open_targets_server.get_ot_colocalisation_for_program",
+            "mcp_servers.gwas_genetics_server.aggregate_l2g_scores_for_program_genes",
             return_value={
-                "gamma_coloc": 0.38,
-                "n_coloc_hits": 5,
-                "evidence_tier": "Tier2_Convergent",
+                "mean_genetic_score": 0.40,
+                "n_genes_with_data": 3,
             },
         ):
             result = estimate_gamma_live(
                 "inflammatory_NF-kB", "IBD",
-                program_gene_set={"TNF", "NOD2", "IL23R", "RELA"},
+                program_gene_set={"TNF", "NOD2", "IL23R"},
                 efo_id="EFO_0003767",
             )
 
         assert result is not None
-        assert result["gamma"] == pytest.approx(0.38, abs=0.01)
-        assert result["evidence_tier"] == "Tier2_Convergent"
+        assert result["gamma"] == pytest.approx(0.40 * 0.65, abs=0.01)
 
     def test_estimate_gamma_falls_back_to_provisional_when_live_absent(self):
         from unittest.mock import patch
@@ -404,17 +390,15 @@ class TestLiveGammaUnit:
         ):
             result = estimate_gamma("lipid_metabolism", "CAD")
 
-        # Should return provisional value
-        assert result["gamma"] == pytest.approx(0.44, abs=0.01)
-        assert result["evidence_tier"] == "Tier2_Convergent"
+        # No efo/program_gene_set: no fused or live path — γ is unknown
+        assert result is None
 
     def test_estimate_gamma_signature_backward_compatible(self):
         """estimate_gamma() still works with no new kwargs — no regression."""
         from pipelines.ota_gamma_estimation import estimate_gamma
-        # Old call signature — must not raise
+        # Old call signature — must not raise; minimal args yield no evidence
         result = estimate_gamma("lipid_metabolism", "CAD")
-        assert "gamma" in result
-        assert "evidence_tier" in result
+        assert result is None
 
 
 @pytest.mark.integration

@@ -41,6 +41,10 @@ AgentName = Literal[
     "clinical_trialist_agent",
     "scientific_writer_agent",
     "scientific_reviewer_agent",
+    "literature_validation_agent",
+    "chief_of_staff_agent",
+    "red_team_agent",
+    "discovery_refinement_agent",
 ]
 
 TierName = Literal["tier1", "tier2", "tier3", "tier4", "tier5"]

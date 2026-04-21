@@ -1,8 +1,15 @@
 """
-chemistry_agent.py — Tier 4 agent: chemical space characterization.
+chemistry_agent.py — Tier 4 agent: GPS screening + reverse-target normalization.
 
-Finds existing compounds via ChEMBL + PubChem, checks ADMET properties,
-retrieves CMap L1000 signatures, and identifies repurposing opportunities.
+This agent is intentionally minimal:
+  - Runs GPS disease/program reversal screens (`pipelines/gps_disease_screen.py`)
+  - Aggregates putative target labels from GPS hit annotations
+  - Normalizes those labels to HGNC symbols (reverse target search)
+
+We intentionally do NOT do heavy chemistry enrichment here (ChEMBL IC50 mining,
+OT tractability/drugs bulk pulls, ADMET, CMap signatures, disease trial checks).
+Those either duplicate other agents or add runtime/dependency burden without
+changing the core OTA ranking.
 """
 from __future__ import annotations
 
@@ -12,167 +19,154 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 
-# Pre-known drug-target pairs for CAD
-KNOWN_DRUG_TARGET_CAD: dict[str, str] = {
-    "HMGCR":  "atorvastatin",
-    "PCSK9":  "evolocumab",
-    "IL6R":   "tocilizumab",
-    "TET2":   "azacitidine",
-    "DNMT3A": "azacitidine",
-}
-
-
-def _fetch_ic50(gene: str, max_results: int = 20) -> tuple[str, float | None, str | None]:
-    """Fetch best IC50/Ki for a gene from ChEMBL. Returns (gene, best_ic50, chembl_id)."""
-    from mcp_servers.chemistry_server import get_chembl_target_activities
-    try:
-        activities = get_chembl_target_activities(gene, max_results=max_results)
-        acts = activities.get("activities", [])
-        ic50_values = [
-            a.get("standard_value") for a in acts
-            if a.get("standard_type") in ("IC50", "Ki")
-            and a.get("standard_value") is not None
-        ]
-        best_ic50 = min(ic50_values) if ic50_values else None
-        chembl_id = acts[0].get("target_chembl_id") if acts else None
-        return gene, best_ic50, chembl_id
-    except Exception:
-        return gene, None, None
+def _collect_gps_putative_targets(
+    disease_reversers: list[dict],
+    program_reversers: dict[str, list[dict]],
+    *,
+    max_unique: int = 200,
+) -> list[str]:
+    """
+    Union ChEMBL-derived putative targets from GPS hit annotations (disease-state
+    and program reversal). Names are ChEMBL target_pref_name strings, not always HGNC.
+    """
+    seen: dict[str, None] = {}
+    for hit in disease_reversers or []:
+        ann = hit.get("annotation") or {}
+        for t in ann.get("putative_targets") or []:
+            s = str(t).strip()
+            if s:
+                seen.setdefault(s, None)
+        for sim in ann.get("chembl_similarity_hits") or []:
+            for t in sim.get("targets") or []:
+                s = str(t).strip()
+                if s:
+                    seen.setdefault(s, None)
+    for hits in (program_reversers or {}).values():
+        for hit in hits or []:
+            ann = hit.get("annotation") or {}
+            for t in ann.get("putative_targets") or []:
+                s = str(t).strip()
+                if s:
+                    seen.setdefault(s, None)
+            for sim in ann.get("chembl_similarity_hits") or []:
+                for t in sim.get("targets") or []:
+                    s = str(t).strip()
+                    if s:
+                        seen.setdefault(s, None)
+    out = list(seen.keys())
+    return out[:max_unique]
 
 
 def run(target_prioritization_result: dict, disease_query: dict) -> dict:
     """
-    Characterize the chemical space for prioritized targets.
-
-    Strategy:
-      1. Batch-fetch tractability + drugs + max_phase for ALL genes from OT in parallel (~5s)
-      2. Parallel ChEMBL IC50 lookup only for genes that need it (~10s with ThreadPoolExecutor)
-      3. CMap L1000 batch query for known drugs
+    Run GPS disease/program reversal screens and normalize inferred target labels.
 
     Args:
         target_prioritization_result: Output of target_prioritization_agent.run
         disease_query:                DiseaseQuery dict
 
     Returns:
-        dict with target_chemistry, repurposing_candidates, warnings
+        dict with GPS reversal hits + normalized putative targets (HGNC).
     """
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    from mcp_servers.chemistry_server import search_chembl_compound
-    from mcp_servers.viral_somatic_server import get_cmap_drug_signatures
-    from mcp_servers.open_targets_server import get_open_targets_targets_bulk
-
     targets = target_prioritization_result.get("targets", [])
     warnings: list[str] = []
+    # Keep output keys stable for downstream code, but chemistry enrichment is empty by design.
     target_chemistry: dict[str, dict] = {}
     repurposing_candidates: list[dict] = []
 
     if not targets:
-        return {"target_chemistry": {}, "repurposing_candidates": [], "warnings": warnings}
+        return {
+            "target_chemistry": {},
+            "repurposing_candidates": [],
+            "gps_emulation_candidates": [],
+            "gps_disease_reversers": [],
+            "gps_program_reversers": {},
+            "gps_programs_screened": [],
+            "gps_priority_compounds": [],
+            "gps_putative_targets_union": [],
+            "gps_putative_hgnc": {"genes": [], "n_resolved": 0, "n_unresolved": 0, "mapping_sample": []},
+            "warnings": warnings,
+        }
+
+    # Step 6 — per-gene GPS emulation removed.
+    # GPS is designed for disease-state reversal (phenotypic, target-agnostic),
+    # not per-gene KO emulation. Per-gene mode requires Perturb-seq KO signatures
+    # that are unavailable for most genes, and answers a different question.
+    # Disease-state and program-level GPS screening is done in Step 7.
+    gps_emulation_candidates: list[dict] = []
 
     # -------------------------------------------------------------------------
-    # Step 1 — Batch OT prefetch: tractability + drugs + max_phase for all genes
-    # This single parallel call replaces N serial per-gene OT + ChEMBL calls.
+    # Step 7 — GPS disease-state and NMF-program reversal screens.
+    #
+    # Requires Docker + GPS image. Each hit is annotated (PubChem + ChEMBL
+    # Tanimoto similarity) with putative_targets — inferred protein names from
+    # similar registered drugs, not a full target deconvolution.
+    #
+    # program→trait γ is read from prioritization_result["_gamma_estimates"]
+    # (injected by the orchestrator after Tier 3).
     # -------------------------------------------------------------------------
-    all_gene_symbols = [rec.get("target_gene", "") for rec in targets if rec.get("target_gene")]
-    ot_bulk: dict[str, dict] = {}
+    gps_disease_reversers:  list[dict] = []
+    gps_program_reversers:  dict[str, list[dict]] = {}
+    gps_programs_screened:  list[dict] = []
     try:
-        bulk_result = get_open_targets_targets_bulk(all_gene_symbols)
-        ot_bulk = bulk_result.get("targets", {})
+        from pipelines.gps_disease_screen import run_gps_disease_screens
+        disease_screen_result = run_gps_disease_screens(
+            targets=targets,
+            disease_query=disease_query,
+            gamma_estimates=(
+                target_prioritization_result.get("_gamma_estimates")
+                or disease_query.get("_gamma_estimates_for_gps")
+            ),
+            top_n_programs=5,
+            top_n_compounds=20,
+        )
+        gps_disease_reversers = disease_screen_result.get("disease_reversers", [])
+        gps_program_reversers = disease_screen_result.get("program_reversers", {})
+        gps_programs_screened = disease_screen_result.get("programs_screened", [])
+        warnings.extend(disease_screen_result.get("warnings", []))
     except Exception as exc:
-        warnings.append(f"OT bulk prefetch failed: {exc}")
+        warnings.append(f"GPS disease/program screen failed: {exc}")
 
     # -------------------------------------------------------------------------
-    # Step 2 — Build per-gene chemistry record using OT data
+    # Step 8 — Cross-reference: compounds appearing across multiple GPS screens.
+    # These have the strongest multi-evidence support: they both correct the
+    # disease transcriptional state AND mimic specific causal target perturbations.
     # -------------------------------------------------------------------------
-    genes_needing_ic50: list[str] = []
+    gps_priority_compounds: list[dict] = []
+    try:
+        from pipelines.gps_disease_screen import find_overlapping_compounds
+        gps_priority_compounds = find_overlapping_compounds(
+            disease_reversers=gps_disease_reversers,
+            emulation_candidates=gps_emulation_candidates,
+            program_reversers=gps_program_reversers,
+        )
+    except Exception as exc:
+        warnings.append(f"GPS cross-reference failed: {exc}")
 
-    for rec in targets:
-        gene        = rec.get("target_gene", "")
-        max_phase   = rec.get("max_phase", 0)
-        known_drugs = list(rec.get("known_drugs", []) or [])
+    gps_putative_targets_union = _collect_gps_putative_targets(
+        gps_disease_reversers, gps_program_reversers
+    )
 
-        # Seed from pre-known CAD drug map if still empty
-        if not known_drugs and gene in KNOWN_DRUG_TARGET_CAD:
-            known_drugs = [KNOWN_DRUG_TARGET_CAD[gene]]
-
-        # Enrich from OT bulk results
-        ot_info       = ot_bulk.get(gene, {})
-        ot_drugs      = [d["name"] for d in ot_info.get("known_drugs", []) if d.get("name")]
-        ot_phase      = ot_info.get("max_phase", 0)
-        tractability  = ot_info.get("tractability_class", "unknown")
-
-        # Merge drug lists (preserve order, deduplicate)
-        for d in ot_drugs:
-            if d not in known_drugs:
-                known_drugs.append(d)
-        max_phase = max(max_phase, ot_phase)
-
-        target_chemistry[gene] = {
-            "chembl_id":      None,
-            "max_phase":      max_phase,
-            "best_ic50_nM":   None,
-            "tractability":   tractability,
-            "ro5_violations": None,
-            "cmap_available": False,
-            "drugs_found":    known_drugs,
-        }
-
-        # Queue IC50 lookup for tractable or known-drug targets
-        if tractability in ("small_molecule", "antibody") or known_drugs:
-            genes_needing_ic50.append(gene)
-
-    # -------------------------------------------------------------------------
-    # Step 3 — Parallel ChEMBL IC50 lookup (only for tractable genes)
-    # -------------------------------------------------------------------------
-    with ThreadPoolExecutor(max_workers=6) as pool:
-        futures = {
-            pool.submit(_fetch_ic50, gene): gene
-            for gene in genes_needing_ic50
-        }
-        for future in as_completed(futures):
-            gene, best_ic50, chembl_id = future.result()
-            if gene in target_chemistry:
-                target_chemistry[gene]["best_ic50_nM"] = best_ic50
-                if chembl_id:
-                    target_chemistry[gene]["chembl_id"] = chembl_id
-
-    # -------------------------------------------------------------------------
-    # Step 4 — CMap L1000 signatures (batch)
-    # -------------------------------------------------------------------------
-    all_drugs = [
-        drug
-        for chem in target_chemistry.values()
-        for drug in chem.get("drugs_found", [])[:2]
-    ]
-    if all_drugs:
+    gps_putative_hgnc: dict = {"genes": [], "n_resolved": 0, "n_unresolved": 0, "mapping_sample": []}
+    if gps_putative_targets_union:
         try:
-            cmap_result = get_cmap_drug_signatures(list(set(all_drugs)))
-            sig_map = cmap_result.get("signatures", {})
-            for chem in target_chemistry.values():
-                if any(d in sig_map for d in chem.get("drugs_found", [])):
-                    chem["cmap_available"] = True
+            from mcp_servers.chemistry_server import resolve_gps_putative_target_labels_to_hgnc
+            gps_putative_hgnc = resolve_gps_putative_target_labels_to_hgnc(
+                gps_putative_targets_union,
+                max_labels=150,
+            )
         except Exception as exc:
-            warnings.append(f"CMap signatures failed: {exc}")
-
-    # -------------------------------------------------------------------------
-    # Step 5 — Repurposing opportunities
-    # -------------------------------------------------------------------------
-    for gene, chem in target_chemistry.items():
-        drugs  = chem.get("drugs_found", [])
-        max_ph = chem.get("max_phase", 0)
-        if max_ph >= 2 and drugs:
-            repurposing_candidates.append({
-                "drug":            drugs[0],
-                "target":          gene,
-                "cmap_similarity": None,  # requires L1000 download
-                "rationale": (
-                    f"{drugs[0]} approved (Phase {max_ph}); "
-                    f"causal evidence for {gene} in {disease_query.get('disease_name', '')}"
-                ),
-            })
+            warnings.append(f"GPS putative target → HGNC normalization failed: {exc}")
 
     return {
-        "target_chemistry":       target_chemistry,
-        "repurposing_candidates": repurposing_candidates,
-        "warnings":               warnings,
+        "target_chemistry":         target_chemistry,
+        "repurposing_candidates":   repurposing_candidates,
+        "gps_emulation_candidates": gps_emulation_candidates,
+        "gps_disease_reversers":    gps_disease_reversers,
+        "gps_program_reversers":    gps_program_reversers,
+        "gps_programs_screened":    gps_programs_screened,
+        "gps_priority_compounds":   gps_priority_compounds,
+        "gps_putative_targets_union": gps_putative_targets_union,
+        "gps_putative_hgnc":          gps_putative_hgnc,
+        "warnings":                 warnings,
     }

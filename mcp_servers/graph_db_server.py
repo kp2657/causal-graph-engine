@@ -13,6 +13,7 @@ only when fastmcp is available. Tests import them directly as module-level funct
 from __future__ import annotations
 
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -34,24 +35,58 @@ except ImportError:
         return fn if fn is not None else (lambda f: f)
     mcp = None
 
-from graph.db import GraphDB
-from graph.ingestion import ingest_edges, IngestionError
 from graph.schema import ANCHOR_EDGES
 
-_DB_PATH = os.getenv("GRAPH_DB_PATH", "./data/graph.kuzu")
+_EXPLICIT_DB_PATH = os.getenv("GRAPH_DB_PATH")
+
+
+def _slug(text: str) -> str:
+    s = (text or "").strip().lower()
+    s = re.sub(r"[^a-z0-9]+", "_", s)
+    s = re.sub(r"_+", "_", s).strip("_")
+    return s or "unknown"
+
+
+def _default_db_path_for_key(key: str) -> str:
+    """
+    Default per-disease DB path when GRAPH_DB_PATH is not set.
+
+    We intentionally do NOT use a single shared graph.kuzu here because this MCP
+    server can be long-lived and would otherwise lock the file and/or cause
+    concurrent disease runs (AMD vs CAD) to conflict.
+    """
+    return str(Path("./data") / f"graph_{_slug(key)}.kuzu")
 
 
 # ---------------------------------------------------------------------------
 # Helper: shared DB connection (lazy, process-level singleton)
 # ---------------------------------------------------------------------------
 
-_db: GraphDB | None = None
+_db = None  # GraphDB | None (single DB when GRAPH_DB_PATH is explicitly set)
+_db_by_path: dict[str, Any] = {}  # path -> GraphDB (per-disease DBs)
 
-def _get_db() -> GraphDB:
+def _get_db_for_key(key: str):
+    """
+    Return a GraphDB connection.
+
+    - If GRAPH_DB_PATH is set, use a single shared DB for all requests.
+    - Otherwise, use a per-disease DB path derived from `key`, caching a
+      GraphDB connection per path.
+    """
     global _db
-    if _db is None:
-        _db = GraphDB(_DB_PATH)
-    return _db
+    if _EXPLICIT_DB_PATH:
+        if _db is None:
+            from graph.db import GraphDB
+            _db = GraphDB(_EXPLICIT_DB_PATH)
+        return _db
+
+    path = _default_db_path_for_key(key)
+    db = _db_by_path.get(path)
+    if db is None:
+        from graph.db import GraphDB
+        db = GraphDB(path)
+        _db_by_path[path] = db
+    return db
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +109,9 @@ def write_causal_edges(edges: list[dict[str, Any]], disease: str) -> dict:
             "errors": list[str]
         }
     """
-    db = _get_db()
+    # `disease` is the natural key we have for sharding when GRAPH_DB_PATH is unset.
+    # It is typically a disease name (e.g., "AMD") or a full disease string.
+    db = _get_db_for_key(disease)
     errors: list[str] = []
     written_edges = []
 
@@ -83,10 +120,10 @@ def write_causal_edges(edges: list[dict[str, Any]], disease: str) -> dict:
             from graph.ingestion import ingest_edge
             edge = ingest_edge(db, raw)
             written_edges.append(edge)
-        except IngestionError as e:
-            errors.append(str(e))
         except Exception as e:
-            errors.append(f"Unexpected error for {raw.get('from_node')} → {raw.get('to_node')}: {e}")
+            # graph.ingestion raises IngestionError for hard blocks; avoid importing it
+            # at module import time by treating it as a normal Exception here.
+            errors.append(str(e))
 
     return {
         "written": len(written_edges),
@@ -108,7 +145,8 @@ def query_graph_for_disease(disease_id: str) -> dict:
             "edges": list[dict]
         }
     """
-    db = _get_db()
+    # For reads, we only have the disease identifier. Use it as the shard key.
+    db = _get_db_for_key(disease_id)
     edges = db.query_disease_edges(disease_id)
     active = [e for e in edges if not e.get("is_demoted")]
     return {
@@ -133,7 +171,9 @@ def demote_edge_tier(
     Returns:
         {"success": bool, "edge": str, "reason": str}
     """
-    db = _get_db()
+    # We don't receive a disease argument here, but `to_node` is the DiseaseTrait id.
+    # Use it as the shard key when GRAPH_DB_PATH is unset.
+    db = _get_db_for_key(to_node)
     full_reason = f"[{new_tier}] {reason} | Evidence: {contradicting_evidence}"
     db.demote_edge(from_node, to_node, full_reason)
     return {
@@ -146,19 +186,38 @@ def demote_edge_tier(
 @_tool
 def compute_sid_metric(predicted_edges: list[dict], reference_edges: list[dict]) -> dict:
     """
-    Compute Structural Intervention Distance (SID) between predicted and reference graphs.
-    SID measures how many interventional distributions differ between two DAGs.
+    Graph agreement metric aligned with `validate_graph` (not full causal-learn SID).
 
-    STUB — returns mocked SID. Wire in causal-learn SID when pipelines are ready.
+    True **Structural Intervention Distance** between DAGs requires interventional
+    distributions; we instead report the same **orientation-overlap score** as
+    `graph.validation.compute_sid_approximation` (fraction of reference directed
+    edges recovered). This avoids reporting a misleading constant zero.
+
+    If `reference_edges` is empty, anchor edges from `graph.schema.ANCHOR_EDGES` are used.
 
     Returns:
-        {"sid": float, "n_predicted": int, "n_reference": int, "note": str}
+        {
+          "sid": float in [0, 1],
+          "metric": "orientation_overlap",
+          "n_predicted": int,
+          "n_reference": int,
+          "note": str,
+        }
     """
+    from graph.schema import ANCHOR_EDGES
+    from graph.validation import compute_sid_approximation
+
+    ref = list(reference_edges) if reference_edges else list(ANCHOR_EDGES)
+    sid_score = float(compute_sid_approximation(predicted_edges, ref))
     return {
-        "sid": 0.0,
+        "sid": sid_score,
+        "metric": "orientation_overlap",
         "n_predicted": len(predicted_edges),
-        "n_reference": len(reference_edges),
-        "note": "STUB — real SID computation pending causal-learn integration",
+        "n_reference": len(ref),
+        "note": (
+            "Same orientation-overlap score as validate_graph (not interventional SID "
+            "from causal-learn)."
+        ),
     }
 
 

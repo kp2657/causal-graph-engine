@@ -21,6 +21,8 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 import httpx
 
+from pipelines.api_cache import api_cached
+
 try:
     import fastmcp
     mcp = fastmcp.FastMCP("clinical-trials-server")
@@ -41,6 +43,7 @@ def _ct_params(extra: dict | None = None) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=7)
 def search_clinical_trials(
     condition: str | None = None,
     intervention: str | None = None,
@@ -62,7 +65,8 @@ def search_clinical_trials(
         {"condition": str, "n_trials": int, "trials": list[dict]}
     """
     params = _ct_params({
-        "pageSize": min(max_results, 100),
+        "pageSize":   min(max_results, 100),
+        "countTotal": "true",   # CT API v2: opt-in to return totalCount in response
     })
     query_parts = []
     if condition:
@@ -78,7 +82,7 @@ def search_clinical_trials(
         params["filter.phase"] = phase
 
     try:
-        resp = httpx.get(f"{CT_API}/studies", params=params, timeout=30)
+        resp = httpx.get(f"{CT_API}/studies", params=params, timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0))
         resp.raise_for_status()
         data = resp.json()
         studies_raw = data.get("studies", [])
@@ -118,6 +122,7 @@ def search_clinical_trials(
 
 
 @_tool
+@api_cached(ttl_days=7)
 def get_trial_details(nct_id: str) -> dict:
     """
     Fetch detailed information for a specific clinical trial.
@@ -129,7 +134,7 @@ def get_trial_details(nct_id: str) -> dict:
         resp = httpx.get(
             f"{CT_API}/studies/{nct_id}",
             params=_ct_params(),
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -165,6 +170,7 @@ def get_trial_details(nct_id: str) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=7)
 def get_trials_for_target(gene_symbol: str, disease: str | None = None) -> dict:
     """
     Find clinical trials targeting a specific gene product.

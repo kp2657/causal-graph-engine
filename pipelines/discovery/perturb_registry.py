@@ -7,7 +7,7 @@ Perturb-seq data to use for each disease.
 
 Usage:
     from pipelines.discovery.perturb_registry import get_perturb_datasets_for_disease
-    datasets = get_perturb_datasets_for_disease("IBD")
+    datasets = get_perturb_datasets_for_disease("AMD")
     best = datasets["recommended"]  # {"geo_id", "url", "cell_type", "n_cells", ...}
 """
 from __future__ import annotations
@@ -33,7 +33,44 @@ from pathlib import Path
 
 PERTURB_SEQ_CATALOG: list[dict] = [
     # -----------------------------------------------------------------------
-    # K562 (chronic myelogenous leukemia — general metabolic/essentials)
+    # CAD vascular — disease-matched cell types (HCASMC, HAEC)
+    # These supersede K562 for all CAD target emulation.
+    # -----------------------------------------------------------------------
+    {
+        "id": "Schnitzler2023_CAD_vascular",
+        "geo_id": "GSE210681",
+        "cell_type": "HCASMC_HAEC",
+        "n_cells": None,  # pre-computed log2FC matrix, not single-cell h5ad
+        "n_genes_kd": 332,
+        "perturbation_type": "CRISPRi",
+        "diseases_relevant": ["CAD"],
+        "pmid": None,  # Schnitzler et al., GEO GSE210681
+        "local_path_pattern": "./data/perturbseq/schnitzler_cad_vascular/signatures.json.gz",
+        "note": (
+            "332 CAD GWAS risk genes perturbed in human coronary artery smooth muscle cells "
+            "(HCASMC) and endothelial cells — the disease-relevant vascular cell types. "
+            "Preprocessed log2FC signatures. Supersedes K562 for CAD vascular biology."
+        ),
+    },
+    {
+        "id": "Natsume2023_HAEC",
+        "geo_id": None,  # GEO accession not confirmed; see doi:10.1371/journal.pgen.1010680
+        "cell_type": "HAEC",
+        "n_cells": None,
+        "n_genes_kd": 2_285,
+        "perturbation_type": "CRISPRko_CRISPRi_CRISPRa",
+        "diseases_relevant": ["CAD"],
+        "pmid": "37343252",  # Natsume et al., PLOS Genetics 2023
+        "local_path_pattern": "./data/perturbseq/natsume_2023_haec/signatures.json.gz",
+        "note": (
+            "2,285 CAD GWAS loci × 3 perturbation modes in primary-like aortic endothelial cells. "
+            "Secondary CAD dataset after Schnitzler."
+        ),
+    },
+
+    # -----------------------------------------------------------------------
+    # K562 (chronic myelogenous leukemia — large general coverage, fallback)
+    # Use for CAD lipid/metabolic programs only when vascular data unavailable.
     # -----------------------------------------------------------------------
     {
         "id": "Replogle2022_K562_essential",
@@ -43,12 +80,12 @@ PERTURB_SEQ_CATALOG: list[dict] = [
         "n_cells": 2_586_340,
         "n_genes_kd": 9_065,
         "perturbation_type": "CRISPRi",
-        "diseases_relevant": ["CAD", "T2D", "AD"],
+        "diseases_relevant": ["T2D", "AD"],
         "pmid": "35688146",
-        "local_path_pattern": "./data/perturb_seq/replogle2022/K562_essential*.h5ad",
+        "local_path_pattern": "./data/perturbseq/replogle_2022_k562/K562_essential*.h5ad",
         "note": (
             "Largest Perturb-seq dataset. Covers essential genes (metabolic, cell cycle, "
-            "translation). Best for CAD lipid/CHIP programs. NOT suitable for immune diseases."
+            "translation). CAD fallback only — prefer Schnitzler/Natsume for vascular biology."
         ),
     },
     {
@@ -59,10 +96,10 @@ PERTURB_SEQ_CATALOG: list[dict] = [
         "n_cells": 2_586_340,
         "n_genes_kd": 9_065,
         "perturbation_type": "CRISPRi",
-        "diseases_relevant": ["CAD"],
+        "diseases_relevant": [],  # superseded by Schnitzler for CAD; not the default for any disease
         "pmid": "35688146",
-        "local_path_pattern": "./data/perturb_seq/replogle2022/K562_gwps*.h5ad",
-        "note": "Genome-wide perturbation screen. ~357 MB. Best for broad CAD target coverage.",
+        "local_path_pattern": "./data/perturbseq/replogle_2022_k562/K562_gwps*.h5ad",
+        "note": "Genome-wide screen. CAD fallback only — superseded by Schnitzler (GSE210681).",
     },
 
     # -----------------------------------------------------------------------
@@ -153,10 +190,10 @@ PERTURB_SEQ_CATALOG: list[dict] = [
         "n_cells": 1_194_982,
         "n_genes_kd": 7_975,
         "perturbation_type": "CRISPRi",
-        "diseases_relevant": ["T2D", "CAD"],
+        "diseases_relevant": ["T2D", "CAD", "AMD"],
         "pmid": "35688146",
         "local_path_pattern": "./data/perturb_seq/replogle2022/RPE1*.h5ad",
-        "note": "Diploid retinal epithelial. Better than K562 for metabolic gene essentials.",
+        "note": "Diploid retinal epithelial. Better than K562 for metabolic gene essentials. Also used for AMD (retinal epithelial biology).",
     },
 ]
 
@@ -166,12 +203,15 @@ PERTURB_SEQ_CATALOG: list[dict] = [
 # ---------------------------------------------------------------------------
 
 _DISEASE_PRIORITY: dict[str, list[str]] = {
-    "CAD":  ["Replogle2022_K562_gwps",  "Replogle2022_K562_essential", "Norman2019_K562_TF"],
-    "IBD":  ["Papalexi2021_PBMC",       "Schmidt2022_T_cells",         "Norman2019_K562_TF"],
-    "RA":   ["Papalexi2021_PBMC",       "Schmidt2022_T_cells",         "Dixit2016_PBMC"],
-    "SLE":  ["Papalexi2021_PBMC",       "Schmidt2022_T_cells"],
-    "AD":   ["Ursu2022_iPSC_neurons",   "Replogle2022_K562_essential"],
-    "T2D":  ["Replogle2022_RPE1",       "Replogle2022_K562_essential"],
+    # CAD: vascular cell types first (HCASMC/HAEC) → K562 fallback only for lipid programs
+    "CAD":  ["Schnitzler2023_CAD_vascular", "Natsume2023_HAEC", "Replogle2022_K562_essential"],
+    "IBD":  ["Papalexi2021_PBMC",           "Schmidt2022_T_cells", "Norman2019_K562_TF"],
+    "RA":   ["Papalexi2021_PBMC",           "Schmidt2022_T_cells", "Dixit2016_PBMC"],
+    "SLE":  ["Papalexi2021_PBMC",           "Schmidt2022_T_cells"],
+    "AD":   ["Ursu2022_iPSC_neurons",       "Replogle2022_K562_essential"],
+    "T2D":  ["Replogle2022_RPE1",           "Replogle2022_K562_essential"],
+    # AMD: RPE1 (retinal epithelial = tissue match) > K562 (generic fallback)
+    "AMD":  ["Replogle2022_RPE1",           "Replogle2022_K562_essential"],
 }
 
 _CATALOG_INDEX: dict[str, dict] = {d["id"]: d for d in PERTURB_SEQ_CATALOG}

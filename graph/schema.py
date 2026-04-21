@@ -209,24 +209,39 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         "cell_types":        ["myeloid", "hepatocyte", "smooth_muscle"],
         "primary_tissue":    "whole_blood",
         "gtex_tissue":       "Whole_Blood",   # GTEx tissue ID for eQTL lookup
-        "perturb_seq_source": "K562",          # matched: myeloid / CHIP biology
-        "scperturb_dataset": "ReplogleWeissman2022_K562_gwps",
+        # Secondary tissues tried in order when primary has no eQTL for a gene.
+        # Liver covers LDLR/PCSK9/HMGCR (hepatic lipid); heart for cardiomyocyte-specific genes.
+        "gtex_tissues_secondary": ["Liver", "Heart_Left_Ventricle", "Artery_Coronary"],
+        "perturb_seq_source": "schnitzler_cad_vascular",  # 332 CAD GWAS genes in HCASMC/HAEC
+        "scperturb_dataset": "Schnitzler_GSE210681",
         "lincs_cell_line":   "VCAP",           # LINCS proxy — best available for metabolic
-        "notes": "CHIP-mediated myeloid inflammation + hepatic lipid programs; K562 appropriate for myeloid tier",
+        # pQTL instruments — key for LPA (no eQTL; driven by kringle repeat number)
+        "pqtl_study_priority": ["Sun2023", "Sun2018", "Ferkingstad2021"],
+        "pqtl_key_genes": ["LPA", "PCSK9", "APOB", "CRP", "LDLR"],
+        # sc-eQTL: monocytes are the disease-relevant cell type for CHIP/inflammation
+        "sc_eqtl_study":   "OneK1K",        # OneK1K — 14 PBMC cell types
+        "sc_eqtl_cell_types": ["CD14_positive_monocyte", "monocyte", "macrophage"],
+        "notes": "CAD vascular biology; Schnitzler 2023 (GSE210681) 332 risk genes in HCASMC/HAEC preferred",
     },
     "RA": {
         "cell_types":        ["T_cell", "B_cell", "macrophage", "synoviocyte"],
         "primary_tissue":    "whole_blood",
         "gtex_tissue":       "Whole_Blood",
+        "gtex_tissues_secondary": ["Skin_Sun_Exposed_Lower_leg", "Adipose_Subcutaneous"],
         "perturb_seq_source": "scPerturb_PBMC",
         "scperturb_dataset": "PapalexiSatija2021_eccite",  # 111 perturbations, PBMC
         "lincs_cell_line":   "A375",
+        "pqtl_study_priority": ["Sun2023", "Sun2018"],
+        "pqtl_key_genes": ["IL6", "TNF", "CRP", "IL6R"],
+        "sc_eqtl_study":   "OneK1K",
+        "sc_eqtl_cell_types": ["CD4_positive_alpha_beta_T_cell", "B_cell", "CD14_positive_monocyte"],
         "notes": "IL-6/JAK-STAT and MHC-II programs; PBMC Perturb-seq (Papalexi 2021) preferred over K562",
     },
     "SLE": {
         "cell_types":        ["plasmacytoid_DC", "B_cell", "T_cell"],
         "primary_tissue":    "whole_blood",
         "gtex_tissue":       "Whole_Blood",
+        "gtex_tissues_secondary": ["Kidney_Cortex"],
         "perturb_seq_source": "K562",          # fallback — no PDC Perturb-seq available
         "scperturb_dataset": None,
         "lincs_cell_line":   "A375",
@@ -236,15 +251,22 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         "cell_types":        ["colonocyte", "macrophage", "T_cell"],
         "primary_tissue":    "colon",
         "gtex_tissue":       "Colon_Sigmoid",
+        # Small intestine captures ileal Crohn's genes (NOD2, IL23R); liver covers systemic inflammation.
+        "gtex_tissues_secondary": ["Small_Intestine_Terminal_Ileum", "Colon_Transverse", "Whole_Blood"],
         "perturb_seq_source": "LINCS_HT29",    # HT29 = colon adenocarcinoma, closest available
         "scperturb_dataset": None,
         "lincs_cell_line":   "HT29",
+        "pqtl_study_priority": ["Sun2023", "Sun2018"],
+        "pqtl_key_genes": ["IL6", "TNF", "CRP", "IL10", "IL23A"],
+        "sc_eqtl_study":   "OneK1K",
+        "sc_eqtl_cell_types": ["CD14_positive_monocyte", "CD4_positive_alpha_beta_T_cell"],
         "notes": "No gut epithelium Perturb-seq; HT29 (colon) L1000 is the best β source; eQTL-MR in sigmoid colon",
     },
     "AD": {
         "cell_types":        ["microglia", "neuron", "astrocyte"],
         "primary_tissue":    "brain",
         "gtex_tissue":       "Brain_Frontal_Cortex_BA9",
+        "gtex_tissues_secondary": ["Brain_Hippocampus", "Brain_Caudate_basal_ganglia", "Whole_Blood"],
         "perturb_seq_source": "scPerturb_iPSC_neuron",
         "scperturb_dataset": "Ursu2022_neurips",  # 96 gene perturbations, iPSC neurons
         "lincs_cell_line":   "A549",           # lung — imperfect; Geneformer preferred for neurons
@@ -254,6 +276,7 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         "cell_types":        ["beta_cell", "hepatocyte", "adipocyte"],
         "primary_tissue":    "pancreas",
         "gtex_tissue":       "Pancreas",
+        "gtex_tissues_secondary": ["Liver", "Adipose_Subcutaneous", "Muscle_Skeletal"],
         "perturb_seq_source": "LINCS_HepG2",
         "scperturb_dataset": None,
         "lincs_cell_line":   "HEPG2",          # hepatocytes for metabolic programs
@@ -263,6 +286,7 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         "cell_types":        ["T_cell", "oligodendrocyte", "microglia"],
         "primary_tissue":    "whole_blood",
         "gtex_tissue":       "Whole_Blood",
+        "gtex_tissues_secondary": ["Brain_Frontal_Cortex_BA9", "Brain_Caudate_basal_ganglia"],
         "perturb_seq_source": "scPerturb_PBMC",
         "scperturb_dataset": "PapalexiSatija2021_eccite",
         "lincs_cell_line":   "A375",
@@ -272,10 +296,38 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         "cell_types":        ["T_cell", "beta_cell"],
         "primary_tissue":    "whole_blood",
         "gtex_tissue":       "Whole_Blood",
+        "gtex_tissues_secondary": ["Pancreas"],
         "perturb_seq_source": "scPerturb_PBMC",
         "scperturb_dataset": "PapalexiSatija2021_eccite",
         "lincs_cell_line":   "A375",
         "notes": "Autoimmune + beta cell destruction; T cell programs via PBMC Perturb-seq",
+    },
+    "AMD": {
+        "cell_types":        ["RPE", "photoreceptor", "Muller_glia"],
+        "primary_tissue":    "retina",
+        "gtex_tissue":       "Retina",      # GTEx v10 retina tissue
+        # Liver is the primary source of complement proteins (CFH, C3, CFD, C5, CFB, CFI).
+        # Without liver eQTL, complement targets are systematically underscored despite being
+        # the most validated AMD targets (pegcetacoplan approved, danicopan Phase 3, GT005 Phase 2).
+        "gtex_tissues_secondary": ["Liver", "Whole_Blood"],
+        "perturb_seq_source": "Replogle2022_RPE1",  # RPE1 is retinal epithelial — tissue match
+        "scperturb_dataset": "replogle_2022_rpe1",
+        "lincs_cell_line":   None,          # no AMD-specific LINCS cell line
+        # pQTL instruments — CRITICAL for complement genes with no cis-eQTL
+        # CFH Y402H (rs1061170) has plasma pQTL in UKB-PPP/INTERVAL but no GTEx eQTL
+        "pqtl_study_priority": ["Sun2023", "Sun2018", "Ferkingstad2021"],
+        "pqtl_key_genes": ["CFH", "C3", "CFB", "CFD", "C5", "CFI", "CFHR1", "VEGFA"],
+        # No retina-specific sc-eQTL in public eQTL Catalogue; monocyte eQTL for complement regulation
+        "sc_eqtl_study":   "OneK1K",
+        "sc_eqtl_cell_types": ["CD14_positive_monocyte"],   # complement is expressed in monocytes
+        "notes": (
+            "RPE + complement biology; Replogle RPE1 for RPE-autonomous genes. "
+            "IMPORTANT: CFH/C3/CFD/C5 key GWAS variants are CODING variants (CFH Y402H rs1061170) — "
+            "they have NO cis-eQTL in any GTEx tissue. These genes cannot be scored by eQTL-MR. "
+            "Correct instrument = pQTL (plasma protein QTL from INTERVAL/ARIC/UKB-PPP). "
+            "Liver secondary tissue helps metabolic AMD genes (LIPC gains NES=-0.295 in Liver vs 0 in Retina). "
+            "Tier 2p (pQTL-MR) is the primary evidence tier for all complement pathway genes."
+        ),
     },
 }
 
@@ -331,12 +383,27 @@ PERTURB_SEQ_SOURCES: dict[str, dict] = {
         "cell_line":          "iPSC_derived",
         "organism":           "human",
         "n_perturbations":    96,
-        "diseases":           ["AD", "SCZ"],
+        "diseases":           ["AD"],
         "download_url":       "https://zenodo.org/record/7041690",  # scPerturb harmonized
         "file_size_mb":       ~500,
         "requires_auth":      False,
         "scperturb_id":       "Ursu2022_neurips",
+        "perturbseq_server_id": "ursu_2022_ipsc_neuron",  # key in perturbseq_server._DATASET_REGISTRY
         "status":             "available",
+        "n_genes_note":       "96 genes only — limited coverage; eQTL-MR fills the remaining genome",
+    },
+    "Schnitzler2023_CAD_vascular": {
+        "description":        "Schnitzler 2023 comprehensive Perturb-seq of 332 CAD GWAS risk genes in HCASMC and HAEC",
+        "cell_type":          "vascular_smooth_muscle_endothelium",
+        "cell_line":          "HCASMC_HAEC",
+        "organism":           "human",
+        "n_perturbations":    332,
+        "diseases":           ["CAD"],
+        "geo":                "GSE210681",
+        "requires_auth":      False,
+        "perturbseq_server_id": "schnitzler_cad_vascular",
+        "status":             "needs_download",  # download h5ad from GEO GSE210681
+        "download_note":      "Download from GEO GSE210681. Then: python -m mcp_servers.perturbseq_server preprocess schnitzler_cad_vascular <path_to_h5ad>",
     },
     "Frangieh2021_melanoma": {
         "description":        "Frangieh 2021 co-culture Perturb-seq in melanoma + T cells",
@@ -390,6 +457,7 @@ DISEASE_TRAIT_MAP: dict[str, list[str]] = {
     "IBD": ["IBD", "Crohn_disease", "UC", "CRP"],
     "MS":  ["MS"],
     "T1D": ["T1D"],
+    "AMD": ["AMD"],
 }
 
 
@@ -421,6 +489,9 @@ ANCHOR_EDGES: list[dict] = [
     {"from": "IL23R",   "to": "IBD",           "evidence_type": "germline",    "direction": "negative_lof"},
     {"from": "TNF",     "to": "IBD",           "evidence_type": "drug",        "direction": "positive"},
     {"from": "IL10",    "to": "IBD",           "evidence_type": "germline",    "direction": "negative_lof"},
+    # AMD anchors — CFH (complement, p<1e-120 GWAS) + VEGFA (anti-VEGF drugs validate)
+    {"from": "CFH",     "to": "AMD",           "evidence_type": "germline",    "direction": "positive"},
+    {"from": "VEGFA",   "to": "AMD",           "evidence_type": "drug",        "direction": "positive"},
 ]
 
 
@@ -444,26 +515,22 @@ _DISEASE_SHORT_NAMES_FOR_ANCHORS: dict[str, str] = {
     "crohn's disease":              "IBD",
     "crohns disease":               "IBD",
     "ulcerative colitis":           "IBD",
+    "age-related macular degeneration": "AMD",
+    "macular degeneration":         "AMD",
+    "amd":                          "AMD",
 }
 
 REQUIRED_ANCHORS_BY_DISEASE: dict[str, list[tuple[str, str]]] = {
+    # Only genes with approved therapeutics for the indication.
+    # Trait node must match the disease name written to the Kùzu graph,
+    # not an intermediate phenotype (e.g. "LDL-C") — edges are gene→disease.
     "CAD": [
-        ("PCSK9",        "LDL-C"),
-        ("LDLR",         "LDL-C"),
-        ("HMGCR",        "LDL-C"),
-        ("TET2_chip",    "CAD"),
-        ("DNMT3A_chip",  "CAD"),
+        ("PCSK9", "coronary artery disease"),   # evolocumab / alirocumab approved
+        ("HMGCR", "coronary artery disease"),   # statins — approved first-line
     ],
-    "RA": [
-        ("IL6R",               "CRP"),
-        ("MHC_class_II_program", "RA"),
-    ],
-    "SLE": [
-        ("MHC_class_II_program", "SLE"),
-    ],
-    "IBD": [
-        ("NOD2",  "IBD"),
-        ("IL23R", "IBD"),
-        ("TNF",   "IBD"),
+    # AMD: VEGFA is the approved therapeutic target (ranibizumab, bevacizumab,
+    # aflibercept — standard of care for wet AMD).
+    "AMD": [
+        ("VEGFA", "age-related macular degeneration"),
     ],
 }

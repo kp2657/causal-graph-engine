@@ -1,192 +1,181 @@
 # Causal Graph Engine — Claude Instructions
 
-This file governs Claude Code behavior for this project across all sessions.
-**Read this before starting any work.** Update it as the project evolves.
+## What this is
+Multiagent causal genomics pipeline implementing Ota et al.:
+`γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait})`
 
----
-
-## What This Project Does
-
-A multiagent causal genomics pipeline implementing the **Ota et al. framework**:
-
-```
-γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait})
-```
-
-- **β**: causal effect of gene X on biological program P (from Perturb-seq / eQTL-MR / LINCS L1000)
-- **γ**: causal effect of program P on disease trait (from GWAS S-LDSC + TWMR)
-- Output: ranked drug targets with Kùzu graph DB + RDF export + Markdown report
-
-**Current disease**: Coronary Artery Disease (EFO_0001645). Next: IBD.
+Output: ranked drug targets with Kùzu graph + RDF export + Markdown report.
 
 ---
 
 ## Environment
-
 ```bash
-conda activate causal-graph          # Python 3.12, pydantic v2
+conda activate causal-graph   # Python 3.12, pydantic v2
 cd causal-graph-engine/
+# NEVER use base python/python3 — they are Python 3.8
 ```
-
-**Never use the base `python` or `python3` — they are Python 3.8.**
 
 ---
 
-## How to Run
-
+## Run commands
 ```bash
-# Full pipeline (v2 multiagent orchestrator)
+# Full pipeline (first run or after changing Tier 1–3 data)
 conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "coronary artery disease"
+conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "age-related macular degeneration"
 
-# CLI entry point
-conda run -n causal-graph python main.py analyze "coronary artery disease"
+# Re-run Tier 4+5 from saved Tier 3 checkpoint (skips Tiers 1–3 re-computation)
+conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "coronary artery disease"
+conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "age-related macular degeneration"
 
-# Run tests (fast unit tests only — ~7s)
-conda run -n causal-graph python -m pytest tests/ -q -m "not integration"
-
-# Run all tests including live API calls (~5min)
-conda run -n causal-graph python -m pytest tests/ -q
+# Unit tests (fast, targeted — NEVER run the full suite via pytest tests/)
+/opt/anaconda3/envs/causal-graph/bin/python -m pytest tests/test_phase_*.py tests/test_pipelines.py tests/test_pi_orchestrator_v2.py -q --tb=short
 ```
 
 ---
 
-## Commit Discipline
+## Session startup
+1. Read `STATE.md` — objective + next steps
+2. Read `CHANGELOG.md` — recent changes
+3. Run unit tests to confirm baseline
+4. Never re-implement anything marked ✓ DONE without first checking it's broken
 
-**Before every commit:**
-1. Run `conda run -n causal-graph python -m pytest tests/ -q -m "not integration"`
-2. All tests must pass. Never commit code that breaks passing tests.
-3. Commit after every meaningful unit of work — do not batch unrelated changes.
-4. Use a descriptive commit message that explains *why*, not just *what*.
+---
 
-```bash
-conda run -n causal-graph python -m pytest tests/ -q -m "not integration" && git add -p && git commit -m "..."
+## Success criteria
+- `anchor_edge_recovery ≥ 0.80` (QC check)
+- `n_novel_edges > 0` (primary goal)
+- `data/analyze_{disease}.md` + `data/exports/{disease}.ttl` exist
+
+---
+
+## Architecture
+```
+orchestrator/pi_orchestrator_v2.py   — 5-tier multiagent pipeline
+agents/tier{1-5}_*/                  — per-tier agents
+pipelines/                           — ota_beta/gamma_estimation, discovery, state_space
+mcp_servers/                         — 8 live servers (GWAS, gnomAD, GTEx, CELLxGENE, OT, ...)
+graph/db.py, schema.py, export.py    — Kùzu CRUD + RDF/Turtle export
+data/cellxgene/{disease}/            — cached h5ad files
 ```
 
 ---
 
-## Session Resumption
-
-When starting a new session:
-1. Read `STATE.md` — current objective, completed steps, NEXT steps
-2. Read `CHANGELOG.md` — recent session history and failed approaches
-3. Run the test suite to confirm baseline: `pytest tests/ -q -m "not integration"`
-4. Check `data/analyze_coronary_artery_disease.json` to see last pipeline output
-
-**Never re-implement something in STATE.md marked ✓ DONE without first checking that the existing implementation is broken.**
-
----
-
-## Success Criteria
-
-**Discovery engine (primary goal):**
-- `n_novel_edges > 0` — genes not in pre-specified ANCHOR_EDGES with Tier2+ evidence
-- Programs come from `get_programs_for_disease()` (cNMF/MSigDB), not hardcoded registry
-- γ values come from GWAS enrichment / OT coloc, not PROVISIONAL_GAMMAS table
-
-**Quality control (anchor recovery):**
-- `anchor_edge_recovery ≥ 0.80` — confirms pipeline recovers known positives
-- `n_edges_written ≥ 8` — sufficient signal density
-- `data/analyze_{disease}.md` exists with ranked target table (anchor + novel genes)
-- `data/exports/{disease}.ttl` exists (RDF export)
-
-**Anchor recovery is now a QC check, not the success criterion.**
-
----
-
-## Architecture: Key Files
-
-```
-orchestrator/
-  pi_orchestrator_v2.py   — Main entry point (5-tier multiagent pipeline)
-  agent_runner.py         — AgentRunner: local/sdk mode dispatch
-  message_contracts.py    — AgentInput/AgentOutput pydantic v2 envelopes
-
-agents/
-  tier1_phenomics/        — phenotype_architect, statistical_geneticist, somatic_exposure_agent
-  tier2_pathway/          — perturbation_genomics_agent, regulatory_genomics_agent
-  tier3_causal/           — causal_discovery_agent, kg_completion_agent
-  tier4_translation/      — target_prioritization_agent, chemistry_agent, clinical_trialist_agent
-  tier5_writer/           — scientific_writer_agent
-
-pipelines/
-  ota_beta_estimation.py  — β fallback chain (T1 Perturb-seq → T2 eQTL-MR → T3 LINCS → Virtual)
-  ota_gamma_estimation.py — γ from GWAS S-LDSC + TWMR
-
-graph/
-  db.py                   — Kùzu CRUD
-  schema.py               — DISEASE_CELL_TYPE_MAP, DISEASE_TRAIT_MAP, ANCHOR_EDGES
-  export.py               — RDF/Turtle, JSON-LD, CSV export
-
-mcp_servers/              — 8 live MCP servers (GWAS, gnomAD, GTEx, CELLxGENE, etc.)
-
-data/
-  graph.kuzu              — Live Kùzu graph database
-  analyze_*.json          — Pipeline JSON output
-  analyze_*.md            — Pipeline Markdown report
-  exports/                — RDF/JSON-LD/CSV exports
-```
-
----
-
-## Critical Rules (Do Not Break)
+## Critical rules
 
 | Rule | Why |
 |------|-----|
-| Use pydantic v2 API only (`field_validator`, `model_validator`, `X \| None`, `model_dump()`) | Codebase fully migrated; pydantic v1 syntax breaks silently |
-| `float('nan')` for missing β/γ, never `0.0` | 0.0 × γ produces phantom zero-effect edges |
-| Co-expression is NOT a valid β source | Direction/causation requires perturbation or genetic instrument |
-| Every REQUIRED_ANCHOR must also be in ANCHOR_EDGES | Schema consistency; new regression test guards this |
-| Set `GRAPH_DB_PATH` to a temp dir in all DB tests | Avoids corrupting the live `data/graph.kuzu` |
-| `model_construct()` for unknown-agent stubs in AgentRunner | Bypasses AgentName Literal validation without crashing |
+| Pydantic v2 only (`field_validator`, `model_dump()`, `X \| None`) | v1 syntax breaks silently |
+| `float('nan')` for missing β/γ, never `0.0` | 0.0 × γ = phantom zero edges |
+| Co-expression is NOT a valid β source | No causation without perturbation/genetic instrument |
+| `GRAPH_DB_PATH` → temp dir in DB tests | Prevents corrupting `data/graph.kuzu` |
+| `model_construct()` for unknown-agent stubs | Bypasses AgentName Literal without crash |
+| **Do not use `get_anndata(obs_coords=numpy_array)`** | Segfaults in tiledbsoma 2.3.0 — use axis_query |
 
 ---
 
-## Autonomous Session Instructions
+## State-space refactor: Phases A–F COMPLETE ✓
 
-For long-running autonomous work:
+Phase F unified scoring formula (locked):
+```
+core    = 0.60 × genetic_component + 0.40 × mechanistic_component
+final   = core × t_mod × risk_discount
+t_mod   = clamp(1 + 0.15×OT + 0.10×trial - 0.10×safety, 0.5, 1.5)
+risk    = max(0.1, 1 - 0.20×escape_risk - 0.15×failure_risk)
+```
+- `genetic_component` = OTA γ / 0.7 (disease grounding)
+- `mechanistic_component` = min(|TR| + state_influence×0.3, 1.0)
+- TR fires for ALL genes via `compute_state_direct_redirection` (no NMF gate)
+- `state_influence.py` → continuous `disease_axis_score` [0,1] per gene
 
-1. **Scope before coding**: write out the plan in a brief comment or update STATE.md CURRENT OBJECTIVE before touching any file
-2. **Test-driven**: write the test first if adding new functionality
-3. **Commit checkpoints**: commit after each test goes green, not at the end of a big batch
-4. **Document failures**: if an approach doesn't work, add it to `CHANGELOG.md` under "Failed approaches" before pivoting
-5. **Verify before declaring done**: re-run the full test suite and check the actual output files
+Key modules: `pipelines/state_space/` — `state_influence.py`, `therapeutic_redirection.py`, `conditional_beta.py`, `conditional_gamma.py`, `latent_model.py`, `transition_graph.py`
 
-**If asked to "keep working until done"** — use the following stopping criterion:
-- All unit tests pass (`pytest tests/ -q -m "not integration"`)
-- `main.py analyze "coronary artery disease"` runs without exception
-- STATE.md CURRENT OBJECTIVE is updated to the next step
+## CELLxGENE downloads
+`pipelines/discovery/cellxgene_downloader.py` — axis_query two-phase (safe).
+Census: `2025-11-08`. Column: `feature_type`. Cached: `data/cellxgene/{DISEASE}/{DISEASE}_{cell_type}.h5ad`
 
 ---
 
-## SDK Mode (Claude API Subagents)
+## Commit discipline
+```bash
+conda run -n causal-graph python -m pytest tests/ -q -m "not integration" && git add -p && git commit
+```
+All unit tests must pass before commit.
 
-To flip any agent to real Claude API:
-```python
-from orchestrator.pi_orchestrator_v2 import analyze_disease_v2
-result = analyze_disease_v2(
-    "coronary artery disease",
-    mode_overrides={"chemistry_agent": "sdk"},  # chemistry_agent is the bottleneck
-)
+---
+
+## Background task discipline
+
+### Hard rules — no exceptions
+
+**NEVER background pytest.** Always run tests foreground. pytest backgrounded:
+- writes output to tmp files that are empty when the process is killed
+- reports exit code 1 on SIGKILL regardless of whether tests were passing
+- accumulates as zombie processes silently consuming resources
+
+**NEVER launch a duplicate.** Before issuing any `run_in_background=True` command, run the pre-flight check (below). If a process doing the same thing is already running, read its output or kill it first — do not start another.
+
+**ALWAYS kill superseded tasks immediately.** If the user changes direction mid-run, call `pkill` or `TaskStop` before starting the replacement. Do not leave orphaned jobs running.
+
+### Pre-flight check — run before any background launch
+```bash
+pgrep -la python | grep -E "pytest|orchestrator|pi_orchestrator"
+```
+If anything matching is already running: stop it, then proceed.
+
+### Allowed background tasks (only these)
+| Task | Condition |
+|------|-----------|
+| Full IBD/CAD pipeline run | User explicitly asked; expected >5 min; record the PID |
+| Multi-disease batch run | Same |
+
+Everything else — pytest, probes, diagnostics, inline python, any command <5 min — runs **foreground only**.
+
+### Test strategy — foreground, targeted
+```bash
+# Fastest signal (~10s) — run this first
+/opt/anaconda3/envs/causal-graph/bin/python -m pytest tests/test_phase_*.py tests/test_state_space_*.py -q --tb=short
+
+# Broader check (~30s) — targeted file list, never the whole directory
+/opt/anaconda3/envs/causal-graph/bin/python -m pytest \
+  tests/test_phase_a_models.py tests/test_phase_b_conditional.py \
+  tests/test_phase_c_therapeutic_redirection.py tests/test_phase_d_evidence_disagreement.py \
+  tests/test_phase_g_transition_scoring.py tests/test_phase_h_controller_classifier.py \
+  tests/test_phase_i_disagreement_profile.py tests/test_phase_j_benchmark.py \
+  tests/test_agents.py -q --tb=short
 ```
 
-Requires `ANTHROPIC_API_KEY` in `.env`. Use `claude-haiku-4-5-20251001` for speed/cost.
+**NEVER run `pytest tests/`** — the full suite exceeds the 2-minute Bash tool timeout and is
+automatically backgrounded, producing an empty output file and a spurious exit-code-1 on kill.
+Always target specific test files.
+
+### On receiving a task-notification with status=failed
+1. Check output file line count: `wc -l <output_file>`. If 0 or 1 lines → killed by SIGKILL (timeout), not a real failure.
+2. Treat empty/1-line output as: **ignore, do not re-run**.
+3. If a real failure is suspected, run the specific relevant test file(s) foreground.
+4. Never retry a killed background task with another background task.
+5. `pgrep -la python | grep pytest` to confirm no zombie processes remain; kill any found.
+
+### Cleanup
+```bash
+pkill -9 -f "python -m pytest"       # stale test processes
+pkill -9 -f "pi_orchestrator_v2"     # stale pipeline runs
+pgrep -la python | grep -E "pytest|orchestrator"  # verify clean
+```
 
 ---
 
-## Known Flaky Tests (Do Not Fix)
-
-These 2 tests fail intermittently due to external API instability — not code bugs:
-- `test_chemistry_server.py::TestPubChemLive::test_aspirin_by_name` — PubChem formula field absent
-- `test_clinical_trials_server.py::TestClinicalTrialsLive::test_cad_recruiting_trials` — totalCount absent from v2 API
-
 ---
+
+## Agent modes
+```
+AGENT_MODE=local   # default — all agents run as direct function calls, no API cost
+AGENT_MODE=sdk     # CSO + discovery_refinement dispatch via Claude API
+```
 
 ## Credentials (.env)
-
 ```
-ANTHROPIC_API_KEY=<key>         # For SDK mode agent dispatch
-OPENGWAS_JWT=<jwt>              # Expires 2026-05-06 — renew at api.opengwas.io
+ANTHROPIC_API_KEY=<key>   # only needed for AGENT_MODE=sdk
+OPENGWAS_JWT=<jwt>        # expires 2026-05-06
 NCBI_API_KEY=<key>
-CROSSREF_MAILTO=kenneth.pham@columbia.edu
 GRAPH_DB_PATH=./data/graph.kuzu
 ```

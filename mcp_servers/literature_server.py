@@ -27,6 +27,9 @@ load_dotenv(Path(__file__).parent.parent / ".env")
 
 import httpx
 
+from pipelines.api_cache import api_cached
+
+
 try:
     import fastmcp
     mcp = fastmcp.FastMCP("literature-server")
@@ -103,6 +106,7 @@ def _ncbi_params(extra: dict | None = None) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=7)
 def search_pubmed(
     query: str,
     max_results: int = 10,
@@ -132,7 +136,7 @@ def search_pubmed(
         esearch_params["mindate"], esearch_params["maxdate"] = date_range.split(":")
 
     try:
-        resp = httpx.get(f"{NCBI_BASE}/esearch.fcgi", params=esearch_params, timeout=30)
+        resp = httpx.get(f"{NCBI_BASE}/esearch.fcgi", params=esearch_params, timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0))
         resp.raise_for_status()
         search_data = resp.json()
         result_data = search_data.get("esearchresult", {})
@@ -167,7 +171,7 @@ def _fetch_pubmed_summaries(pmids: list[str]) -> list[dict]:
                 "db":  "pubmed",
                 "id":  ",".join(pmids),
             }),
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -197,6 +201,7 @@ def _fetch_pubmed_summaries(pmids: list[str]) -> list[dict]:
 
 
 @_tool
+@api_cached(ttl_days=30)
 def fetch_pubmed_abstract(pmid: str) -> dict:
     """
     Fetch the full abstract for a PubMed article.
@@ -230,7 +235,7 @@ def fetch_pubmed_abstract(pmid: str) -> dict:
                 "rettype":  "abstract",
                 "retmode":  "xml",
             }),
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         # Parse XML abstract (simplified)
@@ -316,7 +321,7 @@ def get_crossref_metadata(doi: str) -> dict:
         resp = httpx.get(
             f"{CROSSREF_BASE}/works/{doi}",
             headers=headers,
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json().get("message", {})
@@ -348,6 +353,7 @@ def get_crossref_metadata(doi: str) -> dict:
 # ---------------------------------------------------------------------------
 
 @_tool
+@api_cached(ttl_days=7)
 def search_europe_pmc(query: str, max_results: int = 10) -> dict:
     """
     Search Europe PMC for open-access literature.
@@ -366,7 +372,7 @@ def search_europe_pmc(query: str, max_results: int = 10) -> dict:
                 "pageSize": min(max_results, 25),
                 "resultType": "core",
             },
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         data = resp.json()
@@ -453,6 +459,7 @@ def run_paperqa2_query(question: str, paper_paths: list[str] | None = None) -> d
 # ---------------------------------------------------------------------------
 
 @_tool
+@api_cached(ttl_days=7)
 def search_gene_disease_literature(
     gene: str,
     disease: str,

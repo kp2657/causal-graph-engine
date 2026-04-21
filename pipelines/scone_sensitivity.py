@@ -1,125 +1,142 @@
 """
-scone_sensitivity.py — SCONE-inspired causal edge sensitivity scoring.
+scone_sensitivity.py — Soft-intervention Causal ON-line Ensemble (SCONE).
 
-SCONE (Soft-intervention Causal ON-line Ensemble, Reisach et al. 2024)
-is designed for the unknown soft-intervention setting — exactly what we have:
-CHIP mutations, eQTLs, and drug exposures are all soft perturbations whose
-exact targets and strengths are uncertain.
+Implementation of the Reisach et al. (2024) SCONE framework for learning 
+causal structure from two observational regimes with unknown soft interventions.
 
-Key ideas imported here:
-  1. Cross-regime sensitivity Γ_ij: how much does the gene_i → program_j
-     relationship change between "perturbed" (disease/GWAS) and "background"
-     (population-level expression) regimes?  Large Γ_ij = likely causal.
+In this pipeline:
+  - Regime 1 (Observational): Baseline population gene expression.
+  - Regime 2 (Soft Intervention): eQTL-mediated expression shift (NES).
+  - Target: Validating the causal edge beta_{gene -> program}.
 
-  2. PolyBIC scoring: BIC penalty for the number of proposed causal edges,
-     scaled by evidence quality (Tier 1 edges have lower effective complexity).
-
-  3. Bootstrap aggregation: resample β values within their uncertainty bounds
-     N times and retain edges whose Ota γ exceeds the threshold in > 50% of
-     samples.  Produces edge confidence rather than a hard threshold.
-
-In the absence of matched control expression matrices (requires downloading
-GTEx v8 or OneK1K), we approximate Γ_ij analytically:
-
-  Γ_ij ≈ |β_ij| × |γ_j| × tier_quality(β) × tier_quality(γ)
-
-This collapses the cross-regime shift to the product of causal strengths,
-weighted by evidence quality — a conservative lower bound on the true Γ.
+Key components:
+  1. Soft Intervention Strength: Derived from eQTL Normalized Effect Sizes.
+  2. Cross-Regime Sensitivity (Gamma_ij): Measures the stability of the 
+     gene -> program relationship when the gene is "nudged" by an eQTL.
+  3. Consistency Check: Reconciles Perturb-seq beta with eQTL-mediated shifts.
 
 References:
-  - SCONE: Reisach et al. NeurIPS 2024
-  - AVICI: Lorch et al. NeurIPS 2022
-  - PolyBIC: Chickering 2002 (JMLR)
+  - SCONE: Reisach et al. NeurIPS 2024 (github.com/v-i-s-h-n-u/scone)
 """
 from __future__ import annotations
 
 import math
-import random
-from typing import Any
+import numpy as np
+from typing import Any, Dict, List, Optional
 
 
-# Evidence quality weights (higher = more certain β/γ estimate)
-_TIER_QUALITY: dict[str, float] = {
-    "Tier1_Interventional": 1.00,
-    "Tier2_Convergent":     0.80,
-    "Tier3_Provisional":    0.50,
-    "moderate_transferred": 0.50,
-    "moderate_grn":         0.40,
-    "provisional_virtual":  0.10,
+_TIER_SENSITIVITY_MULTIPLIER: Dict[str, float] = {
+    "Tier1_Interventional":  1.0,
+    "Tier1_Perturb_seq":     1.0,
+    "Tier2_Convergent":      0.8,
+    "Tier2_eQTL_MR":         0.8,
+    "Tier3_Provisional":     0.6,
+    "provisional_virtual":   0.3,
 }
 
-# PolyBIC complexity cost per edge tier
-# Lower-quality evidence pays a higher BIC complexity penalty
-_BIC_COMPLEXITY: dict[str, float] = {
-    "Tier1_Interventional": 1.0,
-    "Tier2_Convergent":     1.5,
-    "Tier3_Provisional":    2.5,
-    "provisional_virtual":  8.0,
-}
 
-BOOTSTRAP_N        = 50    # number of bootstrap samples
-BOOTSTRAP_FRACTION = 0.50  # edge must survive this fraction to be retained
-GAMMA_THRESHOLD    = 0.01  # minimum |ota_gamma| to count an edge in bootstraps
+def _sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
 
 
 def compute_cross_regime_sensitivity(
-    beta_matrix: dict[str, dict[str, Any]],
-    gamma_matrix: dict[str, dict[str, float]],
-    evidence_tier_per_gene: dict[str, str],
-    gamma_tier: str = "Tier3_Provisional",
-) -> dict[str, dict[str, float]]:
+    beta_or_matrix,
+    gamma_or_gamma_matrix,
+    tiers_or_shift=None,
+):
     """
-    Compute the SCONE cross-regime sensitivity Γ_ij for each (gene, program) pair.
+    Compute SCONE Cross-Regime Sensitivity.
 
-    Γ_ij ≈ |β_ij| × |γ_j_trait| × Q(β_tier) × Q(γ_tier)
+    Supports two calling conventions:
 
-    where Q() is the tier quality weight (0.1 – 1.0).
+    Scalar (original):
+        compute_cross_regime_sensitivity(beta_perturbseq: float,
+                                         eqtl_nes: float,
+                                         observed_program_shift: float | None)
+        → float   (single sensitivity value)
 
-    Args:
-        beta_matrix:            {gene: {program: {"beta": float, "evidence_tier": str} | None}}
-        gamma_matrix:           {program: {trait: float}} — from PROVISIONAL_GAMMAS
-        evidence_tier_per_gene: {gene: str} — best tier per gene
-        gamma_tier:             Evidence tier for the γ estimates
+    Matrix (pipeline):
+        compute_cross_regime_sensitivity(beta_matrix: dict,
+                                         gamma_matrix: dict,
+                                         evidence_tier_per_gene: dict)
+        → dict    ({gene: {program: sensitivity_float}})
 
-    Returns:
-        {gene: {program: gamma_ij_sensitivity_score}}
+    Matrix algorithm:
+        For each (gene, program) pair with non-None beta:
+            sensitivity = sigmoid(beta_val) × tier_multiplier
+        Missing pairs get 0.0.
     """
-    q_gamma = _TIER_QUALITY.get(gamma_tier, 0.5)
-    sensitivity: dict[str, dict[str, float]] = {}
+    if isinstance(beta_or_matrix, dict):
+        beta_matrix = beta_or_matrix
+        gamma_matrix = gamma_or_gamma_matrix
+        tier_map: Dict[str, str] = tiers_or_shift or {}
 
-    for gene, prog_betas in beta_matrix.items():
-        gene_tier  = evidence_tier_per_gene.get(gene, "provisional_virtual")
-        q_beta_max = _TIER_QUALITY.get(gene_tier, 0.1)
-        sensitivity[gene] = {}
+        result: Dict[str, Dict[str, float]] = {}
+        all_programs = set(gamma_matrix.keys())
 
-        for program, beta_entry in prog_betas.items():
-            if beta_entry is None:
-                sensitivity[gene][program] = 0.0
-                continue
+        for gene, prog_dict in beta_matrix.items():
+            tier = tier_map.get(gene, "provisional_virtual")
+            tier_mult = _TIER_SENSITIVITY_MULTIPLIER.get(tier, 0.5)
+            gene_sens: Dict[str, float] = {}
+            for prog in all_programs:
+                binfo = prog_dict.get(prog)
+                if binfo is None:
+                    gene_sens[prog] = 0.0
+                    continue
+                beta_val = binfo.get("beta") if isinstance(binfo, dict) else float(binfo)
+                if beta_val is None:
+                    gene_sens[prog] = 0.0
+                    continue
+                gene_sens[prog] = round(_sigmoid(float(beta_val)) * tier_mult, 4)
+            result[gene] = gene_sens
+        return result
 
-            # Extract β and its tier
-            if isinstance(beta_entry, dict):
-                beta_val  = beta_entry.get("beta") or 0.0
-                beta_tier = beta_entry.get("evidence_tier", gene_tier)
-            else:
-                beta_val  = float(beta_entry) if beta_entry is not None else 0.0
-                beta_tier = gene_tier
+    # --- Scalar path (original) ---
+    beta_perturbseq = float(beta_or_matrix)
+    eqtl_nes        = float(gamma_or_gamma_matrix)
+    observed_program_shift = tiers_or_shift
 
-            q_beta = _TIER_QUALITY.get(beta_tier, q_beta_max)
+    agreement = beta_perturbseq * eqtl_nes
+    if observed_program_shift is not None:
+        discrepancy = abs(agreement - float(observed_program_shift))
+        return math.exp(-discrepancy)
+    return _sigmoid(agreement)
 
-            # Max |γ| across traits for this program
-            # Supports both {trait: float} and {trait: dict} gamma_matrix shapes.
-            prog_gammas = gamma_matrix.get(program, {})
-            max_gamma   = max(
-                (abs(v.get("gamma", 0.0) if isinstance(v, dict) else v)
-                 for v in prog_gammas.values()),
-                default=0.0,
-            )
 
-            gamma_ij = abs(beta_val) * max_gamma * q_beta * q_gamma
-            sensitivity[gene][program] = round(gamma_ij, 6)
-
-    return sensitivity
+def apply_scone_refinement(
+    ota_gamma: float,
+    beta_info: Dict[str, Any],
+    eqtl_info: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """
+    Refine an Ota edge using SCONE cross-regime logic.
+    
+    Inputs:
+      - ota_gamma: The composite effect size.
+      - beta_info: Mechanistic effect from Perturb-seq.
+      - eqtl_info: The "Soft Intervention" parameters (NES).
+    """
+    beta_val = beta_info.get("beta", 0.0)
+    nes_val = eqtl_info.get("nes", 0.0) if eqtl_info else 0.0
+    
+    # Calculate Sensitivity
+    # If no eQTL is present, sensitivity is neutral (0.5)
+    if nes_val != 0:
+        sensitivity = compute_cross_regime_sensitivity(beta_val, nes_val)
+    else:
+        sensitivity = 0.5
+        
+    # Reweight Gamma
+    # High sensitivity (consistency across regimes) boosts the score
+    # Low sensitivity (regime contradiction) penalizes the score
+    refined_gamma = ota_gamma * (2 * sensitivity)
+    
+    return {
+        "refined_gamma": round(refined_gamma, 6),
+        "scone_sensitivity": round(sensitivity, 4),
+        "regime_consistency": "high" if sensitivity > 0.7 else "low",
+        "intervention_type": "soft_eqtl" if nes_val != 0 else "none"
+    }
 
 
 def polybic_score(
@@ -128,211 +145,210 @@ def polybic_score(
     n_samples: int = 1000,
 ) -> float:
     """
-    PolyBIC score for a proposed causal edge.
+    Compute PolyBIC score for a single causal edge.
 
-    BIC = log|γ_ota| - (k/2) × log(n)
+    Score = log(|gamma| + ε) - (k/2) * log(n_samples)
 
-    where k = complexity cost (tier-dependent) and n = effective sample size.
-
-    Higher score = stronger evidence for edge existence.
+    Higher is better.  Tier 1 edges have lower complexity penalty (k=1) so
+    the same gamma yields a higher score than provisional_virtual (k=10).
 
     Args:
-        ota_gamma:      Ota composite γ_{gene→trait}
-        evidence_tier:  Evidence tier of the dominant β/γ
-        n_samples:      Effective GWAS sample size (default 1000 as conservative minimum)
+        ota_gamma:     OTA gamma value for the edge
+        evidence_tier: Evidence tier string
+        n_samples:     Effective sample size (default 1000)
 
     Returns:
-        BIC score (higher = better supported edge)
+        Float PolyBIC score
     """
-    if ota_gamma == 0.0:
-        return float("-inf")
-    k = _BIC_COMPLEXITY.get(evidence_tier, 5.0)
-    log_likelihood = math.log(abs(ota_gamma) + 1e-10)
-    penalty = (k / 2.0) * math.log(max(n_samples, 2))
-    return log_likelihood - penalty
+    k = {
+        "Tier1_Interventional":  1.0,
+        "Tier1_Perturb_seq":     1.0,
+        "Tier2_Convergent":      2.0,
+        "Tier2_eQTL_MR":         2.0,
+        "Tier3_Provisional":     4.0,
+        "provisional_virtual":  10.0,
+    }.get(evidence_tier, 5.0)
+    return math.log(abs(ota_gamma) + 1e-10) - (k / 2.0) * math.log(max(n_samples, 2))
 
 
 def bootstrap_edge_confidence(
     gene: str,
-    beta_matrix_row: dict[str, Any],
-    gamma_matrix: dict[str, dict[str, float]],
+    beta_matrix_row: Dict[str, Any],
+    gamma_matrix: Dict[str, Any],
     ota_gamma_fn: Any,
-    n_bootstrap: int = BOOTSTRAP_N,
-    noise_scale: float = 0.15,
-) -> dict[str, float]:
+    n_bootstrap: int = 30,
+) -> Dict[str, float]:
     """
-    Bootstrap confidence for each (gene, program→trait) edge.
+    Estimate bootstrap confidence interval for the OTA gamma of a gene.
 
-    Adds Gaussian noise to β values (proportional to tier uncertainty) and
-    recomputes Ota γ n_bootstrap times.  Returns the fraction of samples
-    in which |ota_gamma| > GAMMA_THRESHOLD.
+    Resamples beta values with Gaussian noise (scaled to beta magnitude) and
+    recomputes OTA gamma n_bootstrap times, returning mean and 95% CI.
 
     Args:
         gene:             Gene symbol
-        beta_matrix_row:  {program: {"beta": float, "evidence_tier": str} | None}
-        gamma_matrix:     {program: {trait: float}}
-        ota_gamma_fn:     `compute_ota_gamma` function from ota_gamma_estimation
-        n_bootstrap:      Number of bootstrap samples
-        noise_scale:      Relative noise added per tier (0.15 = 15% of |β|)
+        beta_matrix_row:  Dict of {program_id: beta_info} for this gene
+        gamma_matrix:     Program gamma estimates
+        ota_gamma_fn:     Callable(gene, beta_row, gamma_estimates) → float
+        n_bootstrap:      Number of bootstrap replicates
 
     Returns:
-        {trait: confidence_fraction}  — fraction of bootstraps where edge survived
+        {"mean": float, "ci_lower": float, "ci_upper": float, "cv": float}
     """
-    # Collect all traits
-    traits: set[str] = set()
-    for prog_gammas in gamma_matrix.values():
-        traits.update(prog_gammas.keys())
-    if not traits:
-        return {}
-
-    edge_counts: dict[str, int] = {t: 0 for t in traits}
-
+    gammas: List[float] = []
     for _ in range(n_bootstrap):
-        # Perturb β values by tier-scaled noise
-        noisy_betas: dict[str, Any] = {}
-        for prog, entry in beta_matrix_row.items():
-            if entry is None:
-                noisy_betas[prog] = None
-                continue
-            if isinstance(entry, dict):
-                beta_val  = entry.get("beta") or 0.0
-                beta_tier = entry.get("evidence_tier", "provisional_virtual")
-            else:
-                beta_val  = float(entry)
-                beta_tier = "provisional_virtual"
-
-            # Noise proportional to tier uncertainty (Tier1 = 15%, Virtual = 60%)
-            tier_noise_mult = {
-                "Tier1_Interventional": 0.15,
-                "Tier2_Convergent":     0.25,
-                "Tier3_Provisional":    0.40,
-                "provisional_virtual":  0.60,
-            }.get(beta_tier, 0.40)
-
-            noise = random.gauss(0, abs(beta_val) * tier_noise_mult + 1e-6)
-            noisy_betas[prog] = {
-                "beta":          beta_val + noise,
-                "evidence_tier": beta_tier,
-            }
-
-        # Build tier-matched γ format for compute_ota_gamma
-        # Handles both {trait: float} and {trait: dict} gamma_matrix shapes.
-        for trait in traits:
-            trait_gammas: dict[str, dict] = {}
-            for prog, prog_gammas in gamma_matrix.items():
-                g_entry = prog_gammas.get(trait, 0.0)
-                if isinstance(g_entry, dict):
-                    trait_gammas[prog] = g_entry  # already full dict with evidence_tier
+        # Perturb each beta by ±20% Gaussian noise
+        noisy_row: Dict[str, Any] = {}
+        for pid, binfo in beta_matrix_row.items():
+            if isinstance(binfo, dict):
+                b = binfo.get("beta")
+                if b is not None:
+                    noise = np.random.normal(0, abs(b) * 0.20 + 1e-6)
+                    noisy_row[pid] = {**binfo, "beta": b + noise}
                 else:
-                    trait_gammas[prog] = {"gamma": float(g_entry or 0.0), "evidence_tier": "Tier3_Provisional"}
+                    noisy_row[pid] = binfo
+            else:
+                noisy_row[pid] = binfo
+        try:
+            g = ota_gamma_fn(gene, noisy_row, gamma_matrix)
+            if isinstance(g, (int, float)) and not math.isnan(g):
+                gammas.append(float(g))
+        except Exception:
+            pass
 
-            try:
-                result = ota_gamma_fn(
-                    gene=gene,
-                    trait=trait,
-                    beta_estimates=noisy_betas,
-                    gamma_estimates=trait_gammas,
-                )
-                if abs(result.get("ota_gamma", 0.0)) > GAMMA_THRESHOLD:
-                    edge_counts[trait] += 1
-            except Exception:
-                pass
+    if not gammas:
+        return {"mean": 0.0, "ci_lower": 0.0, "ci_upper": 0.0, "cv": 1.0}
 
-    return {t: round(c / n_bootstrap, 3) for t, c in edge_counts.items()}
+    gammas_arr = np.array(gammas)
+    mean = float(np.mean(gammas_arr))
+    ci_lower = float(np.percentile(gammas_arr, 2.5))
+    ci_upper = float(np.percentile(gammas_arr, 97.5))
+    cv = float(np.std(gammas_arr) / (abs(mean) + 1e-10))
+    return {"mean": round(mean, 4), "ci_lower": round(ci_lower, 4),
+            "ci_upper": round(ci_upper, 4), "cv": round(cv, 4)}
+
+
+_BOOTSTRAP_CONFIDENCE_THRESHOLD = 0.50
 
 
 def apply_scone_reweighting(
-    gene_gamma_records: dict[str, dict],
-    sensitivity_matrix: dict[str, dict[str, float]],
-    bic_scores: dict[str, float],
-    bootstrap_confidence: dict[str, dict[str, float]],
-    min_bootstrap_confidence: float = BOOTSTRAP_FRACTION,
-    anchor_gene_set: set[str] | None = None,
-) -> dict[str, dict]:
+    gene_gamma_records: Dict[str, Any],
+    sensitivity_matrix: Any,
+    bic_scores: Dict[str, float],
+    bootstrap_confidence: Dict[str, Any],
+    anchor_gene_set: Optional[set] = None,
+) -> Dict[str, Any]:
     """
-    Apply SCONE reweighting to Ota γ edge records.
+    Reweight gene-gamma records using SCONE BIC scores and bootstrap confidence.
 
-    Modifies each record's `ota_gamma` by multiplying with the SCONE confidence
-    composite:  γ_scone = γ_ota × Γ_sensitivity × sigmoid(BIC) × bootstrap_confidence
+    Bootstrap rejection:
+        Keys are expected in "GENE__TRAIT" format.
+        If bootstrap_confidence[gene][trait] < 0.50, the record is rejected:
+        ota_gamma → 0.0, "bootstrap_rejected" added to scone_flags.
 
-    Edges that fail the bootstrap confidence threshold are downgraded to
-    provisional_virtual and their γ is zeroed out.
+    BIC reweighting (for non-rejected records):
+        reweight_factor = sigmoid(bic_score)
+        adjusted_gamma  = ota_gamma * clamp(reweight_factor, 0.1, 2.0)
 
-    Disease anchor genes are exempt from bootstrap zeroing — they have established
-    genetic/clinical evidence even when Perturb-seq β is provisional/virtual, so
-    the low bootstrap confidence reflects β uncertainty, not false-positive risk.
+    Anchor protection:
+        Anchor genes are never reduced below 80% of original gamma.
 
     Args:
-        gene_gamma_records:   {gene__trait: rec} from causal_discovery_agent
-        sensitivity_matrix:   {gene: {program: Γ_ij}} from compute_cross_regime_sensitivity
-        bic_scores:           {gene__trait: BIC_score}
-        bootstrap_confidence: {gene: {trait: confidence}}
-        min_bootstrap_confidence: edges below this are zeroed (anchor genes exempt)
-        anchor_gene_set:      Set of disease anchor gene symbols exempt from bootstrap filter
+        gene_gamma_records:   Dict keyed by "GENE__TRAIT" strings
+        sensitivity_matrix:   Output of compute_cross_regime_sensitivity (used for
+                              future directional adjustment; currently informational)
+        bic_scores:           {key: polybic_score} per record
+        bootstrap_confidence: {gene: {trait: confidence_float}} or
+                              {gene: {mean, ci_lower, ci_upper, cv}}
+        anchor_gene_set:      Set of anchor gene symbols (optional, default empty)
 
     Returns:
-        Updated gene_gamma_records dict (same structure, modified in place copy)
+        Adjusted gene_gamma_records dict (same keys, ota_gamma updated in-place copy)
     """
-    import math
-    updated = {}
-    _anchors = anchor_gene_set or set()
+    if anchor_gene_set is None:
+        anchor_gene_set = set()
 
+    adjusted: Dict[str, Any] = {}
     for key, rec in gene_gamma_records.items():
-        gene  = rec["gene"]
-        trait = rec["trait"]
-        ota   = rec["ota_gamma"]
+        rec = dict(rec)  # shallow copy
+        rec.setdefault("scone_flags", [])
 
-        # Bootstrap confidence filter
-        bc = bootstrap_confidence.get(gene, {}).get(trait, 1.0)
-        if bc < min_bootstrap_confidence:
-            # Anchor genes are exempt: their disease association is well-validated
-            # even when virtual β is noisy. Pass through with explicit flag.
-            if gene in _anchors:
-                # Continue to SCONE reweighting below (do not zero out)
-                pass
-            else:
-                # Demote below threshold — zero the edge and mark provisional
-                new_rec = dict(rec)
-                new_rec["ota_gamma"]     = 0.0
-                new_rec["dominant_tier"] = "provisional_virtual"
-                new_rec["scone_confidence"] = bc
-                new_rec["scone_flags"] = ["bootstrap_rejected"]
-                updated[key] = new_rec
-                continue
-
-        # Aggregate sensitivity — max Γ_ij across programs for this gene
-        gene_sens = sensitivity_matrix.get(gene, {})
-        max_sens  = max(gene_sens.values(), default=1.0) or 1.0
-        # Normalize to [0.5, 1.0] range — never zero a strong edge entirely
-        sens_factor = 0.5 + 0.5 * min(max_sens / (max_sens + 0.1), 1.0)
-
-        # Anchor genes bypass the BIC multiplicative penalty regardless of tier.
-        # Their disease association is validated by independent GWAS/clinical
-        # evidence; a small ota_gamma reflects a narrow program pathway, not a
-        # spurious edge.  Tier2/Tier3 anchor genes have the same BIC bypass as
-        # provisional_virtual anchors.  Apply only sensitivity × bootstrap scaling.
-        if gene in _anchors:
-            scone_gamma = ota * sens_factor * bc
-            bic_factor  = float("nan")  # not applicable
-            scone_flags = ["anchor_scone_exempt"]
+        # Parse gene and trait from key ("GENE__TRAIT")
+        if "__" in str(key):
+            gene, trait = str(key).split("__", 1)
         else:
-            # BIC-based confidence boost (sigmoid of BIC)
-            bic = bic_scores.get(key, 0.0)
-            bic_factor = 1.0 / (1.0 + math.exp(-bic * 0.5))  # sigmoid
-            scone_gamma = ota * bic_factor * sens_factor * bc
-            scone_flags = []
+            gene = rec.get("gene", str(key))
+            trait = rec.get("trait", "")
 
-        new_rec = dict(rec)
-        new_rec["ota_gamma"]         = round(scone_gamma, 6)
-        new_rec["ota_gamma_raw"]     = round(ota, 6)
-        new_rec["scone_confidence"]  = bc
-        new_rec["scone_bic_factor"]  = round(bic_factor, 4) if not math.isnan(bic_factor) else None
-        new_rec["scone_sensitivity"] = round(max_sens, 4)
-        new_rec["scone_flags"]       = scone_flags
-        if bc < min_bootstrap_confidence and gene in _anchors:
-            new_rec["scone_flags"].append("anchor_bootstrap_exempt")
-        if bc < 0.7:
-            new_rec["scone_flags"].append("low_bootstrap_confidence")
-        updated[key] = new_rec
+        ota_gamma = rec.get("ota_gamma", 0.0)
 
-    return updated
+        # --- Bootstrap rejection check ---
+        bc_gene = bootstrap_confidence.get(gene, {})
+        # Support {trait: float} and {mean: float, ...} formats
+        if isinstance(bc_gene, dict) and trait in bc_gene:
+            confidence = float(bc_gene[trait])
+        elif isinstance(bc_gene, dict) and "mean" in bc_gene:
+            confidence = float(bc_gene.get("mean", 1.0))
+        else:
+            confidence = 1.0  # no bootstrap data → assume passes
+
+        # Always record bootstrap confidence on the edge record
+        rec["scone_confidence"] = round(confidence, 4)
+
+        if confidence < _BOOTSTRAP_CONFIDENCE_THRESHOLD:
+            rec["ota_gamma"] = 0.0
+            rec["scone_flags"].append("bootstrap_rejected")
+            adjusted[key] = rec
+            continue
+
+        # --- BIC reweighting ---
+        bic = bic_scores.get(key, 0.0)
+        reweight = max(0.1, min(_sigmoid(bic), 2.0))
+
+        adjusted_gamma = ota_gamma * reweight
+
+        # Protect anchors: floor at 80% of original
+        if gene in anchor_gene_set:
+            adjusted_gamma = max(adjusted_gamma, ota_gamma * 0.80)
+
+        rec["ota_gamma"] = round(adjusted_gamma, 6)
+        rec["scone_reweight_factor"] = round(reweight, 4)
+        adjusted[key] = rec
+
+    return adjusted
+
+
+def polybic_selection(
+    edges: List[Dict[str, Any]],
+    n_samples: int,
+) -> List[Dict[str, Any]]:
+    """
+    Implement SCONE PolyBIC selection to filter out over-complex causal structures.
+    
+    Penalty = (k/2) * log(n) where k is the edge complexity weighted by tier.
+    """
+    selected_edges = []
+    for edge in edges:
+        # Support both "refined_gamma" (apply_scone_refinement output) and
+        # "ota_gamma" (causal_discovery_agent stores refined value under ota_gamma)
+        gamma = edge.get("refined_gamma")
+        if gamma is None or (isinstance(gamma, float) and math.isnan(gamma)):
+            gamma = edge.get("ota_gamma", 0.0)
+        if gamma is None or (isinstance(gamma, float) and math.isnan(gamma)):
+            gamma = 0.0
+        tier = edge.get("evidence_tier") or edge.get("dominant_tier") or "provisional_virtual"
+        
+        # Complexity cost: Tier 1 (Interventional) is "cheaper" than Virtual
+        k = {
+            "Tier1_Interventional": 1.0,
+            "Tier2_Convergent": 2.0,
+            "Tier3_Provisional": 4.0,
+            "provisional_virtual": 10.0
+        }.get(tier, 5.0)
+        
+        score = math.log(abs(gamma) + 1e-10) - (k / 2.0) * math.log(n_samples)
+        
+        if score > -10: # Significance threshold
+            edge["polybic_score"] = round(score, 4)
+            selected_edges.append(edge)
+            
+    return selected_edges

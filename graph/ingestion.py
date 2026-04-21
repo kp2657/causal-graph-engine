@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, TypedDict
+from typing import Any, TYPE_CHECKING, TypedDict
 
 from models.evidence import CausalEdge
-from graph.db import GraphDB
+if TYPE_CHECKING:
+    from graph.db import GraphDB
 
 logger = logging.getLogger(__name__)
 
@@ -69,8 +70,13 @@ def _check_warning_conditions(edge: CausalEdge) -> list[str]:
             f"E-value {edge.e_value:.2f} < 2.0 — edge may be explained by unmeasured confounders."
         )
 
+    # MR validation is only meaningful for edges computed via an explicit MR method.
+    # OTA composite-γ edges (method="ota_gamma") carry genetic evidence through the
+    # β×γ product and OT colocalisation scores — they are not MR estimates and do not
+    # require bidirectional MR validation.
+    _MR_METHODS = frozenset({"mr", "two_sample_mr", "ivw", "mr_ivw", "mendelian_randomisation"})
     if edge.evidence_tier in ("Tier2_Convergent", "Tier1_Interventional"):
-        if edge.mr_ivw is None:
+        if edge.method in _MR_METHODS and edge.mr_ivw is None:
             warnings.append(
                 "Tier 1/2 edge has no MR validation — consider running bidirectional MR."
             )
@@ -85,7 +91,7 @@ def _check_warning_conditions(edge: CausalEdge) -> list[str]:
 # Main ingestion entrypoint
 # ---------------------------------------------------------------------------
 
-def ingest_edge(db: GraphDB, raw: dict[str, Any]) -> CausalEdge:
+def ingest_edge(db: "GraphDB", raw: dict[str, Any]) -> CausalEdge:
     """
     Validate and write a single causal edge to the graph.
 
@@ -129,7 +135,7 @@ class IngestionResult(TypedDict):
     rejected: list[tuple[dict, str]]   # (raw_edge, error_message)
 
 
-def ingest_edges(db: GraphDB, raw_edges: list[dict[str, Any]]) -> IngestionResult:
+def ingest_edges(db: "GraphDB", raw_edges: list[dict[str, Any]]) -> IngestionResult:
     """
     Batch ingest. Continues on IngestionError, collects failures explicitly.
 
@@ -163,7 +169,7 @@ def ingest_edges(db: GraphDB, raw_edges: list[dict[str, Any]]) -> IngestionResul
 # Internal DB write dispatcher
 # ---------------------------------------------------------------------------
 
-def _ensure_nodes(db: GraphDB, edge: CausalEdge) -> None:
+def _ensure_nodes(db: "GraphDB", edge: CausalEdge) -> None:
     """Upsert source and target nodes so MATCH succeeds in write_causes_trait_edge."""
     _from_type_to_node = {
         "gene":    "Gene",
@@ -190,7 +196,7 @@ def _ensure_nodes(db: GraphDB, edge: CausalEdge) -> None:
         logger.log(_level, "upsert_node(%s, %s) failed: %s", to_node_type, edge.to_node, exc)
 
 
-def _write_edge(db: GraphDB, edge: CausalEdge) -> None:
+def _write_edge(db: "GraphDB", edge: CausalEdge) -> None:
     """Route edge to the correct DB writer based on to_type."""
     payload = edge.model_dump()
     payload["created_at"] = payload["created_at"].isoformat()

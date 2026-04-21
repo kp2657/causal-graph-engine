@@ -32,6 +32,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import httpx
 
+from pipelines.api_cache import api_cached
+
 try:
     import fastmcp
     mcp = fastmcp.FastMCP("finngen-server")
@@ -66,6 +68,7 @@ EFO_TO_FINNGEN: dict[str, str] = {
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_finngen_phenotype_info(phenocode: str) -> dict:
     """Get FinnGen R10 phenotype metadata (n_cases, n_controls, category). Also accepts EFO ID — will auto-resolve to FinnGen phenocode via EFO_TO_FINNGEN."""
     if phenocode.startswith("EFO_"):
@@ -103,6 +106,7 @@ def get_finngen_phenotype_info(phenocode: str) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_finngen_top_variants(
     phenocode: str,
     p_threshold: float = 5e-8,
@@ -117,7 +121,7 @@ def get_finngen_top_variants(
         resp = httpx.get(
             f"{FINNGEN_API}/variants",
             params={"phenocode": phenocode},
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         all_variants = resp.json()
@@ -158,6 +162,7 @@ def get_finngen_top_variants(
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_finngen_gene_associations(
     phenocode: str,
     gene: str,
@@ -172,7 +177,7 @@ def get_finngen_gene_associations(
         resp = httpx.get(
             f"{FINNGEN_API}/variants",
             params={"phenocode": phenocode, "gene": gene},
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         all_variants = resp.json()
@@ -220,7 +225,7 @@ def list_finngen_phenotypes(
     """List available FinnGen R10 phenotypes. Filter by keyword or disease category. Useful for discovering relevant endpoints for a new disease."""
     try:
         time.sleep(_DELAY)
-        resp = httpx.get(f"{FINNGEN_API}/phenos", timeout=30)
+        resp = httpx.get(f"{FINNGEN_API}/phenos", timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0))
         resp.raise_for_status()
         all_phenos = resp.json()
 
@@ -259,6 +264,7 @@ def list_finngen_phenotypes(
         return {"phenotypes": [], "error": str(exc)}
 
 
+@api_cached(ttl_days=90)
 def efo_to_finngen_phenocode(efo_id: str) -> str | None:
     """Helper: resolve EFO ID to FinnGen phenocode, or None if not mapped."""
     return EFO_TO_FINNGEN.get(efo_id)

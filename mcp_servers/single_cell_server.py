@@ -169,7 +169,7 @@ def query_cellxgene_gene_summary(
             params={
                 "organism_ontology_term_id": "NCBITaxon:9606" if organism == "Homo sapiens" else "NCBITaxon:10090",
             },
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         # If endpoint returns data, parse it
         if resp.status_code == 200:
@@ -227,7 +227,7 @@ def list_cellxgene_datasets(
         resp = httpx.get(
             f"{CELLXGENE_API}/curation/v1/collections",
             params={"visibility": "PUBLIC"},
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         if resp.status_code == 200:
             collections = resp.json()
@@ -547,6 +547,46 @@ def _bc_from_vector(tpm_values: list[float]) -> float:
     return (skew ** 2 + 1.0) / denom
 
 
+def _resolve_gtex_gencode_id_live(gene_symbol: str) -> str | None:
+    """HTTP call: gene symbol → versioned Gencode ID via GTEx reference API."""
+    try:
+        resp = httpx.get(
+            f"{GTEX_V10_API}/reference/gene",
+            params={
+                "geneId":        gene_symbol,
+                "gencodeVersion": "v26",
+                "genomeBuild":   "GRCh38/hg38",
+                "pageSize":      1,
+            },
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        genes = resp.json().get("data", [])
+        if genes:
+            return genes[0].get("gencodeId")
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_gtex_gencode_id(gene_symbol: str) -> str | None:
+    """
+    Resolve a gene symbol to its versioned Gencode ID via GTEx reference API.
+    Returns e.g. "ENSG00000169174.10" or None on failure.
+    Results are persisted in the SQLite API cache (TTL 365 days) — gene→gencodeId
+    mappings are stable across GTEx releases.
+    """
+    try:
+        from pipelines.api_cache import get_cache
+        return get_cache().get_or_set(
+            "_resolve_gtex_gencode_id", (gene_symbol,), {},
+            lambda: _resolve_gtex_gencode_id_live(gene_symbol),
+            ttl_days=365,
+        )
+    except Exception:
+        return _resolve_gtex_gencode_id_live(gene_symbol)
+
+
 def _query_gtex_v10_median_expression(gene_symbol: str) -> list[float] | None:
     """
     Query GTEx v10 REST API for median gene expression across all tissues.
@@ -557,11 +597,14 @@ def _query_gtex_v10_median_expression(gene_symbol: str) -> list[float] | None:
     Returns sorted list of median TPM values, or None on failure.
     """
     try:
+        gencode_id = _resolve_gtex_gencode_id(gene_symbol)
+        if not gencode_id:
+            return None
         resp = httpx.get(
             f"{GTEX_V10_API}/expression/medianGeneExpression",
             params={
-                "geneId":    gene_symbol,
-                "datasetId": "gtex_v10",
+                "gencodeId": gencode_id,
+                "datasetId": "gtex_v8",
             },
             timeout=15.0,
         )
@@ -577,6 +620,101 @@ def _query_gtex_v10_median_expression(gene_symbol: str) -> list[float] | None:
         return tpm_values if tpm_values else None
     except Exception:
         return None
+
+
+_TISSUE_WEIGHT_CACHE: dict[tuple, float] = {}  # in-process cache (TTL: process lifetime)
+
+
+def query_gtex_tissue_weight(
+    gene_symbol: str,
+    relevant_tissues: list[str],
+) -> float:
+    """
+    Return a tissue-expression weight in [0.30, 1.0] for use in OTA beta scaling.
+
+    Genes highly expressed in disease-relevant tissues (high relevant TPM relative
+    to global median) receive weight ≈ 1.0.  Genes expressed equally everywhere
+    (ubiquitous housekeeping) receive a mild discount (~0.65).  Genes mainly
+    expressed in irrelevant tissues receive the floor weight (0.30).
+
+    The weight is the z-score of the max-relevant-TPM position in the global
+    distribution, mapped through a sigmoid-like clamp:
+      weight = clamp(0.5 + 0.5 × (max_z / 2.0), 0.30, 1.0)
+
+    Results are cached in-process to avoid redundant API calls across genes.
+
+    Args:
+        gene_symbol:       Hugo gene symbol.
+        relevant_tissues:  GTEx tissueSiteDetailId strings, e.g.
+                           ["Artery_Coronary", "Artery_Aorta", "Liver"].
+    """
+    cache_key = (gene_symbol, tuple(sorted(relevant_tissues)))
+    if cache_key in _TISSUE_WEIGHT_CACHE:
+        return _TISSUE_WEIGHT_CACHE[cache_key]
+
+    # Persistent SQLite cache — avoids two HTTP round-trips per gene on every run
+    try:
+        from pipelines.api_cache import get_cache
+        _sqlite_result = get_cache().get_or_set(
+            "query_gtex_tissue_weight",
+            (gene_symbol, tuple(sorted(relevant_tissues))),
+            {},
+            lambda: _query_gtex_tissue_weight_live(gene_symbol, relevant_tissues),
+            ttl_days=90,
+        )
+        if _sqlite_result is not None:
+            _TISSUE_WEIGHT_CACHE[cache_key] = float(_sqlite_result)
+            return float(_sqlite_result)
+    except Exception:
+        pass
+
+    weight = _query_gtex_tissue_weight_live(gene_symbol, relevant_tissues)
+    _TISSUE_WEIGHT_CACHE[cache_key] = weight
+    return weight
+
+
+def _query_gtex_tissue_weight_live(gene_symbol: str, relevant_tissues: list[str]) -> float:
+    """Raw HTTP call — no caching. Returns weight in [0.30, 1.0]."""
+    weight = 1.0
+    try:
+        import math
+        gencode_id = _resolve_gtex_gencode_id(gene_symbol)
+        if not gencode_id:
+            return weight
+        resp = httpx.get(
+            f"{GTEX_V10_API}/expression/medianGeneExpression",
+            params={"gencodeId": gencode_id, "datasetId": "gtex_v8"},
+            timeout=15.0,
+        )
+        resp.raise_for_status()
+        records = resp.json().get("data", [])
+
+        all_tpm: list[float] = []
+        relevant_tpm: list[float] = []
+        for r in records:
+            tpm = r.get("median") or r.get("medianTpm")
+            if tpm is None:
+                continue
+            tpm = float(tpm)
+            all_tpm.append(tpm)
+            if r.get("tissueSiteDetailId") in relevant_tissues:
+                relevant_tpm.append(tpm)
+
+        if all_tpm and relevant_tpm:
+            global_mean = sum(all_tpm) / len(all_tpm)
+            variance = sum((v - global_mean) ** 2 for v in all_tpm) / len(all_tpm)
+            global_std = max(variance ** 0.5, 1e-6)
+            max_relevant = max(relevant_tpm)
+            z = (max_relevant - global_mean) / global_std
+            # Sigmoid-like mapping: z ≥ +2 → 1.0; z ≈ 0 → 0.65; z ≤ −2 → 0.30
+            raw = 0.65 + 0.175 * max(-2.0, min(2.0, z))
+            weight = round(max(0.30, min(1.0, raw)), 4)
+        elif all_tpm and not relevant_tpm:
+            weight = 0.30
+    except Exception:
+        pass
+
+    return weight
 
 
 def _query_hpa_tissue_specificity(gene_symbol: str) -> dict | None:

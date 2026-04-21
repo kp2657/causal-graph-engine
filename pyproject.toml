@@ -1,11 +1,10 @@
 [project]
 name = "causal-graph-engine"
-version = "0.1.0"
+version = "0.2.0"
 requires-python = ">=3.11"
 
 dependencies = [
-    # Orchestration
-    "anthropic>=0.40.0",
+    # Orchestration (anthropic SDK optional — only needed for AGENT_MODE=sdk)
     "fastmcp>=2.0.0",
 
     # Graph database
@@ -32,6 +31,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+agentic = [
+    "anthropic>=0.40.0",
+]
 bio = [
     "anndata>=0.10.0",
     "scanpy>=1.10.0",
@@ -53,6 +55,8 @@ chem = [
 dev = [
     "pytest>=7.4.0",
     "pytest-asyncio>=0.23.0",
+    "mypy>=1.8.0",
+    "ruff>=0.3.0",
 ]
 
 [build-system]
@@ -65,3 +69,17 @@ testpaths = ["tests"]
 markers = [
     "integration: live HTTP calls to external APIs (GWAS Catalog, gnomAD, GTEx)",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]   # line length handled separately
+
+[tool.mypy]
+python_version = "3.12"
+ignore_missing_imports = true
+warn_return_any = false
+check_untyped_defs = true

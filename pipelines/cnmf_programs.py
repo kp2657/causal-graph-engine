@@ -89,6 +89,15 @@ HALLMARK_TO_PROGRAM: dict[str, str] = {
     "HALLMARK_IMMUNE_EVASION":                 "immune_evasion",
 }
 
+# Reverse map: internal program_id → list of MSigDB Hallmark names that map to it.
+# Used by GPS program screen to fetch the full Hallmark gene set for a program.
+PROGRAM_TO_HALLMARKS: dict[str, list[str]] = {}
+for _h, _p in HALLMARK_TO_PROGRAM.items():
+    PROGRAM_TO_HALLMARKS.setdefault(_p, []).append(_h)
+
+# In-process cache for the MSigDB gene set fetch (HTTP, avoid repeat calls per run)
+_MSIGDB_FULL_CACHE: dict | None = None
+
 # Disease → most relevant Hallmark programs for S-LDSC γ estimation
 DISEASE_HALLMARK_PROGRAMS: dict[str, list[str]] = {
     "CAD":  [
@@ -141,6 +150,24 @@ DISEASE_HALLMARK_PROGRAMS: dict[str, list[str]] = {
         "HALLMARK_UNFOLDED_PROTEIN_RESPONSE",
         "HALLMARK_PANCREAS_BETA_CELLS",
     ],
+    # AMD: RPE-centric programs. Complement intentionally excluded — complement proteins
+    # (CFH, C3, CFB) are liver-secreted, absent from Perturb-seq, and cannot be scored
+    # by β×γ. They are handled via OT direct-γ (genetic-only graph). All programs here
+    # are expressed in RPE/Mueller glia and scorable from h5ad.
+    "AMD": [
+        "HALLMARK_OXIDATIVE_PHOSPHORYLATION",   # mitochondrial OXPHOS — GA/RPE metabolism
+        "HALLMARK_REACTIVE_OXYGEN_SPECIES_PATHWAY",  # RPE oxidative stress
+        "HALLMARK_FATTY_ACID_METABOLISM",       # RPE lipid efflux (ABCA1, ABCA4, LIPC, APOE)
+        "HALLMARK_CHOLESTEROL_HOMEOSTASIS",     # Bruch's membrane lipid accumulation
+        "HALLMARK_ANGIOGENESIS",                # VEGF/neovascularization (wet AMD)
+        "HALLMARK_HYPOXIA",                     # RPE hypoxia → VEGF upregulation
+        "HALLMARK_APOPTOSIS",                   # RPE/photoreceptor cell death (GA)
+        "HALLMARK_UNFOLDED_PROTEIN_RESPONSE",   # drusen, RPE ER stress
+        "HALLMARK_MTORC1_SIGNALING",            # RPE autophagy/mitophagy
+        "HALLMARK_TGF_BETA_SIGNALING",          # subretinal fibrosis, CNV remodeling
+        "HALLMARK_WNT_BETA_CATENIN_SIGNALING",  # RPE epithelial integrity
+        "HALLMARK_INFLAMMATORY_RESPONSE",       # para-inflammation, microglial activation
+    ],
 }
 
 
@@ -173,15 +200,18 @@ def get_msigdb_hallmark_programs(
             "disease_filtered": bool,
         }
     """
+    global _MSIGDB_FULL_CACHE
     relevant = set(DISEASE_HALLMARK_PROGRAMS.get(disease or "", []))
 
-    try:
-        resp = httpx.get(_MSIGDB_GENE_SET_URL, timeout=timeout)
-        resp.raise_for_status()
-        raw = resp.json()
-    except Exception as exc:
-        return _hallmark_fallback(disease, error=str(exc))
+    if _MSIGDB_FULL_CACHE is None:
+        try:
+            resp = httpx.get(_MSIGDB_GENE_SET_URL, timeout=timeout)
+            resp.raise_for_status()
+            _MSIGDB_FULL_CACHE = resp.json()
+        except Exception as exc:
+            return _hallmark_fallback(disease, error=str(exc))
 
+    raw = _MSIGDB_FULL_CACHE
     programs = []
     for hallmark_name, info in raw.items():
         if relevant and hallmark_name not in relevant:
@@ -304,48 +334,185 @@ def get_programs_for_disease(
 
 def run_cnmf_pipeline(
     h5ad_path: str,
-    k_programs: int = 20,
-    n_iter: int = 200,
+    k_programs: int = 12,
+    n_iter: int = 50,
     output_dir: str = "./data/cnmf_programs",
-    cell_type: str = "K562",
+    cell_type: str = "RPE",
+    n_top_genes: int = 2000,
+    n_top_marker_genes: int = 15,
+    random_state: int = 42,
 ) -> dict:
     """
-    Run cNMF program extraction on a Perturb-seq pseudo-bulk h5ad.
+    Run NMF program extraction on a CELLxGENE h5ad.
 
-    STUB — requires the h5ad file and `pip install anndata cnmf`.
+    Uses sklearn NMF on highly variable genes (HVGs) to extract k_programs
+    latent gene expression programs.  Compatible with AMD RPE h5ad from
+    CELLxGENE (30k cells × 20k genes; disease + normal RPE cells).
 
-    Recommended inputs:
-      K562 (blood/CAD):   357 MB — https://ndownloader.figshare.com/files/35773217
-      K562 essential:      76 MB — https://ndownloader.figshare.com/files/35780870
-      Papalexi PBMCs:     ~200 MB — https://zenodo.org/record/7041690 (scPerturb)
-      Ursu iPSC neurons:  ~500 MB — https://zenodo.org/record/7041690 (scPerturb)
+    Args:
+        h5ad_path:         Path to .h5ad file (anndata format).
+        k_programs:        Number of NMF components (= programs).  Default 12
+                           matches the 12 AMD Hallmark programs.
+        n_iter:            NMF solver iterations (50 is fast; 200 for production).
+        output_dir:        Directory to write program JSON cache.
+        cell_type:         Label used in output program names.
+        n_top_genes:       Number of HVGs selected before NMF.
+        n_top_marker_genes: Top genes per program to report as markers.
+        random_state:      Reproducibility seed.
+
+    Returns:
+        dict with programs, n_programs, source, program_gene_sets, and metadata.
+        Compatible with get_programs_for_disease() output schema.
     """
     import os
     if not os.path.exists(h5ad_path):
         return {
-            "status":   "error",
+            "status":    "error",
             "h5ad_path": h5ad_path,
-            "message":  f"File not found: {h5ad_path}",
-            "note":     (
-                f"Download the {cell_type} pseudo-bulk h5ad from Figshare or scPerturb. "
-                "See PERTURB_SEQ_SOURCES in graph/schema.py for URLs."
+            "message":   f"File not found: {h5ad_path}",
+            "note":      (
+                f"Download the {cell_type} h5ad from CELLxGENE. "
+                "See data/cellxgene/{disease}/ for expected paths."
             ),
         }
 
-    # When implemented:
-    # import anndata, cnmf
-    # adata = anndata.read_h5ad(h5ad_path)
-    # model = cnmf.cNMF(output_dir=output_dir, name=cell_type)
-    # model.prepare(counts_fn=h5ad_path, components=k_programs, n_iter=n_iter, ...)
-    # model.factorize(worker_i=0, total_workers=1)
-    # model.combine(components=k_programs, skip_missing_files=True)
-    # usage, spectra, top_genes = model.load_results(K=k_programs, density_threshold=2.00)
+    try:
+        import anndata
+        import numpy as np
+        from sklearn.decomposition import NMF
+        from scipy.sparse import issparse
+    except ImportError as exc:
+        return {
+            "status": "error",
+            "message": f"Missing dependency: {exc}. Run: pip install anndata scikit-learn scipy",
+        }
+
+    # --- Load h5ad --------------------------------------------------------
+    adata = anndata.read_h5ad(h5ad_path)
+
+    # --- Erythrocyte contamination filter ---------------------------------
+    # RPE h5ads from CELLxGENE contain residual erythrocytes whose extreme
+    # hemoglobin expression dominates HVG selection and produces uninformative
+    # NMF programs (HBB, HBA2, ALAS2, AHSP, etc.).  These genes are removed
+    # before HVG selection so NMF captures RPE biology, not red-cell noise.
+    _ERYTHROCYTE_GENES = frozenset({
+        # Hemoglobin subunits
+        "HBB", "HBA1", "HBA2", "HBD", "HBE1", "HBG1", "HBG2",
+        "HBZ", "HBM", "HBQ1",
+        # Heme biosynthesis (erythrocyte-specific isoform)
+        "ALAS2",
+        # Alpha-hemoglobin stabilising protein
+        "AHSP",
+        # Erythrocyte membrane / cytoskeleton
+        "SPTA1", "SPTB", "ANK1", "KCNN4",
+        # Glycophorins
+        "GYPA", "GYPB", "GYPC", "GYPE",
+        # Other strong erythroid markers
+        "CA1", "CA2", "BLVRB", "DMTN", "EPB42",
+    })
+
+    # Resolve gene symbols from var (use feature_name if available)
+    if "feature_name" in adata.var.columns:
+        all_gene_symbols = np.array(adata.var["feature_name"].tolist())
+    else:
+        all_gene_symbols = np.array(adata.var_names)
+
+    erythrocyte_mask = np.array([g in _ERYTHROCYTE_GENES for g in all_gene_symbols])
+    n_filtered = erythrocyte_mask.sum()
+
+    # --- HVG selection via coefficient of variation -----------------------
+    X = adata.X
+    if issparse(X):
+        X = X.toarray()
+    X = X.astype(np.float32)
+
+    # Zero out erythrocyte columns so they never rank in top HVGs
+    if n_filtered > 0:
+        X[:, erythrocyte_mask] = 0.0
+
+    gene_means = X.mean(axis=0)
+    gene_stds  = X.std(axis=0)
+
+    # Coefficient of variation (CV); avoid divide-by-zero for zero-mean genes
+    gene_cv = np.where(gene_means > 0, gene_stds / gene_means, 0.0)
+
+    # Keep top n_top_genes by CV
+    n_hvg = min(n_top_genes, X.shape[1])
+    hvg_idx = np.argsort(gene_cv)[-n_hvg:]
+
+    X_hvg = X[:, hvg_idx]
+    gene_names = all_gene_symbols[hvg_idx]
+
+    # Log1p-normalise counts (total-count normalise then log1p)
+    row_sums = X_hvg.sum(axis=1, keepdims=True)
+    row_sums = np.where(row_sums == 0, 1.0, row_sums)
+    X_norm = np.log1p(X_hvg / row_sums * 1e4)
+
+    # --- NMF ---------------------------------------------------------------
+    model = NMF(
+        n_components=k_programs,
+        init="nndsvda",
+        max_iter=n_iter,
+        random_state=random_state,
+        l1_ratio=0.0,
+        alpha_W=0.0,
+        alpha_H="same",
+    )
+    W = model.fit_transform(X_norm)   # (n_cells, k_programs)
+    H = model.components_             # (k_programs, n_hvg_genes)
+
+    # --- Extract top marker genes per program ------------------------------
+    # Programs stored as dicts with gene_set field so _get_gamma_estimates
+    # can use them directly without a separate get_program_gene_loadings call.
+    programs_as_dicts: list[dict] = []
+
+    for k in range(k_programs):
+        loadings = H[k]
+        top_idx  = np.argsort(loadings)[-n_top_marker_genes:][::-1]
+        top_genes = [str(gene_names[i]) for i in top_idx]
+        prog_name = f"{cell_type}_NMF_P{k+1:02d}_{top_genes[0]}"
+        programs_as_dicts.append({
+            "program_id": prog_name,
+            "gene_set":   top_genes,
+            "n_genes":    len(top_genes),
+            "cell_type":  cell_type,
+            "source":     f"cNMF_{cell_type}",
+        })
+
+    # --- Persist to JSON cache -------------------------------------------
+    # Filename matches what get_programs_for_disease looks for.
+    out_path = Path(output_dir) / f"{cell_type}_programs.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    cache = {
+        "cell_type":   cell_type,
+        "h5ad_path":   h5ad_path,
+        "k_programs":  k_programs,
+        "n_cells":     int(adata.n_obs),
+        "n_hvg":       n_hvg,
+        "programs":    programs_as_dicts,
+        "n_programs":  len(programs_as_dicts),
+    }
+    try:
+        with open(out_path, "w") as fh:
+            json.dump(cache, fh, indent=2)
+    except Exception:
+        pass  # non-fatal
 
     return {
-        "status":    "stub",
-        "h5ad_path": h5ad_path,
-        "cell_type": cell_type,
-        "note":      "STUB — implement after: pip install anndata cnmf",
+        "status":      "success",
+        "programs":    programs_as_dicts,
+        "n_programs":  len(programs_as_dicts),
+        "source":              f"sklearn_NMF_k{k_programs}_{cell_type}",
+        "cell_type":           cell_type,
+        "h5ad_path":           h5ad_path,
+        "n_cells":             int(adata.n_obs),
+        "n_hvg":               n_hvg,
+        "n_erythrocyte_genes_filtered": int(n_filtered),
+        "note":                (
+            f"sklearn NMF k={k_programs}, {n_hvg} HVGs, {n_iter} iter. "
+            f"{n_filtered} erythrocyte contamination genes zeroed before HVG selection. "
+            "Top marker genes per program extracted by H-matrix loading magnitude."
+        ),
     }
 
 

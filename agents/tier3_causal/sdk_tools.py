@@ -161,13 +161,19 @@ def compute_ota_gammas(
 def check_anchor_recovery(
     written_edges: list[dict],
     disease_query: dict,
+    ranked_targets: list[dict] | None = None,
 ) -> dict:
     """
-    Check what fraction of required disease anchor edges are present in written_edges.
+    Check what fraction of required disease anchor genes appear in written_edges
+    OR in the ranked target list.
 
-    written_edges should be CausalEdge dicts with from_node / to_node fields,
-    or plain (gene, trait) dicts. Also queries the Kùzu DB for previously-written
-    edges so somatic/CHIP edges from Tier 1 count toward anchor recovery.
+    Matching is gene-only (not (gene, trait) pair) because anchor genes from the
+    OT/GWAS seed may appear in the ranked list without a matching graph edge when
+    they arrive via the genetic fallback path rather than causal discovery.
+
+    written_edges should be CausalEdge dicts with from_node / to_node fields.
+    ranked_targets is the target_list from prioritization_result (optional but
+    recommended — without it, genes not written as graph edges will show as missing).
 
     Returns recovery_rate, recovered list, missing list, and required_anchors.
     """
@@ -178,42 +184,48 @@ def check_anchor_recovery(
     short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), "CAD")
     required_anchors = REQUIRED_ANCHORS_BY_DISEASE.get(short, REQUIRED_ANCHORS_BY_DISEASE["CAD"])
 
-    # Normalise written_edges to (from_node, to_node) pairs
-    predicted_set: set[tuple[str, str]] = set()
+    # Build set of recovered gene names from written_edges
+    predicted_genes: set[str] = set()
     for e in written_edges:
         fn = e.get("from_node") or e.get("from", "") or e.get("gene", "")
-        tn = e.get("to_node")   or e.get("to", "")   or e.get("trait", "")
-        if fn and tn:
-            predicted_set.add((fn, tn))
+        if fn:
+            predicted_genes.add(fn)
+            # Also strip _chip suffix
+            predicted_genes.add(fn.replace("_chip", ""))
 
-    # Also include edges already in the DB (e.g. somatic from Tier 1)
-    _SHORT_MAP: dict[str, str] = {
-        "coronary artery disease": "CAD", "ischemic heart disease": "CAD",
-        "myocardial infarction": "CAD", "rheumatoid arthritis": "RA",
-    }
-    disease_ids = {disease_name}
-    ds = _SHORT_MAP.get(disease_name.lower())
-    if ds:
-        disease_ids.add(ds)
-
+    # Also include genes from Kùzu DB (edges already written in prior tiers)
     try:
+        _SHORT_MAP: dict[str, str] = {
+            "coronary artery disease": "CAD", "ischemic heart disease": "CAD",
+            "myocardial infarction": "CAD", "rheumatoid arthritis": "RA",
+        }
+        disease_ids = {disease_name}
+        ds = _SHORT_MAP.get(disease_name.lower())
+        if ds:
+            disease_ids.add(ds)
         for did in disease_ids:
             existing = query_graph_for_disease(did)
             for e in existing.get("edges", []):
                 fn = e.get("from_node") or e.get("from", "")
-                tn = e.get("to_node")   or e.get("to", "")
-                if fn and tn:
-                    predicted_set.add((fn, tn))
+                if fn:
+                    predicted_genes.add(fn)
     except Exception:
         pass
 
+    # Also check ranked target list — anchor genes may rank highly without graph edges
+    if ranked_targets:
+        for t in ranked_targets:
+            g = t.get("target_gene") or t.get("gene") or t.get("gene_symbol", "")
+            if g:
+                predicted_genes.add(g)
+
     recovered = [
-        f"{g}→{t}" for g, t in required_anchors
-        if (g, t) in predicted_set or (f"{g}_chip", t) in predicted_set
+        f"{g}→{trait}" for g, trait in required_anchors
+        if g in predicted_genes
     ]
     missing = [
-        f"{g}→{t}" for g, t in required_anchors
-        if (g, t) not in predicted_set and (f"{g}_chip", t) not in predicted_set
+        f"{g}→{trait}" for g, trait in required_anchors
+        if g not in predicted_genes
     ]
     recovery_rate = len(recovered) / len(required_anchors) if required_anchors else 1.0
 

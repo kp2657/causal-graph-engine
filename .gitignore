@@ -1,9 +1,26 @@
+# Secrets — never commit
 .env
+
+# Data and graph databases
 data/
+
+# Run logs (contain API traces and personal data)
+*.log
+amd_run_v2.log
+poag_run_v2.log
+
+# Internal research / presentation outputs
+AMD_*.md
+dynamical_state_space_redesign_for_claude.md
+CHANGELOG_archive.md
+
+# Python artifacts
 __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
 dist/
+
+# Other
 .dvc/
 .DS_Store

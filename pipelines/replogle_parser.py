@@ -1,45 +1,48 @@
 """
-replogle_parser.py — Pseudo-bulk Perturb-seq β extractor (Replogle 2022 K562).
+replogle_parser.py — Disease/dataset-aware Perturb-seq β extractor.
 
-Reads the Replogle et al. 2022 K562 essential screen pseudo-bulk h5ad
-(Figshare file 35770934, ~357 MB) and computes quantitative β estimates
+Reads a Replogle 2022 pseudo-bulk h5ad and computes quantitative β estimates
 for the Ota framework:
 
   β_{gene→program} = pseudobulk_log2FC(gene KO) projected onto program loadings
+
+Supported datasets (keyed by scperturb_dataset in DISEASE_CELL_TYPE_MAP):
+  replogle_2022_rpe1  — RPE1 retinal epithelial, 2393 knockouts  (AMD)
+  replogle_2022_k562  — K562 CML, 9866 knockouts                 (generic)
 
 The h5ad pseudo-bulk format (Replogle 2022):
   obs_names : perturbed gene symbols (one row per guide/perturbation)
   var_names : output gene symbols measured after perturbation
   X         : normalized expression matrix (log1p CPM or similar)
-  obs.cols  : 'gene', 'n_cells', 'guide_id', etc.
 
 Algorithm:
-  1. Identify non-targeting (control) observations by looking for obs where
-     gene ∈ {"non-targeting", "AAVS1", "control", "safe_harbor"}.
+  1. Identify non-targeting (control) observations.
   2. Compute control mean expression per output gene.
   3. For each perturbed gene KO:
        log2FC[gene_KO, output_gene] = mean_KO[output_gene] − control_mean[output_gene]
        SE[gene_KO, output_gene]   = pooled_SE estimated from within-KO variance
   4. Project log2FC vector onto each program's gene loadings:
        β_{gene_KO → program} = Σ_g (log2FC[gene_KO, g] × loading[program, g])
-       SE_β = sqrt(Σ_g (SE[gene_KO, g]² × loading[program, g]²))
-  5. Return dict keyed by perturbed gene:
-       {gene: {"programs": {program_name: {beta, se, ci_lower, ci_upper}}}}
+  5. Return dict keyed by perturbed gene.
 
 Caching:
-  Parsed results are cached to data/replogle_cache.json on first run.
-  Subsequent calls load from cache in <1s.
+  Results cached to data/perturbseq/{dataset_id}/beta_cache_{programs_hash}.json.
+  Cache is automatically invalidated when program gene sets change.
 
 Usage:
   from pipelines.replogle_parser import load_replogle_betas
-  perturbseq_data = load_replogle_betas(program_gene_sets=my_programs)
-  # Then pass to estimate_beta_tier1(gene, program, perturbseq_data=...)
+  betas = load_replogle_betas(
+      program_gene_sets=my_programs,
+      dataset_id="replogle_2022_rpe1",
+  )
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
@@ -51,8 +54,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Paths
 # ---------------------------------------------------------------------------
 _ROOT = Path(__file__).parent.parent
-_H5AD_PATH = _ROOT / "data" / "replogle_2022_k562_essential.h5ad"
-_CACHE_PATH = _ROOT / "data" / "replogle_cache.json"
+_PERTURBSEQ_DIR = _ROOT / "data" / "perturbseq"
 
 # Non-targeting control obs names (checked case-insensitively)
 _CONTROL_LABELS = frozenset({
@@ -67,11 +69,147 @@ _MIN_CELLS = 5
 # 95% CI multiplier
 _Z95 = 1.96
 
+# ---------------------------------------------------------------------------
+# Dataset registry — maps scperturb_dataset → h5ad access info
+# Keeps replogle_parser self-contained (no MCP import needed).
+# ---------------------------------------------------------------------------
+_DATASET_H5AD_REGISTRY: dict[str, dict] = {
+    "replogle_2022_rpe1": {
+        "figshare_file_id": 35775512,
+        "filename":         "rpe1_normalized_bulk_01.h5ad",
+        "size_gb":          0.10,
+    },
+    "replogle_2022_k562": {
+        "figshare_file_id": 35773217,
+        "filename":         "K562_gwps_normalized_bulk_01.h5ad",
+        "size_gb":          0.37,
+    },
+}
+
+# Keep module-level path for backward compat (old callers that don't pass dataset_id)
+_H5AD_PATH = _ROOT / "data" / "replogle_2022_k562_essential.h5ad"
+
+
+def _get_h5ad_path(dataset_id: str) -> Path:
+    """Resolve the local h5ad path for a dataset_id."""
+    reg = _DATASET_H5AD_REGISTRY.get(dataset_id)
+    if reg:
+        return _PERTURBSEQ_DIR / dataset_id / reg["filename"]
+    # Fallback: legacy K562 path
+    return _H5AD_PATH
+
+
+def _get_cache_path(dataset_id: str, program_gene_sets: dict[str, list[str]]) -> Path:
+    """
+    Compute a cache path keyed by dataset_id and a hash of program gene sets.
+    The hash is over (sorted program names, total gene count) so that adding
+    new programs or changing gene membership invalidates the cache.
+    """
+    # Hash: sorted program names + gene counts (fast, stable)
+    hash_input = "|".join(
+        f"{k}:{len(v)}" for k, v in sorted(program_gene_sets.items())
+    )
+    programs_hash = hashlib.md5(hash_input.encode()).hexdigest()[:12]
+    cache_dir = _PERTURBSEQ_DIR / dataset_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    return cache_dir / f"beta_cache_{programs_hash}.json"
+
+
+def _download_h5ad(dataset_id: str) -> Path:
+    """
+    Download the bulk h5ad for a dataset from figshare if not already present.
+    Returns the local path.
+    """
+    reg = _DATASET_H5AD_REGISTRY.get(dataset_id)
+    if not reg:
+        raise ValueError(f"Unknown dataset_id: {dataset_id!r}. "
+                         f"Known: {list(_DATASET_H5AD_REGISTRY)}")
+
+    dest_dir = _PERTURBSEQ_DIR / dataset_id
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / reg["filename"]
+
+    if dest.exists():
+        return dest
+
+    file_id = reg["figshare_file_id"]
+    # Use ndownloader.figshare.com — the figshare.com/ndownloader/... alias can
+    # return AWS WAF challenge pages (HTTP 202 + empty body) to non-browser clients.
+    url = f"https://ndownloader.figshare.com/files/{file_id}"
+    size_gb = reg["size_gb"]
+    print(f"[replogle_parser] Downloading {dataset_id} h5ad ({size_gb:.2f} GB) from figshare ...")
+    print(f"[replogle_parser]   URL: {url}")
+    print(f"[replogle_parser]   Destination: {dest}")
+
+    try:
+        urllib.request.urlretrieve(url, str(dest))
+        print(f"[replogle_parser] Download complete: {dest}")
+    except Exception as exc:
+        if dest.exists():
+            dest.unlink()
+        raise FileNotFoundError(
+            f"Failed to download {dataset_id} h5ad from {url}: {exc}\n"
+            f"Manual download:\n"
+            f"  wget '{url}' -O '{dest}'"
+        ) from exc
+
+    return dest
+
 
 def _is_control(obs_name: str) -> bool:
     """Return True if this observation is a non-targeting control."""
     base = obs_name.lower().split("_")[0]
     return base in _CONTROL_LABELS or obs_name.lower() in _CONTROL_LABELS
+
+
+def _is_control_gene_label(label: str) -> bool:
+    """True if an explicit obs['gene'] (or parsed symbol) names a control perturbation."""
+    low = label.lower()
+    if low in _CONTROL_LABELS:
+        return True
+    # e.g. "10755_non-targeting_..." stored in a gene column as "non-targeting"
+    toks = low.split("_")
+    return any(t in _CONTROL_LABELS for t in toks)
+
+
+def _infer_pert_gene_from_obs_name(obs_name: str, meta_gene: str) -> str:
+    """
+    Resolve a perturbation gene symbol for pseudo-bulk rows.
+
+    Replogle RPE1 obs_names look like:
+        ``{guide_id}_{GENE}_{phase}_ENSG...``
+    When no ``adata.obs['gene']`` column exists, callers previously fell back to
+    the full obs string, which breaks control detection and per-gene pooling.
+    """
+    if meta_gene and meta_gene != obs_name:
+        return meta_gene
+    parts = str(obs_name).split("_")
+    if len(parts) >= 2 and parts[1]:
+        return parts[1]
+    return obs_name
+
+
+def _safe_int_n_cells(value: Any) -> int:
+    """Coerce obs cell-count columns to int; NaN/invalid → 1."""
+    if value is None:
+        return 1
+    if isinstance(value, (float, np.floating)) and not np.isfinite(value):
+        return 1
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _obs_row_is_control(obs_name: str, meta: dict[str, Any]) -> bool:
+    if meta.get("core_control") is True:
+        return True
+    if _is_control(obs_name):
+        return True
+    gene_lbl = str(meta.get("gene", ""))
+    if gene_lbl and gene_lbl != obs_name and _is_control_gene_label(gene_lbl):
+        return True
+    return False
 
 
 def _load_h5ad_matrix(h5ad_path: Path) -> tuple[Any, list[str], list[str], dict]:
@@ -92,7 +230,12 @@ def _load_h5ad_matrix(h5ad_path: Path) -> tuple[Any, list[str], list[str], dict]
     X = np.asarray(X, dtype=np.float32)
 
     obs_names = list(adata.obs_names)
-    var_names = list(adata.var_names)
+    raw_var_names = list(adata.var_names)
+    # Prefer gene symbols over Ensembl IDs (programs use symbols)
+    if raw_var_names and raw_var_names[0].startswith("ENSG") and "gene_name" in adata.var.columns:
+        var_names = list(adata.var["gene_name"].astype(str).replace("nan", ""))
+    else:
+        var_names = raw_var_names
 
     # Extract obs metadata
     obs_meta: dict[str, dict] = {}
@@ -101,12 +244,16 @@ def _load_h5ad_matrix(h5ad_path: Path) -> tuple[Any, list[str], list[str], dict]
         row = obs_df.loc[obs_name] if obs_name in obs_df.index else None
         meta: dict[str, Any] = {}
         if row is not None:
-            # n_cells for pooled pseudo-bulk rows
-            for col in ("n_cells", "ncells", "num_cells", "n_umis"):
+            if "core_control" in obs_df.columns:
+                v = row.get("core_control")
+                if isinstance(v, (bool, np.bool_)):
+                    meta["core_control"] = bool(v)
+                else:
+                    meta["core_control"] = str(v).lower() in {"true", "1", "yes"}
+            for col in ("n_cells", "ncells", "num_cells", "n_umis", "num_cells_filtered"):
                 if col in obs_df.columns:
-                    meta["n_cells"] = int(row.get(col, 1))
+                    meta["n_cells"] = _safe_int_n_cells(row.get(col, 1))
                     break
-            # gene target label
             for col in ("gene", "target_gene", "perturbation", "guide_gene"):
                 if col in obs_df.columns:
                     meta["gene"] = str(row.get(col, obs_name))
@@ -115,6 +262,8 @@ def _load_h5ad_matrix(h5ad_path: Path) -> tuple[Any, list[str], list[str], dict]
             meta["gene"] = obs_name
         if "n_cells" not in meta:
             meta["n_cells"] = 1
+        # Normalize gene label when obs lacks an explicit gene column (RPE1 bulk)
+        meta["gene"] = _infer_pert_gene_from_obs_name(obs_name, meta["gene"])
         obs_meta[obs_name] = meta
 
     return X, obs_names, var_names, obs_meta
@@ -136,9 +285,8 @@ def _compute_log2fc(
     """
     n_var = X.shape[1]
 
-    # Partition indices into control and perturbation rows
-    ctrl_idx = [i for i, name in enumerate(obs_names) if _is_control(obs_meta[name]["gene"])]
-    pert_idx = [i for i, name in enumerate(obs_names) if not _is_control(obs_meta[name]["gene"])]
+    ctrl_idx = [i for i, name in enumerate(obs_names) if _obs_row_is_control(name, obs_meta[name])]
+    pert_idx = [i for i, name in enumerate(obs_names) if not _obs_row_is_control(name, obs_meta[name])]
 
     if not ctrl_idx:
         raise ValueError(
@@ -146,18 +294,15 @@ def _compute_log2fc(
             f"First 5 obs names: {obs_names[:5]}"
         )
 
-    # Control statistics
-    ctrl_X = X[ctrl_idx, :]                         # (n_ctrl, n_var)
-    ctrl_mean = ctrl_X.mean(axis=0)                 # (n_var,)
+    ctrl_X = X[ctrl_idx, :]
+    ctrl_mean = ctrl_X.mean(axis=0)
     ctrl_var = ctrl_X.var(axis=0, ddof=1) if ctrl_X.shape[0] > 1 else np.ones(n_var, dtype=np.float32)
 
-    # Group perturbation rows by gene target
     gene_to_rows: dict[str, list[int]] = {}
     for i in pert_idx:
         gene = obs_meta[obs_names[i]]["gene"]
         gene_to_rows.setdefault(gene, []).append(i)
 
-    # Filter by min cells
     valid_genes = sorted(
         g for g, rows in gene_to_rows.items()
         if sum(obs_meta[obs_names[r]]["n_cells"] for r in rows) >= _MIN_CELLS
@@ -169,11 +314,10 @@ def _compute_log2fc(
 
     for j, gene in enumerate(valid_genes):
         rows = gene_to_rows[gene]
-        pert_X = X[rows, :]                          # (n_guide, n_var)
-        pert_mean = pert_X.mean(axis=0)              # (n_var,)
-        log2fc[j, :] = pert_mean - ctrl_mean         # already log-scale
+        pert_X = X[rows, :]
+        pert_mean = pert_X.mean(axis=0)
+        log2fc[j, :] = pert_mean - ctrl_mean
 
-        # Pooled SE: sqrt((ctrl_var + pert_var) / n)
         n_pert_rows = pert_X.shape[0]
         pert_var = pert_X.var(axis=0, ddof=1) if n_pert_rows > 1 else ctrl_var
         n_ctrl = ctrl_X.shape[0]
@@ -196,15 +340,13 @@ def _project_onto_programs(
     Project gene-level log2FC vectors onto program loadings.
 
     program_gene_sets: {program_name: [gene_symbol, ...]}
-    Uses uniform unit loadings (1/sqrt(n)) within each program;
-    weights can be refined once cNMF decomposition runs on the h5ad.
+    Uses uniform unit loadings (1/sqrt(n)) within each program.
 
     Returns:
         {perturbed_gene: {"programs": {program_name: {beta, se, ci_lower, ci_upper}}}}
     """
     var_set = {g: i for i, g in enumerate(var_names)}
 
-    # Pre-compute program indices and unit loadings
     prog_data: dict[str, tuple[np.ndarray, np.ndarray]] = {}
     for prog_name, gene_list in program_gene_sets.items():
         idx = [var_set[g] for g in gene_list if g in var_set]
@@ -241,53 +383,77 @@ def _project_onto_programs(
 
 def load_replogle_betas(
     program_gene_sets: dict[str, list[str]],
+    dataset_id: str | None = None,
     h5ad_path: Path | None = None,
     cache_path: Path | None = None,
     force_recompute: bool = False,
+    auto_download: bool = True,
 ) -> dict[str, dict]:
     """
     Main entry point: load/compute quantitative Perturb-seq β matrix.
 
     Args:
-        program_gene_sets: {program_name: [gene_list]} — the programs to project onto.
-            Use cnmf_programs.get_msigdb_hallmark_programs() or your cNMF programs.
-        h5ad_path:   Path to the Replogle 2022 K562 essential h5ad.
-                     Defaults to data/replogle_2022_k562_essential.h5ad.
-        cache_path:  Path to JSON cache. Defaults to data/replogle_cache.json.
+        program_gene_sets: {program_name: [gene_list]} — programs to project onto.
+        dataset_id:     scperturb_dataset key from DISEASE_CELL_TYPE_MAP
+                        (e.g. "replogle_2022_rpe1" for AMD, "replogle_2022_k562" generic).
+                        When None, falls back to legacy K562 h5ad path.
+        h5ad_path:      Override h5ad path (bypasses registry lookup).
+        cache_path:     Override cache path (bypasses auto-keying).
         force_recompute: Skip cache and recompute from h5ad.
+        auto_download:  If True and h5ad not present, download from figshare.
 
     Returns:
         {gene: {"programs": {program_name: {beta, se, ci_lower, ci_upper}}}}
         Compatible with estimate_beta_tier1(perturbseq_data=...) quantitative path.
 
     Raises:
-        FileNotFoundError: if h5ad file not present. Download with:
-            wget "https://figshare.com/ndownloader/files/35770934" \\
-                 -O data/replogle_2022_k562_essential.h5ad
+        FileNotFoundError: if h5ad file not present and auto_download=False.
     """
-    h5ad_path = h5ad_path or _H5AD_PATH
-    cache_path = cache_path or _CACHE_PATH
+    # Resolve paths
+    if h5ad_path is None:
+        h5ad_path = _get_h5ad_path(dataset_id) if dataset_id else _H5AD_PATH
+    if cache_path is None:
+        if dataset_id:
+            cache_path = _get_cache_path(dataset_id, program_gene_sets)
+        else:
+            # Legacy: single flat cache (no program-set invalidation)
+            cache_path = _ROOT / "data" / "replogle_cache.json"
 
     # --- Cache hit ---
     if not force_recompute and cache_path.exists():
         with open(cache_path) as f:
-            return json.load(f)
+            data = json.load(f)
+        print(f"[replogle_parser] Cache hit: {cache_path} ({len(data)} genes)")
+        return data
 
-    # --- Verify h5ad present ---
+    # --- Ensure h5ad is present ---
     if not h5ad_path.exists():
-        raise FileNotFoundError(
-            f"Replogle 2022 h5ad not found at {h5ad_path}.\n"
-            "Download with:\n"
-            '  wget "https://figshare.com/ndownloader/files/35770934" \\\n'
-            "       -O data/replogle_2022_k562_essential.h5ad"
-        )
+        if auto_download and dataset_id and dataset_id in _DATASET_H5AD_REGISTRY:
+            h5ad_path = _download_h5ad(dataset_id)
+        else:
+            reg = _DATASET_H5AD_REGISTRY.get(dataset_id or "")
+            if reg:
+                file_id = reg["figshare_file_id"]
+                dest = _PERTURBSEQ_DIR / dataset_id / reg["filename"]
+                raise FileNotFoundError(
+                    f"Replogle h5ad not found at {h5ad_path}.\n"
+                    "Download with:\n"
+                    f'  wget "https://figshare.com/ndownloader/files/{file_id}" \\\n'
+                    f"       -O '{dest}'"
+                )
+            else:
+                raise FileNotFoundError(
+                    f"Replogle 2022 h5ad not found at {h5ad_path}.\n"
+                    "Pass dataset_id='replogle_2022_rpe1' or 'replogle_2022_k562' "
+                    "to enable auto-download."
+                )
 
     # --- Load and compute ---
-    print(f"[replogle_parser] Loading h5ad from {h5ad_path} ...")
+    print(f"[replogle_parser] Loading h5ad: {h5ad_path}")
     X, obs_names, var_names, obs_meta = _load_h5ad_matrix(h5ad_path)
-    print(f"[replogle_parser] Matrix shape: {X.shape} ({len(obs_names)} obs × {len(var_names)} genes)")
+    print(f"[replogle_parser] Matrix: {X.shape} ({len(obs_names)} obs × {len(var_names)} genes)")
 
-    print("[replogle_parser] Computing log2FC relative to non-targeting controls ...")
+    print("[replogle_parser] Computing log2FC vs non-targeting controls ...")
     log2fc, se_matrix, pert_genes, _ctrl_mean = _compute_log2fc(X, obs_names, obs_meta)
     print(f"[replogle_parser] {len(pert_genes)} perturbation genes with ≥{_MIN_CELLS} cells")
 
@@ -298,14 +464,32 @@ def load_replogle_betas(
     # --- Write cache ---
     with open(cache_path, "w") as f:
         json.dump(betas, f)
-    print(f"[replogle_parser] Cache written to {cache_path}")
+    print(f"[replogle_parser] Cache written: {cache_path}")
 
     return betas
 
 
-def invalidate_cache(cache_path: Path | None = None) -> None:
-    """Remove cache file so next call recomputes from h5ad."""
-    cp = cache_path or _CACHE_PATH
-    if cp.exists():
-        cp.unlink()
-        print(f"[replogle_parser] Cache invalidated: {cp}")
+def invalidate_cache(dataset_id: str | None = None, cache_path: Path | None = None) -> None:
+    """
+    Remove cache files for a dataset so next call recomputes from h5ad.
+
+    If dataset_id is given, removes all beta_cache_*.json files for that dataset.
+    If cache_path is given, removes just that file.
+    """
+    if cache_path is not None:
+        if cache_path.exists():
+            cache_path.unlink()
+            print(f"[replogle_parser] Cache invalidated: {cache_path}")
+    elif dataset_id is not None:
+        cache_dir = _PERTURBSEQ_DIR / dataset_id
+        removed = 0
+        for f in cache_dir.glob("beta_cache_*.json"):
+            f.unlink()
+            removed += 1
+        print(f"[replogle_parser] Invalidated {removed} cache file(s) for {dataset_id}")
+    else:
+        # Legacy: remove old flat cache
+        legacy = _ROOT / "data" / "replogle_cache.json"
+        if legacy.exists():
+            legacy.unlink()
+            print(f"[replogle_parser] Legacy cache invalidated: {legacy}")

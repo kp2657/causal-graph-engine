@@ -1,7 +1,6 @@
 """
 Tests for chemistry_server.py.
 
-Unit tests cover stub schemas.
 Integration tests hit ChEMBL and PubChem live APIs.
 """
 from __future__ import annotations
@@ -16,30 +15,7 @@ from mcp_servers.chemistry_server import (
     search_chembl_compound,
     get_chembl_target_activities,
     get_pubchem_compound,
-    compute_rdkit_properties,
-    run_txgemma_prediction,
-    run_admet_prediction,
 )
-
-
-class TestChemistryStubs:
-
-    def test_rdkit_stub_schema(self):
-        result = compute_rdkit_properties("CC(=O)Oc1ccccc1C(=O)O")  # Aspirin
-        assert result["smiles"] == "CC(=O)Oc1ccccc1C(=O)O"
-        assert result["mw"] is None
-        assert "STUB" in result["note"]
-
-    def test_txgemma_stub_schema(self):
-        result = run_txgemma_prediction("CC(=O)Oc1ccccc1C(=O)O")
-        assert result["prediction"] is None
-        assert "STUB" in result["note"]
-
-    def test_admet_stub_schema(self):
-        result = run_admet_prediction(["CC(=O)Oc1ccccc1C(=O)O"])
-        assert result["predictions"] is None
-        assert "STUB" in result["note"]
-        assert "hia" in result["properties"]  # common ADMET property
 
 
 @pytest.mark.integration

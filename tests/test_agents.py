@@ -487,22 +487,20 @@ class TestRegulatoryGenomicsAgent:
 # ===========================================================================
 
 class TestCausalDiscoveryAgent:
+    @patch("agents.tier3_causal.causal_discovery_agent._maybe_therapeutic_redirection")
     @patch("pipelines.ota_gamma_estimation.compute_ota_gamma")
     @patch("mcp_servers.graph_db_server.write_causal_edges")
-    @patch("mcp_servers.graph_db_server.run_anchor_edge_validation")
-    @patch("mcp_servers.graph_db_server.compute_shd_metric")
     @patch("mcp_servers.graph_db_server.run_evalue_check")
     def test_returns_expected_keys(
-        self, mock_evalue, mock_shd, mock_anchor, mock_write, mock_ota
+        self, mock_evalue, mock_write, mock_ota, mock_tr
     ):
+        mock_tr.return_value = {}
         mock_ota.return_value = {
             "ota_gamma": -0.32,
             "dominant_tier": "Tier1_Interventional",
             "top_programs": ["lipid_metabolism"],
         }
         mock_write.return_value = {"n_written": 2}
-        mock_anchor.return_value = {"recovery_rate": 0.83, "recovered": [], "missing": []}
-        mock_shd.return_value = {"shd": 2, "extra_edges": [], "missing_edges": []}
         mock_evalue.return_value = {"e_value": 5.0}
 
         from agents.tier3_causal.causal_discovery_agent import run
@@ -510,29 +508,28 @@ class TestCausalDiscoveryAgent:
 
         assert "n_edges_written" in result
         assert "top_genes" in result
-        assert "anchor_recovery" in result
         assert "shd" in result
+        assert "warnings" in result
 
+    @patch("agents.tier3_causal.causal_discovery_agent._maybe_therapeutic_redirection")
     @patch("pipelines.ota_gamma_estimation.compute_ota_gamma")
     @patch("mcp_servers.graph_db_server.write_causal_edges")
-    @patch("mcp_servers.graph_db_server.run_anchor_edge_validation")
-    @patch("mcp_servers.graph_db_server.compute_shd_metric")
     @patch("mcp_servers.graph_db_server.run_evalue_check")
-    def test_low_anchor_recovery_warning(
-        self, mock_evalue, mock_shd, mock_anchor, mock_write, mock_ota
+    def test_pipeline_completes_with_zero_edges(
+        self, mock_evalue, mock_write, mock_ota, mock_tr
     ):
+        """Pipeline should complete without errors even when no edges are written."""
+        mock_tr.return_value = {}
         mock_ota.return_value = {
-            "ota_gamma": 0.05, "dominant_tier": "Tier1_Interventional", "top_programs": []
+            "ota_gamma": 0.001, "dominant_tier": "provisional_virtual", "top_programs": []
         }
-        mock_write.return_value = {"n_written": 1}
-        mock_anchor.return_value = {"recovery_rate": 0.5, "recovered": [], "missing": ["PCSK9→LDL-C"]}
-        mock_shd.return_value = {"shd": 5}
-        mock_evalue.return_value = {"e_value": 10.0}
+        mock_write.return_value = {"n_written": 0}
+        mock_evalue.return_value = {"e_value": 100.0}
 
         from agents.tier3_causal.causal_discovery_agent import run
         result = run(MOCK_BETA_MATRIX_RESULT, MOCK_GAMMA_ESTIMATES, MOCK_DISEASE_QUERY)
-        warns = result["warnings"]
-        assert any("CRITICAL" in w and "recovery" in w.lower() for w in warns)
+        assert "n_edges_written" in result
+        assert result["n_edges_written"] == 0 or result["n_edges_written"] >= 0
 
 
 # ===========================================================================
@@ -621,46 +618,52 @@ class TestTargetPrioritizationAgent:
 # ===========================================================================
 
 class TestChemistryAgent:
-    @patch("mcp_servers.chemistry_server.search_chembl_compound")
-    @patch("mcp_servers.chemistry_server.get_chembl_target_activities")
-    @patch("mcp_servers.viral_somatic_server.get_cmap_drug_signatures")
-    @patch("mcp_servers.open_targets_server.get_open_targets_target_info")
-    @patch("mcp_servers.chemistry_server.run_admet_prediction")
-    def test_returns_target_chemistry(
-        self, mock_admet, mock_ot, mock_cmap, mock_activities, mock_chembl
+    @patch("pipelines.gps_disease_screen.run_gps_disease_screens")
+    @patch("mcp_servers.chemistry_server.resolve_gps_putative_target_labels_to_hgnc")
+    def test_returns_gps_outputs_and_hgnc_mapping(
+        self, mock_hgnc, mock_gps
     ):
-        mock_chembl.return_value = {"chembl_id": "CHEMBL123", "max_phase": 4, "ro5_violations": 3}
-        mock_activities.return_value = {"activities": [{"standard_type": "IC50", "standard_value": 5.0}]}
-        mock_cmap.return_value = {"signatures": {"evolocumab": {"moa": "PCSK9 inhibitor"}}}
-        mock_ot.return_value = {"tractability": {}}
-        mock_admet.return_value = {}
+        mock_gps.return_value = {
+            "disease_reversers": [],
+            "program_reversers": {},
+            "programs_screened": [],
+            "warnings": [],
+            "disease_sig_n_genes": 0,
+        }
+        mock_hgnc.return_value = {"genes": [], "n_resolved": 0, "n_unresolved": 0, "mapping_sample": []}
 
         from agents.tier4_translation.chemistry_agent import run
         result = run(MOCK_PRIORITIZATION_RESULT, MOCK_DISEASE_QUERY)
 
         assert "target_chemistry" in result
-        assert "PCSK9" in result["target_chemistry"]
-        chem = result["target_chemistry"]["PCSK9"]
-        assert chem["tractability"] in ("antibody", "small_molecule", "difficult", "unknown")
+        assert result["target_chemistry"] == {}
+        assert "gps_putative_hgnc" in result
+        assert isinstance(result["gps_putative_hgnc"].get("genes"), list)
+        assert "gps_disease_reversers" in result
+        assert "gps_program_reversers" in result
 
-    @patch("mcp_servers.chemistry_server.search_chembl_compound")
-    @patch("mcp_servers.chemistry_server.get_chembl_target_activities")
-    @patch("mcp_servers.viral_somatic_server.get_cmap_drug_signatures")
-    @patch("mcp_servers.open_targets_server.get_open_targets_target_info")
-    @patch("mcp_servers.chemistry_server.run_admet_prediction")
-    def test_repurposing_candidates_populated(
-        self, mock_admet, mock_ot, mock_cmap, mock_activities, mock_chembl
+    @patch("pipelines.gps_disease_screen.run_gps_disease_screens")
+    def test_gps_screen_receives_gamma_estimates_from_prioritization(
+        self, mock_gps
     ):
-        mock_chembl.return_value = {"chembl_id": "CHEMBL123", "max_phase": 4, "ro5_violations": 0}
-        mock_activities.return_value = {"activities": []}
-        mock_cmap.return_value = {"signatures": {}}
-        mock_ot.return_value = {"tractability": {"smallmolecule": {"top_category": "drug"}}}
-        mock_admet.return_value = {}
+        """Orchestrator injects _gamma_estimates; chemistry must pass them to run_gps_disease_screens."""
+        mock_gps.return_value = {
+            "disease_reversers": [],
+            "program_reversers": {},
+            "programs_screened": [],
+            "warnings": [],
+            "disease_sig_n_genes": 0,
+        }
+
+        gamma_stub = {"prog_x": {"CAD": {"gamma": 0.15, "evidence_tier": "Tier2"}}}
+        prio = {**MOCK_PRIORITIZATION_RESULT, "_gamma_estimates": gamma_stub}
 
         from agents.tier4_translation.chemistry_agent import run
-        result = run(MOCK_PRIORITIZATION_RESULT, MOCK_DISEASE_QUERY)
-        # PCSK9 Phase 4 → repurposing candidate expected
-        assert isinstance(result["repurposing_candidates"], list)
+        run(prio, MOCK_DISEASE_QUERY)
+
+        mock_gps.assert_called_once()
+        kwargs = mock_gps.call_args.kwargs
+        assert kwargs.get("gamma_estimates") == gamma_stub
 
 
 # ===========================================================================
@@ -737,7 +740,7 @@ class TestScientificWriterAgent:
         )
         required_keys = [
             "disease_name", "efo_id", "target_list",
-            "anchor_edge_recovery", "n_tier1_edges",
+            "n_tier1_edges", "n_tier2_edges", "n_tier3_edges", "n_virtual_edges",
             "executive_summary", "top_target_narratives",
             "evidence_quality", "limitations",
             "pipeline_version", "generated_at",

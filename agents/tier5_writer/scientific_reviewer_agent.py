@@ -161,22 +161,50 @@ def run(pipeline_outputs: dict, disease_query: dict) -> dict:
     # =========================================================================
     # Check D: Effect sizes reported (non-null ota_gamma + non-zero beta)
     # =========================================================================
+    # state_nominated genes intentionally have ota_gamma=0 (no genetic instrument).
+    # They should be excluded from clinical rankings rather than re-delegated —
+    # causal_discovery_agent cannot conjure a genetic instrument from nothing.
+    exclude_candidates: list[dict] = []  # genes the reviewer recommends excluding
+
     for rec in top_targets:
         gene      = rec.get("target_gene", "")
         ota_gamma = rec.get("ota_gamma")
+        tier      = rec.get("evidence_tier", "")
 
         if ota_gamma is None or ota_gamma == 0.0:
-            issues.append({
-                "severity":         SEVERITY_MAJOR,
-                "check":            "D_missing_effect_size",
-                "gene":             gene,
-                "description": (
-                    f"{gene}: ota_gamma is {ota_gamma!r}. "
-                    "All reported targets must have a quantified causal effect size. "
-                    "Zero-gamma edges should be filtered before ranking."
-                ),
-                "agent_to_revisit": "causal_discovery_agent",
-            })
+            if tier == "state_nominated":
+                # Direct exclusion recommendation — no re-delegation possible
+                exclude_candidates.append({
+                    "gene":     gene,
+                    "rationale": (
+                        f"{gene} has tier=state_nominated with ota_gamma=0: "
+                        "no genetic instrument exists. State-space nomination is an "
+                        "exploratory signal — not sufficient for clinical target ranking. "
+                        "Exclude from primary ranked list; retain as exploratory candidate."
+                    ),
+                })
+                issues.append({
+                    "severity":         SEVERITY_MAJOR,
+                    "check":            "D_state_nominated_no_gamma",
+                    "gene":             gene,
+                    "description": (
+                        f"{gene} (state_nominated, ota_gamma=0) lacks any genetic "
+                        "causal instrument. Recommended for exclusion from top-ranked list."
+                    ),
+                    "agent_to_revisit": None,  # exclusion, not re-delegation
+                })
+            else:
+                issues.append({
+                    "severity":         SEVERITY_MAJOR,
+                    "check":            "D_missing_effect_size",
+                    "gene":             gene,
+                    "description": (
+                        f"{gene}: ota_gamma is {ota_gamma!r}. "
+                        "All reported targets must have a quantified causal effect size. "
+                        "Zero-gamma edges should be filtered before ranking."
+                    ),
+                    "agent_to_revisit": "causal_discovery_agent",
+                })
 
     # =========================================================================
     # Check E: SCONE bootstrap confidence (if available)
@@ -265,16 +293,26 @@ def run(pipeline_outputs: dict, disease_query: dict) -> dict:
     approved_targets = [r["target_gene"] for r in top_targets if r["target_gene"] not in flagged_genes]
     flagged_targets  = [r["target_gene"] for r in top_targets if r["target_gene"] in flagged_genes]
 
+    # Build structured re-delegation instructions (Phase O)
+    from orchestrator.agent_messages import build_feedback_from_reviewer
+    feedback = build_feedback_from_reviewer(
+        {"issues": issues, "verdict": verdict},
+        run_id=warnings[0] if warnings else "unknown",  # run_id not available here; caller overrides
+    )
+    re_delegation_instructions = [i.to_dict() for i in feedback.instructions]
+
     return {
-        "verdict":           verdict,
-        "issues":            issues,
-        "n_critical":        n_critical,
-        "n_major":           n_major,
-        "n_minor":           n_minor,
-        "summary":           summary,
-        "agent_to_revisit":  agent_to_revisit,
-        "approved_targets":  approved_targets,
-        "flagged_targets":   flagged_targets,
-        "anchor_recovery":   recovery_rate,
-        "warnings":          warnings,
+        "verdict":                    verdict,
+        "issues":                     issues,
+        "n_critical":                 n_critical,
+        "n_major":                    n_major,
+        "n_minor":                    n_minor,
+        "summary":                    summary,
+        "agent_to_revisit":           agent_to_revisit,
+        "re_delegation_instructions": re_delegation_instructions,  # Phase O
+        "approved_targets":           approved_targets,
+        "flagged_targets":            flagged_targets,
+        "exclude_targets":            exclude_candidates,          # direct exclusions
+        "anchor_recovery":            recovery_rate,
+        "warnings":                   warnings,
     }

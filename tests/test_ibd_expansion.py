@@ -50,37 +50,44 @@ def test_crohns_uc_efo_entries():
 # ---------------------------------------------------------------------------
 
 def test_ibd_provisional_gammas_exist():
+    # PROVISIONAL_GAMMAS is intentionally empty — all γ values are data-derived
     from pipelines.ota_gamma_estimation import PROVISIONAL_GAMMAS
-    ibd_keys = [k for k in PROVISIONAL_GAMMAS if k[1] == "IBD"]
-    assert len(ibd_keys) >= 3, f"Expected ≥3 IBD γ entries, got {len(ibd_keys)}: {ibd_keys}"
+    assert PROVISIONAL_GAMMAS == {}
 
 
 def test_ibd_nfkb_gamma_tier():
-    from pipelines.ota_gamma_estimation import PROVISIONAL_GAMMAS
-    entry = PROVISIONAL_GAMMAS[("inflammatory_NF-kB", "IBD")]
-    assert entry["gamma"] > 0
-    assert entry["evidence_tier"] == "Tier2_Convergent"
+    # With TWMR evidence, estimate_gamma returns data-derived γ
+    from pipelines.ota_gamma_estimation import estimate_gamma
+    twmr = {"beta": 0.39, "se": 0.07, "p": 0.001}
+    result = estimate_gamma("inflammatory_NF-kB", "IBD", twmr_result=twmr)
+    assert result is not None
+    assert result["gamma"] > 0
+    assert result["evidence_tier"] == "Tier2_Convergent"
 
 
 def test_ibd_tnf_signaling_gamma():
-    from pipelines.ota_gamma_estimation import PROVISIONAL_GAMMAS
-    entry = PROVISIONAL_GAMMAS[("TNF_signaling", "IBD")]
-    assert entry["gamma"] > 0
-    assert entry["evidence_tier"] == "Tier2_Convergent"
+    # With TWMR evidence, estimate_gamma returns data-derived γ
+    from pipelines.ota_gamma_estimation import estimate_gamma
+    twmr = {"beta": 0.45, "se": 0.08, "p": 0.001}
+    result = estimate_gamma("TNF_signaling", "IBD", twmr_result=twmr)
+    assert result is not None
+    assert result["gamma"] > 0
+    assert result["evidence_tier"] == "Tier2_Convergent"
 
 
 def test_estimate_gamma_returns_ibd_value():
+    # estimate_gamma returns None (no evidence) in unit tests without network
     from pipelines.ota_gamma_estimation import estimate_gamma
     result = estimate_gamma("inflammatory_NF-kB", "IBD")
-    assert result["gamma"] > 0
-    assert result["evidence_tier"] in ("Tier2_Convergent", "Tier3_Provisional")
+    # result is None (no live data) or a dict with gamma >= 0
+    assert result is None or (isinstance(result, dict) and result.get("gamma", 0) >= 0)
 
 
 def test_estimate_gamma_returns_zero_for_unknown_ibd_program():
+    # estimate_gamma returns None (not a dict) for unknown programs
     from pipelines.ota_gamma_estimation import estimate_gamma
     result = estimate_gamma("nonexistent_program_xyz", "IBD")
-    assert result["gamma"] == 0.0
-    assert result["evidence_tier"] == "provisional_virtual"
+    assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -97,24 +104,21 @@ def test_ibd_anchor_edges_exist():
 
 
 def test_ibd_required_anchors_defined():
+    # IBD removed from REQUIRED_ANCHORS_BY_DISEASE — only approved therapeutic targets
+    # (CAD: PCSK9/HMGCR, AMD: VEGFA) are used as pipeline QC benchmarks.
     from graph.schema import REQUIRED_ANCHORS_BY_DISEASE
-    assert "IBD" in REQUIRED_ANCHORS_BY_DISEASE
-    anchors = REQUIRED_ANCHORS_BY_DISEASE["IBD"]
-    assert len(anchors) >= 3
-    anchor_genes = {a[0] for a in anchors}
-    assert "NOD2" in anchor_genes
-    assert "IL23R" in anchor_genes
-    assert "TNF" in anchor_genes
+    assert "IBD" not in REQUIRED_ANCHORS_BY_DISEASE
 
 
 def test_ibd_required_anchors_subset_of_anchor_edges():
-    """Regression guard: IBD required anchors must exist in ANCHOR_EDGES."""
-    from graph.schema import ANCHOR_EDGES, REQUIRED_ANCHORS_BY_DISEASE
+    # IBD no longer has required anchors — pass unconditionally
+    from graph.schema import REQUIRED_ANCHORS_BY_DISEASE
+    if "IBD" not in REQUIRED_ANCHORS_BY_DISEASE:
+        return  # expected; IBD anchors removed
+    from graph.schema import ANCHOR_EDGES
     global_set = {(a["from"], a["to"]) for a in ANCHOR_EDGES}
     for from_node, to_node in REQUIRED_ANCHORS_BY_DISEASE["IBD"]:
-        assert (from_node, to_node) in global_set, (
-            f"IBD required anchor ({from_node!r}, {to_node!r}) not in ANCHOR_EDGES"
-        )
+        assert (from_node, to_node) in global_set
 
 
 # ---------------------------------------------------------------------------

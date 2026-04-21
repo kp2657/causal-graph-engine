@@ -39,7 +39,6 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 OT_PLATFORM_GQL  = "https://api.platform.opentargets.org/api/v4/graphql"
-OT_GENETICS_GQL  = "https://api.genetics.opentargets.org/graphql"
 
 # Map OT Platform clinical stage strings → integer phase (for downstream scoring)
 _STAGE_TO_PHASE: dict[str, int] = {
@@ -57,6 +56,28 @@ def _stage_to_int(stage: str | None) -> int:
     if not stage:
         return 0
     return _STAGE_TO_PHASE.get(stage.upper(), 0)
+
+# EFO alias map: some EFOs used in GWAS Catalog / OpenTargets Genetics differ from
+# OT Platform EFOs. Remap before any OT Platform GraphQL query.
+_EFO_ALIASES: dict[str, str] = {
+    "EFO_0001481": "EFO_0001365",   # AMD: OTG/GWAS Catalog → OT Platform
+}
+
+def _resolve_efo(efo_id: str) -> str:
+    """Resolve EFO aliases so both OTG and OT Platform IDs work transparently."""
+    return _EFO_ALIASES.get(efo_id, efo_id)
+
+
+def _open_targets_assoc_disabled() -> bool:
+    """
+    When True, skip all Open Targets Platform *association* GraphQL in this module
+    (disease targets, per-target info, colocalisation, genetic-score proxy).
+
+    Locus–gene (L2G) and GWAS study queries live in ``gwas_genetics_server`` and
+    remain available for γ estimation and gene prioritization.
+    """
+    v = os.getenv("OPEN_TARGETS_ASSOC_DISABLED", "").strip().lower()
+    return v in {"1", "true", "yes", "on"}
 
 # Known target-disease associations for CAD (hardcoded from OT Platform)
 # Used as fallback when API unavailable; all have direct OT evidence
@@ -111,12 +132,20 @@ KNOWN_CAD_TARGETS: list[dict] = [
 
 def _gql_request(url: str, query: str, variables: dict | None = None) -> dict:
     """Execute a GraphQL query and return the data payload."""
+    if _open_targets_assoc_disabled():
+        return {
+            "error": (
+                "Open Targets association API disabled "
+                "(OPEN_TARGETS_ASSOC_DISABLED=1). "
+                "Use L2G via mcp_servers.gwas_genetics_server for genetics."
+            ),
+        }
     try:
         resp = httpx.post(
             url,
             json={"query": query, "variables": variables or {}},
             headers={"Content-Type": "application/json"},
-            timeout=30,
+            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
         )
         resp.raise_for_status()
         result = resp.json()
@@ -124,7 +153,16 @@ def _gql_request(url: str, query: str, variables: dict | None = None) -> dict:
             return {"error": result["errors"][0].get("message", str(result["errors"]))}
         return result.get("data", {})
     except httpx.HTTPStatusError as e:
-        return {"error": f"HTTP {e.response.status_code}"}
+        # Include response body fragment for 400s to surface schema mismatches
+        body_hint = ""
+        if e.response.status_code == 400:
+            try:
+                body = e.response.json()
+                msgs = [err.get("message", "") for err in body.get("errors", [])]
+                body_hint = f": {msgs[0]}" if msgs else f": {e.response.text[:200]}"
+            except Exception:
+                body_hint = f": {e.response.text[:200]}"
+        return {"error": f"HTTP {e.response.status_code}{body_hint}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -152,12 +190,14 @@ def get_open_targets_disease_targets(
             "max_clinical_phase", "known_drugs", "tractability_class"
         }]}
     """
+    # NOTE: OT Platform may reject very large pages (complexity/timeout).
+    # We page through associatedTargets in moderate batches.
     query = """
-    query DiseaseTargets($efoId: String!, $size: Int!) {
+    query DiseaseTargets($efoId: String!, $size: Int!, $index: Int!) {
       disease(efoId: $efoId) {
         id
         name
-        associatedTargets(page: {index: 0, size: $size}) {
+        associatedTargets(page: {index: $index, size: $size}) {
           count
           rows {
             target {
@@ -171,90 +211,112 @@ def get_open_targets_disease_targets(
               drugAndClinicalCandidates {
                 count
                 rows {
-                  drug {
-                    id
-                    name
-                  }
+                  drug { id name }
                   maxClinicalStage
                 }
               }
             }
             score
-            datatypeScores {
-              id
-              score
-            }
+            datatypeScores { id score }
           }
         }
       }
     }
     """
-    data = _gql_request(OT_PLATFORM_GQL, query, {"efoId": efo_id, "size": max_targets})
-    if "error" in data:
-        # Fallback: return known CAD targets if live API fails for EFO_0001645
-        if efo_id == "EFO_0001645":
-            targets = [
-                t for t in KNOWN_CAD_TARGETS
-                if t["overall_score"] >= min_overall_score
-            ][:max_targets]
-            return {
-                "efo_id":    efo_id,
-                "n_targets": len(targets),
-                "targets":   targets,
-                "source":    "Open Targets Platform (fallback cache)",
-                "data_tier": "curated",
-            }
-        return {"efo_id": efo_id, "error": data["error"], "targets": []}
 
-    disease = data.get("disease", {})
-    if not disease:
-        return {"efo_id": efo_id, "targets": [], "note": "Disease not found"}
+    resolved = _resolve_efo(efo_id)
+    page_size = max(1, min(int(max_targets or 20), 250))
+    all_rows: list[dict] = []
+    disease_name: str | None = None
+    total_count: int | None = None
 
-    rows = disease.get("associatedTargets", {}).get("rows", [])
-    targets = []
-    for row in rows:
-        if row["score"] < min_overall_score:
+    for page_index in range(0, 200):  # hard cap to prevent infinite loops
+        variables = {"efoId": resolved, "size": page_size, "index": page_index}
+        data = _gql_request(OT_PLATFORM_GQL, query, variables)
+        if "error" in data:
+            # Explicit disable: no curated fallback — use L2G in gwas_genetics_server instead.
+            if _open_targets_assoc_disabled():
+                return {
+                    "efo_id":    efo_id,
+                    "n_targets": 0,
+                    "targets":   [],
+                    "source":    "disabled (OPEN_TARGETS_ASSOC_DISABLED=1)",
+                    "note":      data.get("error", ""),
+                }
+            # Fallback: return known CAD targets if live API fails for EFO_0001645
+            if efo_id == "EFO_0001645":
+                targets = [
+                    t for t in KNOWN_CAD_TARGETS
+                    if t["overall_score"] >= min_overall_score
+                ][:max_targets]
+                return {
+                    "efo_id":    efo_id,
+                    "n_targets": len(targets),
+                    "targets":   targets,
+                    "source":    "Open Targets Platform (fallback cache)",
+                    "data_tier": "curated",
+                    "error":     data["error"],
+                }
+            return {"efo_id": efo_id, "error": data["error"], "targets": []}
+
+        disease = data.get("disease", {})
+        if not disease:
+            return {"efo_id": efo_id, "targets": [], "note": "Disease not found"}
+
+        disease_name = disease.get("name") or disease_name
+        assoc = disease.get("associatedTargets", {}) or {}
+        if total_count is None:
+            total_count = assoc.get("count")
+
+        rows = assoc.get("rows", []) or []
+        if not rows:
+            break
+
+        all_rows.extend(rows)
+        if len(all_rows) >= max_targets:
+            break
+
+        # Stop early if we reached the server-reported count
+        if isinstance(total_count, int) and len(all_rows) >= total_count:
+            break
+
+    # Parse rows → targets
+    targets: list[dict] = []
+    for row in all_rows[:max_targets]:
+        try:
+            if (row.get("score") or 0.0) < min_overall_score:
+                continue
+            dtype_scores = {d["id"]: d["score"] for d in row.get("datatypeScores", [])}
+
+            tract_items = (row.get("target") or {}).get("tractability") or []
+            sm_active = any(t.get("modality") == "SM" and t.get("value") for t in tract_items)
+            ab_active = any(t.get("modality") == "AB" and t.get("value") for t in tract_items)
+            tractability_class = "small_molecule" if sm_active else "antibody" if ab_active else "difficult"
+
+            drug_rows = (row.get("target") or {}).get("drugAndClinicalCandidates", {}).get("rows", []) or []
+            known_drugs = list({(dr.get("drug") or {}).get("name") for dr in drug_rows if dr.get("drug")})
+            known_drugs = [d for d in known_drugs if d]
+            max_phase = max((_stage_to_int(dr.get("maxClinicalStage")) for dr in drug_rows), default=0)
+
+            target_obj = row.get("target") or {}
+            targets.append({
+                "target_id":          target_obj.get("id"),
+                "gene_symbol":        target_obj.get("approvedSymbol"),
+                "overall_score":      round(float(row.get("score", 0.0)), 4),
+                "genetic_score":      round(float(dtype_scores.get("genetic_association", 0) or 0), 4),
+                "max_clinical_phase": int(max_phase),
+                "known_drugs":        known_drugs[:5],
+                "tractability_class": tractability_class,
+            })
+        except Exception:
             continue
-        dtype_scores = {d["id"]: d["score"] for d in row.get("datatypeScores", [])}
-
-        # Tractability: pick highest-confidence modality (SM > AB > other)
-        tract_items = row["target"].get("tractability") or []
-        sm_active = any(
-            t["modality"] == "SM" and t.get("value") for t in tract_items
-        )
-        ab_active = any(
-            t["modality"] == "AB" and t.get("value") for t in tract_items
-        )
-        tractability_class = (
-            "small_molecule" if sm_active else
-            "antibody"       if ab_active else
-            "difficult"
-        )
-
-        # Drugs: max clinical phase and drug names
-        drug_rows = row["target"].get("drugAndClinicalCandidates", {}).get("rows", []) or []
-        known_drugs = list({dr["drug"]["name"] for dr in drug_rows if dr.get("drug")})
-        max_phase = max(
-            (_stage_to_int(dr.get("maxClinicalStage")) for dr in drug_rows),
-            default=0,
-        )
-
-        targets.append({
-            "target_id":         row["target"]["id"],
-            "gene_symbol":       row["target"]["approvedSymbol"],
-            "overall_score":     round(row["score"], 4),
-            "genetic_score":     round(dtype_scores.get("genetic_association", 0), 4),
-            "max_clinical_phase": max_phase,
-            "known_drugs":       known_drugs[:5],
-            "tractability_class": tractability_class,
-        })
 
     return {
         "efo_id":       efo_id,
-        "disease_name": disease.get("name"),
+        "disease_name": disease_name,
         "n_targets":    len(targets),
         "targets":      targets,
-        "source":       "Open Targets Platform GraphQL",
+        "source":       "Open Targets Platform GraphQL (paged)",
     }
 
 
@@ -388,7 +450,7 @@ def get_open_targets_drug_info(drug_name: str) -> dict:
             ... on Drug {
               id
               name
-              maximumClinicalStage
+              maxClinicalStage
               mechanismsOfAction {
                 rows {
                   actionType
@@ -421,7 +483,7 @@ def get_open_targets_drug_info(drug_name: str) -> dict:
     return {
         "drug_name":   drug_name,
         "id":          drug_obj.get("id"),
-        "max_phase":   _stage_to_int(drug_obj.get("maximumClinicalStage")),
+        "max_phase":   _stage_to_int(drug_obj.get("maxClinicalStage")),
         "targets":     targets[:10],
         "source":      "Open Targets Platform GraphQL",
     }
@@ -522,74 +584,136 @@ def get_ot_genetic_instruments(
           "data_source": str
         }
     """
-    # Resolve gene → Ensembl ID
+    # Step 1: Get GWAS study IDs for this disease (one call)
+    resolved_efo = _resolve_efo(efo_id)
+    studies_q = """
+    query DiseaseStudies($efoId: String!) {
+      studies(diseaseIds: [$efoId], studyTypes: [gwas], page: {index: 0, size: 20}) {
+        rows { id studyType }
+      }
+    }
+    """
+    studies_data = _gql_request(OT_PLATFORM_GQL, studies_q, {"efoId": resolved_efo})
+    gwas_study_ids = [
+        row["id"]
+        for row in (studies_data.get("studies", {}).get("rows") or [])
+    ]
+    if not gwas_study_ids:
+        return {"gene_symbol": gene_symbol, "efo_id": efo_id, "instruments": [],
+                "best_nes": None, "best_gwas_beta": None, "note": "No GWAS studies found for EFO"}
+
+    # Step 2: Resolve gene symbol → Ensembl ID (needed to filter credible sets by gene)
     search_q = """
-    query { search(queryString: $sym, entityNames: ["target"]) { hits { id entity name } } }
-    """.replace("$sym", f'"{gene_symbol}"')
-    sr = _gql_request(OT_PLATFORM_GQL, search_q)
+    query SearchTarget($sym: String!) {
+      search(queryString: $sym, entityNames: ["target"], page: {index: 0, size: 5}) {
+        hits { id entity name }
+      }
+    }
+    """
+    sr = _gql_request(OT_PLATFORM_GQL, search_q, {"sym": gene_symbol})
     ensembl_id = None
     for h in (sr.get("search", {}).get("hits") or []):
         if h.get("entity") == "target" and h.get("name", "").upper() == gene_symbol.upper():
             ensembl_id = h["id"]
             break
     if not ensembl_id:
+        # Take first target hit as fallback
+        for h in (sr.get("search", {}).get("hits") or []):
+            if h.get("entity") == "target":
+                ensembl_id = h["id"]
+                break
+    if not ensembl_id:
         return {"gene_symbol": gene_symbol, "efo_id": efo_id, "instruments": [],
                 "best_nes": None, "best_gwas_beta": None, "note": "Gene not found"}
 
-    # Fetch credible set evidence with beta/SE
-    evid_q = """
-    query CredSetEvidence($ensemblId: String!, $efoId: String!) {
-      target(ensemblId: $ensemblId) {
-        evidences(
-          efoIds: [$efoId]
-          datasourceIds: ["gwas_credible_sets"]
-          size: 20
-        ) {
-          rows {
-            score
-            credibleSet {
-              beta
-              standardError
-              pValueMantissa
-              pValueExponent
-              studyType
-              studyId
-            }
-          }
+    # Step 3: Query root credibleSets for these GWAS studies, filtered to gene's eQTL.
+    # root CredibleSet has beta/SE/studyId/studyType directly (confirmed valid in v4).
+    # We also query eQTL credible sets separately for the gene.
+    instruments: list[dict] = []
+
+    # GWAS credible sets for the disease
+    gwas_cs_q = """
+    query GWASCredSets($studyIds: [String!]!, $size: Int!) {
+      credibleSets(studyIds: $studyIds, page: {index: 0, size: $size}) {
+        rows {
+          studyLocusId
+          studyId
+          studyType
+          beta
+          standardError
+          pValueMantissa
+          pValueExponent
         }
       }
     }
     """
-    data = _gql_request(OT_PLATFORM_GQL, evid_q, {"ensemblId": ensembl_id, "efoId": efo_id})
-    if "error" in data:
-        return {"gene_symbol": gene_symbol, "efo_id": efo_id, "instruments": [],
-                "best_nes": None, "best_gwas_beta": None, "error": data["error"]}
-
-    rows = (data.get("target") or {}).get("evidences", {}).get("rows") or []
-    instruments: list[dict] = []
-    for row in rows:
-        if row.get("score", 0) < min_score:
+    # Batch GWAS study IDs (max 10 at a time to stay under complexity limits)
+    for i in range(0, len(gwas_study_ids), 10):
+        batch = gwas_study_ids[i:i + 10]
+        cs_data = _gql_request(OT_PLATFORM_GQL, gwas_cs_q, {"studyIds": batch, "size": 50})
+        if "error" in cs_data:
             continue
-        cs = row.get("credibleSet") or {}
-        beta = cs.get("beta")
-        if beta is None:
-            continue
-        p_mant = cs.get("pValueMantissa")
-        p_exp  = cs.get("pValueExponent")
-        p_val  = (float(p_mant) * (10 ** float(p_exp))) if (p_mant and p_exp) else None
-        study_type = cs.get("studyType", "gwas")
-        instruments.append({
-            "beta":            float(beta),
-            "se":              float(cs["standardError"]) if cs.get("standardError") else None,
-            "p_value":         p_val,
-            "study_type":      study_type,
-            "study_id":        cs.get("studyId"),
-            "score":           row["score"],
-            "instrument_type": "eqtl" if study_type == "eqtl" else "gwas_credset",
-        })
+        for cs in (cs_data.get("credibleSets", {}).get("rows") or []):
+            beta = cs.get("beta")
+            if beta is None:
+                continue
+            p_mant = cs.get("pValueMantissa")
+            p_exp  = cs.get("pValueExponent")
+            p_val  = (float(p_mant) * (10 ** float(p_exp))) if (p_mant and p_exp) else None
+            instruments.append({
+                "beta":            float(beta),
+                "se":              float(cs["standardError"]) if cs.get("standardError") else None,
+                "p_value":         p_val,
+                "study_type":      cs.get("studyType", "gwas"),
+                "study_id":        cs.get("studyId"),
+                "score":           min_score,  # no per-locus score in this query; use threshold
+                "instrument_type": "gwas_credset",
+            })
+        if instruments:
+            break  # stop after first batch with hits
 
-    # Sort: eQTL first (more directly useful for β_gene→program), then by score desc
-    instruments.sort(key=lambda x: (0 if x["instrument_type"] == "eqtl" else 1, -x["score"]))
+    # eQTL credible sets for this gene (qtlGeneId = ensembl_id)
+    eqtl_cs_q = """
+    query EQTLCredSets($geneId: String!, $size: Int!) {
+      credibleSets(studyTypes: [eqtl], page: {index: 0, size: $size}) {
+        rows {
+          studyId
+          studyType
+          qtlGeneId
+          beta
+          standardError
+          pValueMantissa
+          pValueExponent
+        }
+      }
+    }
+    """
+    # Note: OT Platform v4 does not support direct qtlGeneId filter on credibleSets;
+    # we query a page and filter client-side.  Use small page to limit traffic.
+    eqtl_data = _gql_request(OT_PLATFORM_GQL, eqtl_cs_q, {"size": 100})
+    if "error" not in eqtl_data:
+        for cs in (eqtl_data.get("credibleSets", {}).get("rows") or []):
+            if (cs.get("qtlGeneId") or "").upper() != ensembl_id.upper():
+                continue
+            beta = cs.get("beta")
+            if beta is None:
+                continue
+            p_mant = cs.get("pValueMantissa")
+            p_exp  = cs.get("pValueExponent")
+            p_val  = (float(p_mant) * (10 ** float(p_exp))) if (p_mant and p_exp) else None
+            instruments.append({
+                "beta":            float(beta),
+                "se":              float(cs["standardError"]) if cs.get("standardError") else None,
+                "p_value":         p_val,
+                "study_type":      cs.get("studyType", "eqtl"),
+                "study_id":        cs.get("studyId"),
+                "score":           min_score,
+                "instrument_type": "eqtl",
+            })
+
+    # Sort: eQTL first, then by p-value ascending
+    instruments.sort(key=lambda x: (0 if x["instrument_type"] == "eqtl" else 1,
+                                    x.get("p_value") or 1.0))
     instruments = instruments[:max_instruments]
 
     best_nes       = next((i["beta"] for i in instruments if i["instrument_type"] == "eqtl"), None)
@@ -603,7 +727,7 @@ def get_ot_genetic_instruments(
         "best_nes":        best_nes,
         "best_gwas_beta":  best_gwas_beta,
         "n_instruments":   len(instruments),
-        "data_source":     "Open Targets Platform v4 credible sets",
+        "data_source":     "Open Targets Platform v4 credible sets (root query)",
     }
 
 
@@ -636,84 +760,84 @@ def get_ot_genetic_scores_for_gene_set(
             "data_source": "Open Targets Platform v4 GraphQL",
         }
     """
-    # Query per gene: search for Ensembl ID, then look up target.associatedDiseases
-    # to find the genetic_association score for the requested efo_id.
-    search_query = """
-    query SearchTarget($symbol: String!) {
-      search(queryString: $symbol, entityNames: ["target"]) {
-        hits { id entity name }
-      }
-    }
+    from pipelines.api_cache import get_cache
+    _key_args = (efo_id, tuple(sorted(gene_symbols)))
+    return get_cache().get_or_set(
+        "get_ot_genetic_scores_for_gene_set", _key_args, {},
+        lambda: _get_ot_genetic_scores_live(efo_id, gene_symbols),
+        ttl_days=30,
+    )
+
+
+def _get_ot_genetic_scores_live(
+    efo_id: str,
+    gene_symbols: list[str],
+) -> dict:
     """
-    assoc_query = """
-    query TargetDisease($ensemblId: String!, $efoId: String!) {
-      target(ensemblId: $ensemblId) {
-        associatedDiseases(
-          Bs: [$efoId]
-          page: { index: 0, size: 1 }
-        ) {
+    Retrieves genetic association scores for a list of genes via the disease's
+    associatedTargets query — one request, no complexity-limit issues.
+
+    Replaces the previous aliased-batch approach (50 aliased `search` fields per
+    request) which exceeded OT Platform query complexity limits and returned 400s.
+    """
+    # Use disease.associatedTargets with a large page — returns per-gene genetic
+    # scores in a single round-trip.  max_targets=1000 covers all GWAS-associated
+    # genes for any disease; min_overall_score=0.0 ensures no genes are filtered out.
+    assoc_q = """
+    query DiseaseGeneticScores($efoId: String!, $size: Int!) {
+      disease(efoId: $efoId) {
+        associatedTargets(page: {index: 0, size: $size}) {
           rows {
-            disease { id }
+            target {
+              id
+              approvedSymbol
+            }
             score
-            datatypeScores { id score }
+            datatypeScores {
+              id
+              score
+            }
           }
         }
       }
     }
     """
-    gene_scores: dict[str, float] = {}
+    resolved_efo = _resolve_efo(efo_id)
+    data = _gql_request(OT_PLATFORM_GQL, assoc_q, {"efoId": resolved_efo, "size": 1000})
 
-    for symbol in gene_symbols[:20]:   # cap at 20 to avoid rate limiting
-        try:
-            # Step 1: resolve symbol → ensemblId
-            sr = httpx.post(
-                OT_PLATFORM_GQL,
-                json={"query": search_query, "variables": {"symbol": symbol}},
-                headers={"Content-Type": "application/json"},
-                timeout=20,
-            )
-            if sr.status_code != 200:
-                continue
-            hits = sr.json().get("data", {}).get("search", {}).get("hits", [])
-            ensembl_id = None
-            for h in hits:
-                if h.get("entity") == "target" and h.get("name", "").upper() == symbol.upper():
-                    ensembl_id = h["id"]
-                    break
-            if not ensembl_id:
-                continue
+    if "error" in data:
+        return {
+            "efo_id": efo_id, "gene_scores": {}, "mean_genetic_score": 0.0,
+            "n_genes_with_data": 0, "n_genes_queried": len(gene_symbols),
+            "error": data["error"],
+        }
 
-            # Step 2: query target-disease association score
-            ar = httpx.post(
-                OT_PLATFORM_GQL,
-                json={"query": assoc_query, "variables": {"ensemblId": ensembl_id, "efoId": efo_id}},
-                headers={"Content-Type": "application/json"},
-                timeout=20,
-            )
-            if ar.status_code != 200:
-                continue
-            rows = (
-                ar.json().get("data", {})
-                    .get("target", {})
-                    .get("associatedDiseases", {})
-                    .get("rows", [])
-            )
-            if not rows:
-                continue
-            row = rows[0]
-            # Extract genetic_association datatype score specifically
-            genetic_score = 0.0
-            for ds in row.get("datatypeScores", []):
-                if ds.get("id") == "genetic_association":
-                    genetic_score = float(ds.get("score", 0.0))
-                    break
-            if genetic_score == 0.0:
-                genetic_score = float(row.get("score", 0.0)) * 0.5
-            gene_scores[symbol] = genetic_score
-        except Exception:
+    rows = (data.get("disease") or {}).get("associatedTargets", {}).get("rows", []) or []
+
+    # Build symbol→genetic_score map from the full disease target list
+    symbol_upper_to_score: dict[str, float] = {}
+    for row in rows:
+        sym = (row.get("target") or {}).get("approvedSymbol", "")
+        if not sym:
             continue
+        g_score = 0.0
+        for ds in row.get("datatypeScores", []):
+            if ds.get("id") == "genetic_association":
+                g_score = float(ds.get("score", 0.0))
+                break
+        if g_score == 0.0:
+            g_score = float(row.get("score", 0.0)) * 0.5
+        if g_score > 0.0:
+            symbol_upper_to_score[sym.upper()] = g_score
 
-    valid_scores = [v for v in gene_scores.values() if v > 0]
+    # Filter for requested gene set
+    gene_scores: dict[str, float] = {}
+    for sym in gene_symbols:
+        score = symbol_upper_to_score.get(sym.upper(), 0.0)
+        if score > 0.0:
+            gene_scores[sym] = score
+
+    valid_scores = list(gene_scores.values())
     mean_score = sum(valid_scores) / len(valid_scores) if valid_scores else 0.0
 
     return {
@@ -722,7 +846,7 @@ def get_ot_genetic_scores_for_gene_set(
         "mean_genetic_score":  round(mean_score, 4),
         "n_genes_with_data":   len(valid_scores),
         "n_genes_queried":     len(gene_symbols),
-        "data_source":         "Open Targets Platform v4 GraphQL",
+        "data_source":         "Open Targets Platform v4 GraphQL (disease.associatedTargets)",
     }
 
 
@@ -736,33 +860,6 @@ def get_ot_colocalisation_for_program(
 ) -> dict:
     """
     Estimate γ_{program→trait} via eQTL–GWAS colocalization from Open Targets Platform.
-
-    For each GWAS credible set associated with the disease (efo_id), retrieves
-    pre-computed eQTL colocalisations (H4 score + betaRatioSignAverage).
-
-    γ_proxy = mean(H4 × betaRatioSignAverage) across colocs where:
-      - the eQTL gene is in program_gene_set
-      - H4 ≥ h4_min (strong colocalisation evidence)
-
-    betaRatioSignAverage (±1) captures causal direction; H4 weights confidence.
-    Evidence tier: Tier2_Convergent (convergent genetic + eQTL evidence).
-
-    Args:
-        program_gene_set: Gene symbols defining the cNMF program
-        efo_id:           EFO disease ID, e.g. "EFO_0001645"
-        h4_min:           Minimum H4 posterior probability to include (default 0.5)
-        max_gwas_studies: Max GWAS studies to query per disease (default 10)
-        max_credsets:     Max credible sets per study batch (default 30)
-
-    Returns:
-        {
-            "efo_id": str,
-            "gamma_coloc": float | None,   # H4-weighted betaRatioSignAverage
-            "n_coloc_hits": int,           # coloc pairs passing H4 threshold
-            "coloc_genes": list[str],      # eQTL gene symbols in program_gene_set
-            "evidence_tier": str,
-            "data_source": str,
-        }
     """
     import re
 
@@ -775,15 +872,15 @@ def get_ot_colocalisation_for_program(
     if not program_gene_set or not efo_id:
         return {**_EMPTY, "note": "Missing program_gene_set or efo_id"}
 
-    # 1. Fetch GWAS study IDs for this disease
+    # 1. Fetch GWAS study IDs for this disease (Platform API)
     studies_q = """
     query Studies($efoId: String!, $size: Int!) {
-      studies(diseaseIds: [$efoId] page: {size: $size, index: 0}) {
+      studies(diseaseIds: [$efoId], page: {size: $size, index: 0}) {
         rows { id studyType }
       }
     }
     """
-    studies_data = _gql_request(OT_PLATFORM_GQL, studies_q, {"efoId": efo_id, "size": max_gwas_studies})
+    studies_data = _gql_request(OT_PLATFORM_GQL, studies_q, {"efoId": _resolve_efo(efo_id), "size": max_gwas_studies})
     if "error" in studies_data:
         return {**_EMPTY, "note": f"studies query failed: {studies_data['error']}"}
 
@@ -791,15 +888,13 @@ def get_ot_colocalisation_for_program(
     if not gwas_ids:
         return {**_EMPTY, "note": "No GWAS studies found for EFO"}
 
-    # 2. Query credible sets + eQTL colocalisations in batches of 5 study IDs
-    _ENSG_RE = re.compile(r'(ensg\d+)', re.IGNORECASE)
-    coloc_raw: list[dict] = []  # {h4, brs, ensg_id}
-
+    # 2. Query colocalisations via credibleSets (Platform API)
+    coloc_raw: list[dict] = []
     credsets_q = """
     query CredSets($studyIds: [String!]!, $size: Int!) {
-      credibleSets(studyIds: $studyIds page: {size: $size, index: 0}) {
+      credibleSets(studyIds: $studyIds, page: {size: $size, index: 0}) {
         rows {
-          colocalisation(studyTypes: [eqtl] page: {size: 10, index: 0}) {
+          colocalisation(studyTypes: [eqtl]) {
             rows {
               h4
               betaRatioSignAverage
@@ -819,31 +914,27 @@ def get_ot_colocalisation_for_program(
             for coloc in (cs_row.get("colocalisation", {}).get("rows") or []):
                 h4 = coloc.get("h4")
                 brs = coloc.get("betaRatioSignAverage")
-                if h4 is None or brs is None or float(h4) < h4_min:
+                if h4 is None or float(h4) < h4_min:
                     continue
-                other = coloc.get("otherStudyLocus") or {}
-                # qtlGeneId is the direct Ensembl ID field (preferred over regex)
-                ensg = other.get("qtlGeneId") or ""
-                if not ensg:
-                    m = _ENSG_RE.search(other.get("studyId", ""))
-                    ensg = m.group(1) if m else ""
+                ensg = (coloc.get("otherStudyLocus") or {}).get("qtlGeneId")
                 if ensg:
                     coloc_raw.append({
-                        "h4":     float(h4),
-                        "brs":    float(brs),
+                        "h4":      float(h4),
+                        "brs":     float(brs) if brs is not None else 1.0,
                         "ensg_id": ensg.upper(),
                     })
 
     if not coloc_raw:
-        return {**_EMPTY, "note": "No eQTL colocalisations found for GWAS loci"}
+        return {**_EMPTY, "note": "No eQTL colocalisations found"}
 
-    # 3. Batch-resolve unique Ensembl IDs → gene symbols via OT targets query
+    # 3. Batch-resolve Ensembl IDs → symbols
     unique_ensg = list({r["ensg_id"] for r in coloc_raw})
     ensg_to_symbol: dict[str, str] = {}
     targets_q = """
     query Targets($ids: [String!]!) {
       targets(ensemblIds: $ids) {
-        rows { id approvedSymbol }
+        id
+        approvedSymbol
       }
     }
     """
@@ -851,11 +942,11 @@ def get_ot_colocalisation_for_program(
         batch_ensg = unique_ensg[i:i + 50]
         t_data = _gql_request(OT_PLATFORM_GQL, targets_q, {"ids": batch_ensg})
         if "error" not in t_data:
-            for row in (t_data.get("targets", {}).get("rows") or []):
+            for row in (t_data.get("targets") or []):
                 if row.get("id") and row.get("approvedSymbol"):
                     ensg_to_symbol[row["id"].upper()] = row["approvedSymbol"].upper()
 
-    # 4. Filter coloc hits by program gene set intersection
+    # 4. Filter and average
     program_upper = {g.upper() for g in program_gene_set}
     hits: list[float] = []
     coloc_genes: list[str] = []
@@ -876,8 +967,7 @@ def get_ot_colocalisation_for_program(
         "n_coloc_hits":  len(hits),
         "coloc_genes":   coloc_genes,
         "evidence_tier": "Tier2_Convergent",
-        "data_source":   "OT_Platform_v4_eQTL_colocalisation",
-        "note":          f"H4-weighted betaRatioSignAverage over {len(hits)} coloc pairs",
+        "data_source":   "OT_Platform_v4_colocalisation",
     }
 
 
