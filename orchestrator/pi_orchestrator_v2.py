@@ -535,15 +535,22 @@ def _build_tier4_context(
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
-def analyze_disease_v2(disease_name: str) -> dict:
+def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     """
-    Analyze a disease through the full 5-tier pipeline.
+    Run the full 5-tier OTA causal pipeline for a disease.
 
-    Plain function-call chain — no AgentRunner, no SDK, no mode switching.
-    Each tier's run() is imported and called directly.
+    Args:
+        disease_name: Human-readable disease name (e.g. "age-related macular degeneration").
+                      Canonical names are in models/disease_registry.py.
 
     Returns:
-        GraphOutput-compatible dict with PI review metadata.
+        Dict with keys: disease_name, target_list, genetic_anchors, gps_disease_state_reversers,
+        gps_program_reversers, pipeline_version, pipeline_warnings, data_completeness, and more.
+        See docs/OUTPUT_SCHEMA.md for the full field reference.
+
+    Side effects:
+        Writes JSON to data/analyze_{disease_slug}.json and Markdown to data/analyze_{disease_slug}.md.
+        Saves tier checkpoints to data/checkpoints/ for use with run_tier4_from_checkpoint.
     """
     run_id         = datetime.now(tz=timezone.utc).isoformat()
     pipeline_start = time.time()
@@ -845,12 +852,22 @@ def _write_pipeline_output(result: dict, data_dir: Path) -> None:
     print(f"  Output written:  {out_path}")
 
 
-def run_tier4_from_checkpoint(disease_name: str) -> dict:
+def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     """
-    Re-run Tier 4 (+ Tier 5) from saved checkpoint.
+    Re-run Tier 4 (+ Tier 5) from a saved Tier 3 checkpoint.
 
-    Priority: tier3 checkpoint (full re-run of target_prioritization + GPS + writer).
-    Fallback: tier4 checkpoint (re-run GPS/chemistry only, keep existing targets).
+    Use this after updating scoring logic, GPS Docker, or compound library without
+    re-running the expensive Tiers 1–3 (GWAS, eQTL-MR, Perturb-seq, SCONE).
+
+    Args:
+        disease_name: Same string used in the original analyze_disease_v2 call.
+
+    Returns:
+        Same structure as analyze_disease_v2. Nested under prioritization_result
+        when called via CLI; flat when imported and called directly.
+
+    Raises:
+        FileNotFoundError: If no tier3 or tier4 checkpoint exists for the disease.
 
     Usage:
       python -m orchestrator.pi_orchestrator_v2 run_tier4 "coronary artery disease"

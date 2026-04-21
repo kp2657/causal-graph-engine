@@ -17,12 +17,16 @@ Running the full pipeline on AMD produces a ranked target list like this (v0.2.0
 | Rank | Gene | γ (ota_gamma) | Tier | Evidence |
 |------|------|---------------|------|----------|
 | 1 | LIPC | 0.565 | Tier2_Convergent | GTEx eQTL-MR + OT L2G=0.87 + lipid metabolism program |
-| 2 | CFH | 0.561 | provisional_virtual | OT L2G=0.86 + COLOC H4=0.87 + complement locus |
-| 3 | APOE | 0.542 | provisional_virtual | OT L2G=0.83 + drumatology comorbidity |
-| 4 | C3 | 0.535 | provisional_virtual | OT L2G=0.82 + complement program γ>0 |
-| 5 | CFHR5 | 0.511 | provisional_virtual | OT L2G=0.79 + CFH-locus co-localisation |
+| 2 | CFH | 0.561 | provisional_virtual† | OT L2G=0.86 + COLOC H4=0.87 + complement locus |
+| 3 | APOE | 0.542 | provisional_virtual† | OT L2G=0.83 + AMD GWAS locus |
+| 4 | C3 | 0.535 | provisional_virtual† | OT L2G=0.82 + complement program γ>0 |
+| 5 | CFHR5 | 0.511 | provisional_virtual† | OT L2G=0.79 + CFH-locus co-localisation |
 
-ARMS2 (rank 30, γ=0.322) and VEGFA (rank 130, γ=0.072) also recovered. Targets without a Perturb-seq hit in the Replogle 2022 RPE1 library fall back to `provisional_virtual`; their causal γ is derived from OT L2G + COLOC fusion rather than a direct β×γ product.
+† `provisional_virtual`: gene is absent from the Replogle 2022 RPE1 CRISPR screen (not a perturb target in the library). `causal_gamma` is derived from OT L2G + COLOC Bayesian fusion rather than a direct Σ(β×γ) product. The genetic evidence is still strong — CFH, C3, and ARMS2 are among the most replicated AMD GWAS hits — but no Perturb-seq β was measured for these genes. ARMS2 (rank 30, γ=0.322) and VEGFA (rank 130, γ=0.072) are also recovered.
+
+**Why is LIPC rank 1 above CFH?** LIPC (hepatic lipase) has a slightly higher OT L2G score (0.869 vs 0.863) driven by a lipid-metabolism eQTL-MR signal absent from CFH. The difference is within margin of uncertainty (Δγ=0.004); both genes are strong AMD targets. CFH is the canonical therapeutic anchor for the complement pathway.
+
+CAD top-5 (v0.2.0, 2026-04-21): LIPC(1,γ=1.892), PROCR(2,γ=-1.835), BUD13(3,γ=-1.713), SORT1(4,γ=1.519), SF3A3(5,γ=-1.511). HMGCR rank 46, LPA rank 118, PCSK9 rank 160. BUD13 and SF3A3 are RNA splicing factors with Perturb-seq Tier1 evidence (K562 HCASMC screen) and GWAS co-localisation; their high γ reflects strong program loading but they are not conventional druggable CAD targets. PROCR (Protein C receptor) is a coagulation/APC pathway target with OT L2G=0.85.
 
 Plus: GPS compound screen against disease-state signature (100 reversers per disease), RDF/Turtle graph export, and a narrative discovery report.
 
@@ -191,6 +195,7 @@ All public and free. See `.env.example` for registration links.
 | [docs/METHODS.md](docs/METHODS.md) | Statistical methods with primary citations |
 | [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | Every data source — URL, access, local paths |
 | [docs/RUNTIME.md](docs/RUNTIME.md) | Env vars, silent degradation, orchestrator caps |
+| [docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md) | Every field in the output JSON — target scores, flags, GPS records |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | How to add a new disease, run tests, coding conventions |
 
 ---

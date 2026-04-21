@@ -469,6 +469,7 @@ def run(
             flags.append("chip_mechanism")
         if tier == "provisional_virtual":
             flags.append("provisional_virtual")
+            flags.append("not_in_perturb_library")  # gene absent from Replogle 2022 RPE1/K562 CRISPR screen; causal_gamma derived from OT L2G + COLOC fusion only
         if tau is not None and tau >= 0.70:
             flags.append("highly_specific")
         if bc is not None and bc > 0.555:
@@ -589,6 +590,12 @@ def run(
             # Format: [{"from_tier": str, "to_tier": str, "reason": str, "data_source": str}]
             # Empty list means the gene kept its originally assigned tier throughout the run.
             "tier_upgrade_log": rec.get("tier_upgrade_log", []),
+            # causal_gamma_source: explains how causal_gamma was derived.
+            # "perturb_x_program" = direct Σ(β×γ) from Perturb-seq β.
+            # "ot_l2g_fusion"     = gene absent from Perturb-seq library; γ derived from OT L2G + COLOC Bayesian fusion.
+            "causal_gamma_source": (
+                "ot_l2g_fusion" if tier == "provisional_virtual" else "perturb_x_program"
+            ),
         })
 
     if n_mech_no_geno > 0:

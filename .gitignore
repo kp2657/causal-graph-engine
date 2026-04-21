@@ -1,8 +1,11 @@
 # Secrets — never commit
 .env
 
-# Data and graph databases
+# Data and graph databases (too large; download instructions in README/docs/DATA_SOURCES.md)
 data/
+# Exception: keep the two canonical validated output JSON files
+!data/analyze_age_related_macular_degeneration.json
+!data/analyze_coronary_artery_disease.json
 
 # Run logs (contain API traces and personal data)
 *.log
