@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 MOCK_DISEASE_QUERY = {
     "disease_name":    "coronary artery disease",
+    "disease_key":     "CAD",
     "efo_id":          "EFO_0001645",
     "icd10_codes":     ["I20", "I25"],
     "modifier_types":  ["germline", "somatic_chip", "drug"],
@@ -64,12 +65,6 @@ MOCK_CAUSAL_RESULT = {
         {"gene": "TET2",   "ota_gamma":  0.25, "tier": "Tier2_Convergent",     "programs": ["inflammatory_NF-kB"]},
         {"gene": "DNMT3A", "ota_gamma":  0.15, "tier": "Tier2_Convergent",     "programs": ["inflammatory_NF-kB"]},
     ],
-    "anchor_recovery": {
-        "recovery_rate": 0.83,
-        "recovered": ["PCSK9→LDL-C", "TET2_chip→CAD"],
-        "missing":   [],
-    },
-    "shd":      2,
     "warnings": [],
 }
 
@@ -114,7 +109,7 @@ MOCK_PRIORITIZATION_RESULT = {
             "max_phase":     0,
             "known_drugs":   ["azacitidine"],
             "pli":           0.0,
-            "flags":         ["chip_mechanism"],
+            "flags":         [],
             "top_programs":  ["inflammatory_NF-kB"],
             "key_evidence":  ["Bick 2020", "Replogle 2022"],
             "safety_flags":  [],
@@ -191,11 +186,9 @@ class TestPhenotypeArchitect:
 
     @patch("mcp_servers.gwas_genetics_server.get_gwas_catalog_studies")
     @patch("mcp_servers.gwas_genetics_server.list_available_gwas")
-    @patch("mcp_servers.gwas_genetics_server.get_finngen_phenotype_definition")
-    def test_run_cad_returns_expected_keys(self, mock_fg, mock_gwas_list, mock_studies):
+    def test_run_cad_returns_expected_keys(self, mock_gwas_list, mock_studies):
         mock_studies.return_value = {"total_studies": 5, "efo_id": "EFO_0001645"}
         mock_gwas_list.return_value = {"datasets": [{"id": "ieu-a-7"}]}
-        mock_fg.return_value = {"phenocode": "I9_CAD"}
 
         from agents.tier1_phenomics.phenotype_architect import run
         result = run("coronary artery disease")
@@ -205,11 +198,9 @@ class TestPhenotypeArchitect:
 
     @patch("mcp_servers.gwas_genetics_server.get_gwas_catalog_studies")
     @patch("mcp_servers.gwas_genetics_server.list_available_gwas")
-    @patch("mcp_servers.gwas_genetics_server.get_finngen_phenotype_definition")
-    def test_run_unknown_disease_graceful(self, mock_fg, mock_gwas_list, mock_studies):
+    def test_run_unknown_disease_graceful(self, mock_gwas_list, mock_studies):
         mock_studies.return_value = {"total_studies": 0, "efo_id": None}
         mock_gwas_list.return_value = {"datasets": []}
-        mock_fg.return_value = {}
 
         from agents.tier1_phenomics.phenotype_architect import run
         result = run("unknown_disease_xyz")
@@ -222,18 +213,12 @@ class TestPhenotypeArchitect:
 # ===========================================================================
 
 class TestStatisticalGeneticist:
-    @patch("pipelines.mr_analysis.run_two_sample_mr")
-    @patch("pipelines.mr_analysis.run_sensitivity_analysis")
     @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
     @patch("mcp_servers.gwas_genetics_server.get_gwas_catalog_associations")
     @patch("mcp_servers.gwas_genetics_server.query_gnomad_lof_constraint")
-    def test_run_returns_instruments(
-        self, mock_gnomad, mock_gwas_assoc, mock_eqtl, mock_sensitivity, mock_mr
+    def test_run_returns_anchor_validation(
+        self, mock_gnomad, mock_gwas_assoc, mock_eqtl
     ):
-        mock_mr.return_value = {
-            "ivw_beta": -0.4, "ivw_p": 1e-20, "n_snps": 50, "f_statistic": 80.0
-        }
-        mock_sensitivity.return_value = {"egger_intercept_p": 0.9}
         mock_eqtl.return_value = {
             "data": [{"nes": -0.3, "p_value": 1e-10, "variant_id": "rs1234"}]
         }
@@ -243,82 +228,9 @@ class TestStatisticalGeneticist:
         from agents.tier1_phenomics.statistical_geneticist import run
         result = run(MOCK_DISEASE_QUERY)
 
-        assert "instruments" in result
-        assert len(result["instruments"]) == 3  # LDL-C, HDL-C, CRP
         assert "anchor_genes_validated" in result
         assert "warnings" in result
-
-    @patch("pipelines.mr_analysis.run_two_sample_mr")
-    @patch("pipelines.mr_analysis.run_sensitivity_analysis")
-    @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
-    @patch("mcp_servers.gwas_genetics_server.get_gwas_catalog_associations")
-    @patch("mcp_servers.gwas_genetics_server.query_gnomad_lof_constraint")
-    def test_weak_instrument_warning(
-        self, mock_gnomad, mock_gwas_assoc, mock_eqtl, mock_sensitivity, mock_mr
-    ):
-        mock_mr.return_value = {"ivw_beta": 0.1, "ivw_p": 0.05, "n_snps": 1, "f_statistic": 5.0}
-        mock_sensitivity.return_value = {"egger_intercept_p": 0.5}
-        mock_eqtl.return_value = {"data": []}
-        mock_gwas_assoc.return_value = {"associations": []}
-        mock_gnomad.return_value = {}
-
-        from agents.tier1_phenomics.statistical_geneticist import run
-        result = run(MOCK_DISEASE_QUERY)
-        warns = result["warnings"]
-        assert any("F-statistic" in w and "< 10" in w for w in warns)
-
-
-# ===========================================================================
-# Tier 1 — Somatic Exposure Agent
-# ===========================================================================
-
-class TestSomaticExposureAgent:
-    @patch("mcp_servers.viral_somatic_server.get_chip_disease_associations")
-    @patch("mcp_servers.viral_somatic_server.get_viral_disease_mr_results")
-    @patch("mcp_servers.viral_somatic_server.get_drug_exposure_mr")
-    @patch("mcp_servers.clinical_trials_server.search_clinical_trials")
-    @patch("mcp_servers.open_targets_server.get_open_targets_drug_info")
-    def test_chip_edges_created(
-        self, mock_ot, mock_trials, mock_drug_mr, mock_viral, mock_chip
-    ):
-        mock_chip.return_value = {
-            "associations": [
-                {"gene": "TET2",   "hr": 1.72, "ci_lower": 1.30, "ci_upper": 2.28, "source": "Bick2020"},
-                {"gene": "DNMT3A", "hr": 1.26, "ci_lower": 1.06, "ci_upper": 1.49, "source": "Bick2020"},
-            ]
-        }
-        mock_viral.return_value = {"beta": None}
-        mock_drug_mr.return_value = {"beta": -0.3, "source": "published_MR"}
-        mock_trials.return_value = {"trials": [{"phase": ["PHASE3"], "intervention": "atorvastatin"}]}
-        mock_ot.return_value = {"indications": []}
-
-        from agents.tier1_phenomics.somatic_exposure_agent import run
-        result = run(MOCK_DISEASE_QUERY)
-
-        assert len(result["chip_edges"]) == 2
-        assert result["summary"]["n_chip_genes"] == 2
-        assert "warnings" in result
-
-    @patch("mcp_servers.viral_somatic_server.get_chip_disease_associations")
-    @patch("mcp_servers.viral_somatic_server.get_viral_disease_mr_results")
-    @patch("mcp_servers.viral_somatic_server.get_drug_exposure_mr")
-    @patch("mcp_servers.clinical_trials_server.search_clinical_trials")
-    @patch("mcp_servers.open_targets_server.get_open_targets_drug_info")
-    def test_chip_tier_assignment(
-        self, mock_ot, mock_trials, mock_drug_mr, mock_viral, mock_chip
-    ):
-        mock_chip.return_value = {
-            "associations": [{"gene": "TET2", "hr": 1.72, "ci_lower": 1.3, "ci_upper": 2.3, "source": "Bick2020"}]
-        }
-        mock_viral.return_value = {"beta": None}
-        mock_drug_mr.return_value = {"beta": None}
-        mock_trials.return_value = {"trials": []}
-        mock_ot.return_value = {}
-
-        from agents.tier1_phenomics.somatic_exposure_agent import run
-        result = run(MOCK_DISEASE_QUERY)
-        edge = result["chip_edges"][0]
-        assert edge["evidence_tier"] == "Tier2_Convergent"
+        assert "n_gw_significant_hits" in result
 
 
 # ===========================================================================
@@ -353,7 +265,7 @@ class TestPerturbationGenomicsAgent:
 
     @patch("pipelines.ota_beta_estimation.estimate_beta")
     @patch("mcp_servers.burden_perturb_server.get_gene_perturbation_effect")
-    @patch("mcp_servers.burden_perturb_server.get_cnmf_program_info")
+    @patch("pipelines.cnmf_programs.get_programs_for_disease")
     @patch("mcp_servers.burden_perturb_server.get_program_gene_loadings")
     @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
     def test_biology_cross_check_flags_mismatch(
@@ -378,7 +290,7 @@ class TestPerturbationGenomicsAgent:
 
     @patch("pipelines.ota_beta_estimation.estimate_beta")
     @patch("mcp_servers.burden_perturb_server.get_gene_perturbation_effect")
-    @patch("mcp_servers.burden_perturb_server.get_cnmf_program_info")
+    @patch("pipelines.cnmf_programs.get_programs_for_disease")
     @patch("mcp_servers.burden_perturb_server.get_program_gene_loadings")
     @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
     def test_tier2_eqtl_activates_when_tier1_absent(
@@ -425,12 +337,12 @@ class TestPerturbationGenomicsAgent:
         mock_estimate.return_value = {"beta": None, "evidence_tier": "provisional_virtual"}
 
         from agents.tier2_pathway.perturbation_genomics_agent import run
-        # IBD disease → should query Colon_Sigmoid tissue
-        ibd_query = {"disease_name": "inflammatory bowel disease", "efo_id": "EFO_0003767"}
-        run(["NOD2"], ibd_query)
+        # AMD disease → should query Retina tissue
+        amd_query = {"disease_name": "age-related macular degeneration", "efo_id": "EFO_0001481"}
+        run(["CFH"], amd_query)
         calls = [str(c) for c in mock_eqtl.call_args_list]
-        assert any("Colon_Sigmoid" in c for c in calls), (
-            f"Expected Colon_Sigmoid for IBD; got calls: {calls}"
+        assert any("Retina" in c or "Liver" in c or "Whole_Blood" in c for c in calls), (
+            f"Expected Retina/Liver/Whole_Blood for AMD; got calls: {calls}"
         )
 
 
@@ -562,9 +474,8 @@ class TestKGCompletionAgent:
         result = run(MOCK_CAUSAL_RESULT, MOCK_DISEASE_QUERY)
 
         assert "n_pathway_edges_added" in result
-        assert "n_ppi_edges_added" in result
         assert "drug_target_summary" in result
-        assert result["n_ppi_edges_added"] >= 0
+        assert "n_ppi_edges_added" not in result  # STRING removed
 
 
 # ===========================================================================

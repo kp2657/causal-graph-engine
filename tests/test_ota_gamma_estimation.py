@@ -3,7 +3,6 @@ test_ota_gamma_estimation.py — Unit tests for the γ_{program→trait} estimat
 
 Tests verify:
   - compute_cnmf_gamma: hypergeometric enrichment logic and boundary conditions
-  - estimate_gamma_fused: Bayesian fusion correctness and fallback behaviour
   - estimate_gamma: dispatches to correct sub-estimator; returns valid tier labels
   - compute_ota_gamma: OTA formula summation is correct; NaN propagation
   - Module-level constants imported from config.scoring_thresholds
@@ -15,7 +14,6 @@ import pytest
 
 from pipelines.ota_gamma_estimation import (
     compute_cnmf_gamma,
-    estimate_gamma_fused,
     estimate_gamma,
     compute_ota_gamma,
 )
@@ -92,57 +90,6 @@ class TestComputeCnmfGamma:
         if result_large and result_small:
             assert result_small["p_enrichment"] <= result_large["p_enrichment"]
 
-
-# ---------------------------------------------------------------------------
-# estimate_gamma_fused — Bayesian LDSC + OT fusion
-# ---------------------------------------------------------------------------
-
-class TestEstimateGammaFused:
-    def test_returns_none_without_efo(self):
-        result = estimate_gamma_fused(PROGRAM, TRAIT, COMPLEMENT_PROGRAM, efo_id=None)
-        assert result is None
-
-    def test_returns_none_without_program_gene_set(self):
-        result = estimate_gamma_fused(PROGRAM, TRAIT, program_gene_set=None, efo_id=EFO)
-        assert result is None
-
-    def test_ldsc_only_with_strong_signal(self):
-        """Strong LDSC Z-score should produce positive gamma."""
-        ldsc = {"tau": 0.35, "z_score": 4.2, "se": 0.08}
-        result = estimate_gamma_fused(
-            PROGRAM, TRAIT, COMPLEMENT_PROGRAM, EFO, ldsc_result=ldsc
-        )
-        if result is not None:
-            assert result["gamma"] > 0
-
-    def test_ot_only_with_good_score(self):
-        """OT L2G score above minimum should contribute to fused gamma."""
-        ot = {"mean_genetic_score": 0.25}
-        result = estimate_gamma_fused(
-            PROGRAM, TRAIT, COMPLEMENT_PROGRAM, EFO, ot_result=ot
-        )
-        if result is not None:
-            assert result["gamma"] > 0
-            assert result["gamma"] <= 1.0
-
-    def test_ot_score_below_min_contributes_nothing(self):
-        """OT score below minimum threshold → OT source is skipped."""
-        ot = {"mean_genetic_score": 0.01}
-        result = estimate_gamma_fused(
-            PROGRAM, TRAIT, COMPLEMENT_PROGRAM, EFO, ot_result=ot
-        )
-        # With no LDSC and sub-threshold OT, should return None
-        assert result is None
-
-    def test_fused_gamma_bounded(self):
-        ldsc = {"tau": 0.50, "z_score": 5.0, "se": 0.10}
-        ot = {"mean_genetic_score": 0.30}
-        result = estimate_gamma_fused(
-            PROGRAM, TRAIT, COMPLEMENT_PROGRAM, EFO,
-            ldsc_result=ldsc, ot_result=ot
-        )
-        if result is not None:
-            assert 0.0 < result["gamma"] <= 1.0
 
 
 # ---------------------------------------------------------------------------

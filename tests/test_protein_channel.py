@@ -1,5 +1,5 @@
 """
-tests/test_protein_channel.py — Tier2pt ProteinChannel + Tier2s program_gamma fix.
+tests/test_protein_channel.py — Tier2pt ProteinChannel tests.
 
 Covers:
   1. estimate_beta_tier2pt() — fires with GWAS + pQTL
@@ -7,9 +7,9 @@ Covers:
   3. estimate_beta_tier2pt() — silent for non-GWAS genes
   4. estimate_beta_tier2pt() — silent for weak GWAS (p > 1e-5)
   5. estimate_beta_tier2pt() — correct beta priority (pQTL > GWAS > OT)
-  6. compute_ota_gamma — program_gamma fallback (Tier2s/Tier2pt fix)
+  6. compute_ota_gamma — program_gamma fallback (Tier2pt fix)
   7. compute_ota_gamma — fallback does not fire when gamma_estimates has entry
-  8. estimate_beta() chain — Tier2pt fires after Tier2s misses, before Tier3
+  8. estimate_beta() chain — Tier2pt fires before Tier3
   9. CFH AMD scenario — full chain, protein channel gives meaningful OTA
  10. Mechanism confidence threshold — no fire when confidence < 0.15
 """
@@ -307,28 +307,3 @@ def test_tier2pt_no_fire_low_confidence():
     assert result is None
 
 
-# ---------------------------------------------------------------------------
-# 11. Tier2s program_gamma also stored correctly in beta_matrix entry
-# ---------------------------------------------------------------------------
-def test_tier2s_program_gamma_survives_beta_matrix_storage():
-    """
-    estimate_beta_tier2_synthetic returns program_gamma; the agent stores it.
-    Simulate the storage step and verify OTA can use it.
-    """
-    from pipelines.ota_gamma_estimation import compute_ota_gamma
-
-    # Simulate what perturbation_genomics_agent stores after Tier2s fires
-    beta_estimates = {
-        "ribosome_biogenesis": {
-            "beta":          0.79,
-            "evidence_tier": "Tier2s_SyntheticPathway",
-            "beta_sigma":    0.45,
-            "program_gamma": 0.599,  # from complement synthetic program
-        }
-    }
-    gamma_estimates = {}  # no Perturb-seq gamma for ribosome_biogenesis in AMD
-
-    ota = compute_ota_gamma("CFH", "AMD", beta_estimates, gamma_estimates)
-    expected = 0.79 * 0.599
-    assert ota["ota_gamma"] == pytest.approx(expected, abs=0.01)
-    assert ota["ota_gamma"] > 0.40   # substantially above old value of 0.013

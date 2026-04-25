@@ -166,6 +166,102 @@ def ingest_edges(db: "GraphDB", raw_edges: list[dict[str, Any]]) -> IngestionRes
 
 
 # ---------------------------------------------------------------------------
+# Program γ ingestion — writes CellularProgram nodes + DrivesTrait edges
+# ---------------------------------------------------------------------------
+
+def ingest_program_gamma_edges(
+    db: "GraphDB",
+    gamma_estimates: dict,
+    disease_name: str,
+    efo_id: str | None = None,
+    cell_type: str = "unknown",
+    graph_version: str = "0.1.0",
+) -> dict:
+    """
+    Upsert CellularProgram nodes and write CellularProgram→DiseaseTrait DrivesTrait
+    edges from a gamma_estimates dict.
+
+    gamma_estimates structure:
+        {program_id: {trait: {"gamma": float, "gamma_se": float,
+                              "evidence_tier": str, "data_source": str, ...}}}
+
+    Traits where gamma is None/missing are skipped.
+
+    Returns {"written": int, "rejected": int, "errors": list[str]}
+    """
+    from datetime import datetime, timezone
+
+    written = 0
+    rejected = 0
+    errors: list[str] = []
+    now = datetime.now(timezone.utc).isoformat()
+    trait_nodes_upserted: set[str] = set()
+
+    for program_id, trait_dict in gamma_estimates.items():
+        if not isinstance(trait_dict, dict):
+            continue
+        for trait, gamma_dict in trait_dict.items():
+            if not isinstance(gamma_dict, dict):
+                continue
+            gamma = gamma_dict.get("gamma")
+            if gamma is None:
+                continue
+
+            # Upsert CellularProgram node
+            try:
+                db.upsert_node("CellularProgram", {
+                    "id":        program_id,
+                    "name":      program_id,
+                    "cell_type": cell_type,
+                })
+            except Exception as exc:
+                errors.append(f"CellularProgram upsert {program_id!r}: {exc}")
+                rejected += 1
+                continue
+
+            # Upsert DiseaseTrait node — one per unique trait key
+            if trait not in trait_nodes_upserted:
+                try:
+                    node_props: dict[str, Any] = {"id": trait, "name": trait}
+                    if efo_id:
+                        node_props["efo_id"] = efo_id
+                    db.upsert_node("DiseaseTrait", node_props)
+                    trait_nodes_upserted.add(trait)
+                except Exception as exc:
+                    errors.append(f"DiseaseTrait upsert {trait!r}: {exc}")
+
+            # Write DrivesTrait edge
+            gamma_se = gamma_dict.get("gamma_se")
+            try:
+                db.write_drives_trait_edge({
+                    "program_id":          program_id,
+                    "trait_id":            trait,
+                    "gamma":               float(gamma),
+                    "ci_lower":            float(gamma - gamma_se) if gamma_se else None,
+                    "ci_upper":            float(gamma + gamma_se) if gamma_se else None,
+                    "method":              "ota_gamma",
+                    "evidence_tier":       gamma_dict.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":         gamma_dict.get("data_source", "ot_l2g_enrichment"),
+                    "data_source_version": "1.0",
+                    "n_modifier_paths":    1,
+                    "graph_version":       graph_version,
+                    "created_at":          now,
+                })
+                written += 1
+            except Exception as exc:
+                errors.append(f"DrivesTrait {program_id!r} → {trait!r}: {exc}")
+                rejected += 1
+
+    if errors:
+        logger.warning(
+            "ingest_program_gamma_edges: %d failures: %s",
+            len(errors), errors[:3],
+        )
+
+    return {"written": written, "rejected": rejected, "errors": errors}
+
+
+# ---------------------------------------------------------------------------
 # Internal DB write dispatcher
 # ---------------------------------------------------------------------------
 
@@ -184,16 +280,13 @@ def _ensure_nodes(db: "GraphDB", edge: CausalEdge) -> None:
     try:
         db.upsert_node(from_node_type, {"id": edge.from_node})
     except Exception as exc:
-        # Log at DEBUG if it looks like a duplicate-key constraint (benign),
-        # WARNING otherwise — a silent pass here was the root cause of the
-        # n_written=0 bug (2026-03-23).
-        _level = logging.DEBUG if "already exist" in str(exc).lower() else logging.WARNING
-        logger.log(_level, "upsert_node(%s, %s) failed: %s", from_node_type, edge.from_node, exc)
+        logger.error("CRITICAL: upsert_node FAILED for type=%s, id=%s. Error: %s", from_node_type, edge.from_node, exc, exc_info=True)
+        raise IngestionError(f"Node upsert failed for {edge.from_node}")
     try:
         db.upsert_node(to_node_type, {"id": edge.to_node})
     except Exception as exc:
-        _level = logging.DEBUG if "already exist" in str(exc).lower() else logging.WARNING
-        logger.log(_level, "upsert_node(%s, %s) failed: %s", to_node_type, edge.to_node, exc)
+        logger.error("CRITICAL: upsert_node FAILED for type=%s, id=%s. Error: %s", to_node_type, edge.to_node, exc, exc_info=True)
+        raise IngestionError(f"Node upsert failed for {edge.to_node}")
 
 
 def _write_edge(db: "GraphDB", edge: CausalEdge) -> None:
@@ -207,12 +300,6 @@ def _write_edge(db: "GraphDB", edge: CausalEdge) -> None:
     if edge.to_type == "trait":
         db.write_causes_trait_edge(payload)
     elif edge.to_type == "program":
-        # RegulatesProgram — not yet implemented in db.py.
-        # Logged at WARNING (not DEBUG) so callers notice edges are being dropped.
-        logger.warning(
-            "RegulatesProgram write not yet implemented — edge %s → %s skipped. "
-            "Implement db.write_regulates_program_edge() to persist gene→program edges.",
-            edge.from_node, edge.to_node,
-        )
+        db.write_regulates_program_edge(payload)
     else:
         logger.warning("Unhandled edge to_type=%s — not written to DB.", edge.to_type)

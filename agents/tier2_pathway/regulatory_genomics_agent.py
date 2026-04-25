@@ -11,8 +11,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from models.disease_registry import get_disease_key as _get_disease_key
-
 _DEFAULT_TISSUE = "Whole_Blood"
 
 
@@ -37,15 +35,22 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # ------------------------------------------------------------------
     # Resolve disease-appropriate primary and secondary GTEx tissues
     # ------------------------------------------------------------------
-    disease_name = disease_query.get("disease_name", "").lower()
-    disease_key  = _get_disease_key(disease_name) or ""
+    disease_key  = disease_query.get("disease_key") or ""
     ctx          = DISEASE_CELL_TYPE_MAP.get(disease_key, {})
     primary_tissue     = ctx.get("gtex_tissue", _DEFAULT_TISSUE)
     secondary_tissues: list[str] = ctx.get("gtex_tissues_secondary", [])
 
+    # Fast-track split: only GWAS-seeded genes get genetic instrument lookups
+    # (GTEx eQTL, COLOC candidate check, L2G score). Perturb-seq regulator
+    # nominees don't have GWAS support and can't reach Tier2 via this agent;
+    # running GTEx for them wastes ~2,100 API calls per run with zero yield.
+    gwas_gene_set: set[str] = set(disease_query.get("gwas_genes") or [])
+
     gene_eqtl_summary: dict[str, dict] = {}
     gene_program_overlap: dict[str, list[str]] = {}
     tier2_upgrades: list[str] = []
+
+    n_fast_tracked = 0
 
     # Load program definitions once
     programs_info = get_cnmf_program_info()
@@ -70,6 +75,29 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             program_top_genes[pid] = set()
 
     for gene in gene_list:
+        # Program overlap runs for every gene — cheap dict lookup, no API calls.
+        programs_containing_gene: list[str] = []
+        for pid, top_genes in program_top_genes.items():
+            if gene in top_genes:
+                programs_containing_gene.append(pid)
+        gene_program_overlap[gene] = programs_containing_gene
+
+        # Non-GWAS genes (Perturb-seq regulator nominees) have no genetic
+        # instruments and cannot reach Tier2 via eQTL/COLOC. Skip all API
+        # calls and record a stub so downstream code has a consistent key.
+        is_gwas_gene = (not gwas_gene_set) or (gene in gwas_gene_set)
+        if not is_gwas_gene:
+            n_fast_tracked += 1
+            gene_eqtl_summary[gene] = {
+                "top_tissue":      primary_tissue,
+                "top_eqtl_p":      None,
+                "top_eqtl_nes":    None,
+                "coloc_candidate": False,
+                "l2g_score":       None,
+                "fast_tracked":    True,
+            }
+            continue
+
         top_eqtl_p: float | None = None
         top_eqtl_nes: float | None = None
         coloc_candidate = False
@@ -123,20 +151,10 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         }
 
         # Validation: PCSK9 must have a significant Liver eQTL when Liver is a relevant tissue
-        # (PCSK9 is hepatically synthesised; Liver is primary tissue for lipid/CAD genes)
         if gene == "PCSK9" and "Liver" in tissues_to_try:
             liver_ok = used_tissue == "Liver" and top_eqtl_p is not None and top_eqtl_p < 1e-5
             if not liver_ok:
-                warnings.append(
-                    "PCSK9 Liver eQTL not significant — check API or gene ID"
-                )
-
-        # Program overlap
-        programs_containing_gene: list[str] = []
-        for pid, top_genes in program_top_genes.items():
-            if gene in top_genes:
-                programs_containing_gene.append(pid)
-        gene_program_overlap[gene] = programs_containing_gene
+                warnings.append("PCSK9 Liver eQTL not significant — check API or gene ID")
 
         # L2G score lookup: high-confidence causal gene at GWAS locus (OT Platform v4)
         if efo_id:
@@ -159,9 +177,16 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         ):
             tier2_upgrades.append(gene)
 
+    if n_fast_tracked:
+        warnings.append(
+            f"fast_track: skipped GTEx/COLOC/L2G for {n_fast_tracked} non-GWAS genes "
+            f"(Perturb-seq regulator nominees); {len(gene_list) - n_fast_tracked} GWAS genes processed fully"
+        )
+
     return {
-        "gene_eqtl_summary":  gene_eqtl_summary,
+        "gene_eqtl_summary":    gene_eqtl_summary,
         "gene_program_overlap": gene_program_overlap,
-        "tier2_upgrades":     tier2_upgrades,
-        "warnings":           warnings,
+        "tier2_upgrades":       tier2_upgrades,
+        "n_fast_tracked":       n_fast_tracked,
+        "warnings":             warnings,
     }

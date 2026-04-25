@@ -63,7 +63,7 @@ class TestRegistry:
                     f"{disease} priority references unknown dataset: {ds_id}"
 
     def test_all_diseases_covered(self):
-        for disease in ("CAD", "IBD", "RA", "T2D", "AD", "SLE"):
+        for disease in ("CAD", "AMD", "RA", "T2D", "AD", "SLE"):
             assert disease in _DISEASE_DATASET_PRIORITY
 
     def test_cad_vascular_first(self):
@@ -71,9 +71,9 @@ class TestRegistry:
         cad_priority = _DISEASE_DATASET_PRIORITY["CAD"]
         assert cad_priority[0] == "schnitzler_cad_vascular"
 
-    def test_ibd_monocyte_first(self):
-        ibd_priority = _DISEASE_DATASET_PRIORITY["IBD"]
-        assert ibd_priority[0] == "papalexi_2021_thp1"
+    def test_amd_has_priority_dataset(self):
+        amd_priority = _DISEASE_DATASET_PRIORITY["AMD"]
+        assert len(amd_priority) > 0
 
     def test_replogle_k562_in_all_priorities(self):
         for disease, priority in _DISEASE_DATASET_PRIORITY.items():

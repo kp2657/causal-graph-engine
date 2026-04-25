@@ -128,7 +128,7 @@ class TestBuildDiseaseLatentSpace:
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(100, 40)
         result = build_disease_latent_space(
-            "IBD", [], _adata_override=adata,
+            "AMD", [], _adata_override=adata,
             backend=None,   # auto-selects numpy backend since scanpy likely absent
         )
         required = [
@@ -148,7 +148,7 @@ class TestBuildDiseaseLatentSpace:
 
     def test_missing_h5ad_returns_error_dict(self):
         from pipelines.state_space.latent_model import build_disease_latent_space
-        result = build_disease_latent_space("IBD", ["/nonexistent/path.h5ad"])
+        result = build_disease_latent_space("AMD", ["/nonexistent/path.h5ad"])
         assert "error" in result
         assert result["adata"] is None
 
@@ -156,7 +156,7 @@ class TestBuildDiseaseLatentSpace:
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(100, 40)
         result = build_disease_latent_space(
-            "IBD", [], _adata_override=adata,
+            "AMD", [], _adata_override=adata,
             cell_type_filter=["macrophage"],
         )
         if result.get("error"):
@@ -168,7 +168,7 @@ class TestBuildDiseaseLatentSpace:
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(60, 30)
         result = build_disease_latent_space(
-            "IBD", [], _adata_override=adata,
+            "AMD", [], _adata_override=adata,
             cell_type_filter=["nonexistent_cell_type_xyz"],
         )
         # Either error dict or warnings about 0 cells
@@ -179,7 +179,7 @@ class TestBuildDiseaseLatentSpace:
     def test_latent_matrix_shape(self):
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(120, 50)
-        result = build_disease_latent_space("IBD", [], _adata_override=adata)
+        result = build_disease_latent_space("AMD", [], _adata_override=adata)
         if result.get("error"):
             pytest.skip("latent build failed")
         lm = result["latent_matrix"]
@@ -190,7 +190,7 @@ class TestBuildDiseaseLatentSpace:
     def test_pseudotime_length_matches_cells(self):
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(90, 45)
-        result = build_disease_latent_space("IBD", [], _adata_override=adata)
+        result = build_disease_latent_space("AMD", [], _adata_override=adata)
         if result.get("error"):
             pytest.skip("latent build failed")
         pt = result["pseudotime"]
@@ -199,7 +199,7 @@ class TestBuildDiseaseLatentSpace:
     def test_provenance_has_backend(self):
         from pipelines.state_space.latent_model import build_disease_latent_space
         adata = _make_synthetic_adata(80, 40)
-        result = build_disease_latent_space("IBD", [], _adata_override=adata)
+        result = build_disease_latent_space("AMD", [], _adata_override=adata)
         if result.get("error"):
             pytest.skip("latent build failed")
         assert "backend" in result["provenance"]

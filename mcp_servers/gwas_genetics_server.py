@@ -35,6 +35,8 @@ import concurrent.futures as _futures
 import httpx
 import json
 
+from pipelines.api_cache import api_cached as _api_cached
+
 # Hard wall-clock limit for every EBI GWAS Catalog HTTP call.
 # httpx per-read timeout doesn't prevent hangs when the server streams large
 # responses in small chunks each arriving within the read window.
@@ -372,10 +374,20 @@ def get_snp_associations(rsid: str) -> dict:
     Returns:
         { "rsid": str, "associations": list[dict] }
     """
+    from pipelines.api_cache import get_cache
+    cache_key_args = (rsid,)
+    cached = get_cache().get(_make_key("get_snp_associations", cache_key_args, {}))
+    if cached is not None:
+        return cached
+
     url = f"{GWAS_CATALOG_BASE}/singleNucleotidePolymorphisms/{rsid}/associations"
     params = {"projection": "associationBySnp"}
     time.sleep(_GWAS_CATALOG_DELAY)
     resp = _gwas_get(url, params=params, headers=_gwas_headers(), timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0))
+    if resp.status_code == 404:
+        result = {"rsid": rsid, "n_associations": 0, "associations": [], "note": "SNP not in GWAS Catalog"}
+        get_cache().set(_make_key("get_snp_associations", cache_key_args, {}), result, 7 * 86400)
+        return result
     resp.raise_for_status()
     data = resp.json()
 
@@ -406,7 +418,7 @@ def get_snp_associations(rsid: str) -> dict:
     )
     meta = meta_resp.json() if meta_resp.status_code == 200 else {}
 
-    return {
+    result = {
         "rsid":              rsid,
         "chromosomeLocation": meta.get("chromosomeRegion", {}).get("name"),
         "functionalClass":   meta.get("functionalClass"),
@@ -414,6 +426,8 @@ def get_snp_associations(rsid: str) -> dict:
         "associations":      parsed,
         "data_source":       "GWAS Catalog REST API",
     }
+    get_cache().set(_make_key("get_snp_associations", cache_key_args, {}), result, 30 * 86400)
+    return result
 
 
 @_tool
@@ -453,6 +467,23 @@ def get_gwas_instruments_for_gene(
             }]
         }
     """
+    from pipelines.api_cache import get_cache
+    return get_cache().get_or_set(
+        "get_gwas_instruments_for_gene",
+        (gene_symbol, efo_id, p_threshold, n_max),
+        {},
+        lambda: _get_gwas_instruments_for_gene_live(gene_symbol, efo_id, p_threshold, window_kb, n_max),
+        ttl_days=30,
+    )
+
+
+def _get_gwas_instruments_for_gene_live(
+    gene_symbol: str,
+    efo_id: str,
+    p_threshold: float = 5e-8,
+    window_kb: int = 500,
+    n_max: int = 20,
+) -> dict:
     # GWAS Catalog gene associations endpoint
     url = f"{GWAS_CATALOG_BASE}/genes/{gene_symbol}/associations"
     params = {"projection": "associationByGene", "size": 200}
@@ -548,70 +579,114 @@ def get_gwas_instruments_for_gene(
 # gnomAD — real implementation
 # ---------------------------------------------------------------------------
 
+def _gnomad_constraint_from_api(genes: list[str]) -> dict[str, dict]:
+    """
+    Batch-fetch gnomAD v4 constraint for a list of genes using GraphQL field aliases.
+    Sends one POST per chunk of 150 genes instead of one per gene.
+    Returns {gene_symbol: constraint_dict}.
+    """
+    _CHUNK = 150
+    _FIELD = "gnomad_constraint { pLI oe_lof oe_lof_lower oe_lof_upper }"
+    out: dict[str, dict] = {}
+
+    for chunk_start in range(0, len(genes), _CHUNK):
+        chunk = genes[chunk_start : chunk_start + _CHUNK]
+        # Build aliased query: g_0, g_1, ... map back to gene symbols
+        alias_to_gene = {f"g_{i}": g for i, g in enumerate(chunk)}
+        fields = "\n".join(
+            f'{alias}: gene(gene_symbol: "{g}", reference_genome: GRCh38) {{ {_FIELD} }}'
+            for alias, g in alias_to_gene.items()
+        )
+        query = f"{{ {fields} }}"
+        try:
+            resp = httpx.post(
+                GNOMAD_API,
+                json={"query": query},
+                headers={"Content-Type": "application/json"},
+                timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0),
+            )
+            resp.raise_for_status()
+            data = resp.json().get("data", {})
+        except Exception as exc:
+            # Mark all genes in chunk as errored; caller will surface per-gene
+            for g in chunk:
+                out[g] = {"error": str(exc)}
+            continue
+
+        for alias, gene in alias_to_gene.items():
+            gene_data = data.get(alias)
+            constraint = (gene_data or {}).get("gnomad_constraint") or {}
+            out[gene] = constraint  # empty dict if gene unknown to gnomAD
+
+    return out
+
+
 @_tool
 def query_gnomad_lof_constraint(genes: list[str]) -> dict:
     """
     Retrieve LoF constraint metrics from gnomAD v4 for a list of genes.
-    Uses the gnomAD GraphQL API (no auth required).
+
+    Fetches via a single batched GraphQL request (field aliases) rather than
+    one request per gene.  Results are cached in SQLite (90-day TTL) so
+    repeated runs skip the API entirely.
 
     Key metrics:
-      pLI:       probability of being LoF intolerant (high = intolerant; >0.9 = significant)
-      oe_lof:    observed/expected LoF ratio (LOEUF = upper bound of CI)
-      oe_lof_upper (LOEUF): main filtering metric — lower = more constrained
+      pLI:   probability of being LoF intolerant (>0.9 = essential)
+      loeuf: oe_lof_upper — main filtering metric (< 0.35 = strongly constrained)
 
     Returns:
         { "genes": list[{"symbol", "pLI", "oe_lof", "oe_lof_lower", "loeuf"}] }
     """
-    query = """
-    query Constraint($symbol: String!) {
-      gene(gene_symbol: $symbol, reference_genome: GRCh38) {
-        gnomad_constraint {
-          pLI
-          oe_lof
-          oe_lof_lower
-          oe_lof_upper
-        }
-      }
-    }
-    """
+    from pipelines.api_cache import get_cache, _make_key
+    cache = get_cache()
+    _TTL = 90  # days — gnomAD constraint doesn't change between releases
+
+    # Split into cache-hits and misses in one pass
+    cached_results: dict[str, dict] = {}
+    to_fetch: list[str] = []
+    for gene in genes:
+        key = _make_key("gnomad_constraint", (gene,), {})
+        hit = cache.get(key)
+        if hit is not None:
+            cached_results[gene] = hit
+        else:
+            to_fetch.append(gene)
+
+    # Batch-fetch misses in one (or a few) HTTP requests
+    if to_fetch:
+        fetched = _gnomad_constraint_from_api(to_fetch)
+        for gene, constraint in fetched.items():
+            key = _make_key("gnomad_constraint", (gene,), {})
+            cache.set(key, constraint, _TTL * 86400)
+            cached_results[gene] = constraint
+
+    # Build output list in original gene order
     results = []
     for gene in genes:
-        try:
-            resp = httpx.post(
-                GNOMAD_API,
-                json={"query": query, "variables": {"symbol": gene}},
-                headers={"Content-Type": "application/json"},
-                timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            # gnomAD returns {"data": {"gene": null}} for unknown genes
-            gene_data = data.get("data", {}).get("gene")
-            constraint = gene_data.get("gnomad_constraint", {}) if gene_data else {}
-        except Exception as exc:
-            results.append({"symbol": gene, "error": str(exc)})
-            continue
-
-        if constraint:
+        constraint = cached_results.get(gene, {})
+        if constraint.get("error"):
+            results.append({"symbol": gene, "error": constraint["error"]})
+        elif constraint:
             results.append({
-                "symbol":    gene,
-                "pLI":       constraint.get("pLI"),
-                "oe_lof":    constraint.get("oe_lof"),
-                "oe_lof_lower": constraint.get("oe_lof_lower"),
-                "loeuf":     constraint.get("oe_lof_upper"),  # upper bound = LOEUF
+                "symbol":           gene,
+                "pLI":              constraint.get("pLI"),
+                "oe_lof":           constraint.get("oe_lof"),
+                "oe_lof_lower":     constraint.get("oe_lof_lower"),
+                "loeuf":            constraint.get("oe_lof_upper"),
                 "is_lof_constrained": (
                     constraint.get("oe_lof_upper", 1.0) < 0.35
-                    if constraint.get("oe_lof_upper") is not None
-                    else None
+                    if constraint.get("oe_lof_upper") is not None else None
                 ),
             })
         else:
             results.append({"symbol": gene, "error": "no constraint data found"})
 
     return {
-        "genes":        results,
-        "data_source":  "gnomAD v4.1 GraphQL API",
-        "loeuf_threshold": "< 0.35 = strongly constrained (pLI > 0.9 complementary)",
+        "genes":             results,
+        "data_source":       "gnomAD v4.1 GraphQL API",
+        "loeuf_threshold":   "< 0.35 = strongly constrained (pLI > 0.9 complementary)",
+        "n_from_cache":      len(genes) - len(to_fetch),
+        "n_fetched":         len(to_fetch),
     }
 
 
@@ -621,9 +696,23 @@ def query_gnomad_lof_constraint(genes: list[str]) -> dict:
 
 @_tool
 def resolve_gtex_gene_id(gene_symbol: str) -> dict:
+    """Resolve a gene symbol to its versioned Gencode ID for GTEx v8 queries.
+
+    Required because GTEx eQTL API needs the versioned ID
+    (e.g. ENSG00000169174.10).  SQLite-cached to avoid redundant lookups —
+    Gencode v26 is static, so 90-day TTL is conservative.
     """
-    Resolve a gene symbol to its versioned Gencode ID for GTEx v8 queries.
-    Required because GTEx eQTL API needs the versioned ID (e.g. ENSG00000169174.10).
+    from pipelines.api_cache import get_cache
+    return get_cache().get_or_set(
+        "resolve_gtex_gene_id", (gene_symbol,), {},
+        lambda: _resolve_gtex_gene_id_live(gene_symbol),
+        ttl_days=90,
+    )
+
+
+def _resolve_gtex_gene_id_live(gene_symbol: str) -> dict:
+    """
+    Live (un-cached) GTEx Gencode resolution.
 
     Returns:
         { "gene_symbol": str, "gencode_id": str, "tss": int, "chromosome": str }
@@ -1104,6 +1193,7 @@ def get_open_targets_genetics_credible_sets(efo_id: str, min_pip: float = 0.1) -
 
 
 @_tool
+@_api_cached(ttl_days=30)
 def get_open_targets_gwas_studies_for_efo(efo_id: str, max_studies: int = 50) -> dict:
     """
     Return Open Targets Platform GWAS study IDs for an EFO trait.
@@ -1130,6 +1220,7 @@ def get_open_targets_gwas_studies_for_efo(efo_id: str, max_studies: int = 50) ->
 
 
 @_tool
+@_api_cached(ttl_days=30)
 def get_l2g_scores(study_id: str, top_n: int = 10) -> dict:
     """
     Retrieve Locus-to-Gene (L2G) causal gene scores from Open Targets Platform v4.
@@ -1292,8 +1383,7 @@ def get_l2g_prioritized_gene_list_for_efo(
 # ---------------------------------------------------------------------------
 _BURDEN_CACHE: dict[str, dict[str, dict]] = {}  # phenocode -> {GENE_UPPER: best_row}
 _BURDEN_PHENOCODE_MAP: dict[str, str] = {
-    "CAD": "I9_CAD", "IBD": "K11_IBD", "RA": "M13_RHEUMA", "T2D": "E4_DM2",
-    "AD": "G6_AD_WIDE", "T1D": "E4_DM1",
+    "CAD": "I9_CAD", "SLE": "M13_SLELUPUS", "DED": "H7_KCSYN",
 }
 from models.disease_registry import get_disease_key as _get_disease_key
 _BURDEN_GCS_BASE = "https://storage.googleapis.com/finngen-public-data-r12/burdentest"
@@ -1377,240 +1467,3 @@ def _load_burden_phenocode(phenocode: str) -> dict[str, dict]:
 
 
 # FinnGen — live API + R12 burden TSV fetch (see _load_burden_phenocode)
-# ---------------------------------------------------------------------------
-
-@_tool
-def get_finngen_phenotype_definition(phenocode: str) -> dict:
-    """
-    Get FinnGen R10 phenotype definition and GWAS metadata via live REST API.
-
-    Calls the live FinnGen R10 API (finngen_server.get_finngen_phenotype_info).
-    Falls back to R12 hardcoded metadata for known CAD phenocodes if API fails.
-
-    Key CAD phenocodes: I9_CAD, I9_CORATHER, I9_HEARTFAIL
-    Key IBD phenocodes: K11_IBD, K11_CD, K11_UC
-    """
-    # Primary: live FinnGen R10 API
-    try:
-        from mcp_servers.finngen_server import get_finngen_phenotype_info
-        result = get_finngen_phenotype_info(phenocode)
-        if result and not result.get("error"):
-            return result
-    except Exception:
-        pass
-
-    # Fallback: hardcoded R12 metadata for well-known phenocodes
-    _FALLBACK: dict[str, dict] = {
-        "I9_CAD":       {"name": "Coronary artery disease",   "n_cases": 30000, "n_controls": 300000, "source": "FinnGen R12"},
-        "I9_CORATHER":  {"name": "Coronary atherosclerosis",  "n_cases": 25000, "n_controls": 300000, "source": "FinnGen R12"},
-        "I9_HEARTFAIL": {"name": "Heart failure",             "n_cases": 20000, "n_controls": 300000, "source": "FinnGen R12"},
-        "K11_IBD":      {"name": "Inflammatory bowel disease","n_cases":  6900, "n_controls": 280000, "source": "FinnGen R12"},
-        "K11_CD":       {"name": "Crohn's disease",           "n_cases":  3200, "n_controls": 280000, "source": "FinnGen R12"},
-        "K11_UC":       {"name": "Ulcerative colitis",        "n_cases":  3700, "n_controls": 280000, "source": "FinnGen R12"},
-    }
-    if phenocode in _FALLBACK:
-        fb = _FALLBACK[phenocode]
-        return {
-            **fb,
-            "phenocode":    phenocode,
-            "sumstats_url": f"https://storage.googleapis.com/finngen-public-data-r12/summary_stats/{phenocode}.gz",
-        }
-    return {
-        "phenocode": phenocode,
-        "note":      f"Phenocode not found — check https://risteys.finngen.fi/phenocode/{phenocode}",
-    }
-
-
-@_tool
-def get_finngen_burden_results(disease: str, genes: list[str]) -> dict:
-    """
-    Retrieve FinnGen R12 gene burden test results for rare variant effects.
-
-    Fetches from GCS public bucket (no auth required). Files are gene-level
-    (~1-2 MB gzipped, ~19k genes x 5 masks) and cached in memory after first
-    fetch per phenocode, so repeat calls are instant.
-
-    beta < 0 = protective rare variant burden; beta > 0 = risk-increasing.
-    Returns empty burden_results (not an error) when data is unavailable.
-    """
-    disease_key = _get_disease_key(disease.lower()) or disease.upper()
-    phenocode   = _BURDEN_PHENOCODE_MAP.get(disease_key, "")
-    if not phenocode:
-        return {
-            "disease": disease, "genes": genes, "burden_results": [],
-            "n_found": 0, "data_source": "FinnGen_R12",
-            "note": f"No FinnGen R12 phenocode mapping for disease '{disease}'",
-        }
-
-    gene_map = _load_burden_phenocode(phenocode)
-    burden_results: list[dict] = []
-    for gene in genes:
-        row = gene_map.get(gene.upper())
-        if row:
-            beta = row.get("beta")
-            direction = (
-                "protective" if beta is not None and beta < 0 else
-                "risk"       if beta is not None and beta > 0 else
-                "unknown"
-            )
-            burden_results.append({
-                "gene":       gene.upper(),
-                "disease":    disease_key,
-                "beta":       row["beta"],
-                "se":         row["se"],
-                "p":          row["p"],
-                "n_variants": row["n_variants"],
-                "mask":       row["mask"],
-                "direction":  direction,
-                "source":     row["source"],
-            })
-
-    return {
-        "disease":        disease,
-        "genes":          genes,
-        "burden_results": burden_results,
-        "n_found":        len(burden_results),
-        "data_source":    "FinnGen_R12",
-    }
-
-
-@_tool
-def query_eqtl_catalogue(
-    gene: str,
-    tissue_category: str | None = None,
-    p_threshold: float = 0.05,
-    max_results_per_dataset: int = 500,
-) -> dict:
-    """
-    Query eQTL Catalogue v3 for gene expression QTLs across immune cell types.
-
-    Uses the confirmed-working v3 REST endpoint:
-      GET /eqtl/api/v3/datasets/{dataset_id}/associations?gene_id={ensembl_id}
-
-    Queried datasets (immune-focused for IBD/RA/SLE relevance):
-      QTD000001: Alasoo_2018 macrophage_naive
-      QTD000021: BLUEPRINT monocyte
-      QTD000026: BLUEPRINT neutrophil
-      QTD000379: Nedelec_2016 macrophage_naive
-      QTD000409: Quach_2016 monocyte
-      QTD000499: Schmiedel_2018 CD16+_monocyte
-
-    Args:
-        gene:                    HGNC gene symbol, e.g. "NOD2"
-        tissue_category:         Optional filter: "macrophage", "monocyte", "neutrophil"
-        p_threshold:             Maximum p-value to include (default 1e-4)
-        max_results_per_dataset: Max eQTL hits to return per dataset
-
-    Returns:
-        {
-            "gene_symbol": str,
-            "ensembl_id": str | None,
-            "best_beta": float | None,
-            "best_se": float | None,
-            "best_pvalue": float | None,
-            "best_dataset": str | None,
-            "eqtls": list[{beta, se, pvalue, dataset_id, tissue, rsid}],
-            "n_significant": int,
-            "data_source": str,
-        }
-    """
-    _EQTL_CATALOGUE_BASE = "https://www.ebi.ac.uk/eqtl/api"
-
-    # Hardcoded immune cell datasets confirmed working via v3 API
-    _IMMUNE_DATASETS: list[dict] = [
-        {"id": "QTD000001", "tissue": "macrophage_naive",  "category": "macrophage"},
-        {"id": "QTD000021", "tissue": "monocyte",          "category": "monocyte"},
-        {"id": "QTD000026", "tissue": "neutrophil",        "category": "neutrophil"},
-        {"id": "QTD000379", "tissue": "macrophage_naive",  "category": "macrophage"},
-        {"id": "QTD000409", "tissue": "monocyte",          "category": "monocyte"},
-        {"id": "QTD000499", "tissue": "CD16+_monocyte",    "category": "monocyte"},
-    ]
-
-    datasets = _IMMUNE_DATASETS
-    if tissue_category:
-        tc = tissue_category.lower()
-        filtered = [d for d in _IMMUNE_DATASETS if d["category"] == tc]
-        if filtered:
-            datasets = filtered
-
-    # Resolve gene symbol → Ensembl ID via GTEx gene endpoint (strips version suffix)
-    ensembl_id: str | None = None
-    try:
-        gene_info = resolve_gtex_gene_id(gene)
-        gencode_id = gene_info.get("gencode_id", "")
-        if gencode_id:
-            ensembl_id = gencode_id.split(".")[0]  # strip version, e.g. "ENSG00000167207.8" → "ENSG00000167207"
-    except Exception:
-        pass
-
-    if not ensembl_id:
-        return {
-            "gene_symbol": gene, "ensembl_id": None,
-            "best_beta": None, "best_se": None, "best_pvalue": None,
-            "best_dataset": None, "eqtls": [], "n_significant": 0,
-            "data_source": "eQTL_Catalogue_v3_immune_datasets",
-            "note": "Could not resolve Ensembl ID via GTEx",
-        }
-
-    eqtls: list[dict] = []
-    for ds in datasets:
-        try:
-            resp = _gwas_get(
-                f"{_EQTL_CATALOGUE_BASE}/v3/datasets/{ds['id']}/associations",
-                params={"gene_id": ensembl_id, "size": max_results_per_dataset},
-                headers={"Accept": "application/json"},
-                timeout=20,
-            )
-            if resp.status_code != 200:
-                continue
-            data = resp.json()
-            # v3 returns a list directly or nested under "results"/"associations"
-            assocs = data if isinstance(data, list) else data.get("results", data.get("associations", []))
-            for a in (assocs or []):
-                pval = a.get("pvalue")
-                beta = a.get("beta")
-                if beta is None or pval is None:
-                    continue
-                try:
-                    pval_f = float(pval)
-                except (TypeError, ValueError):
-                    continue
-                if pval_f > p_threshold:
-                    continue
-                eqtls.append({
-                    "beta":       float(beta),
-                    "se":         a.get("se"),
-                    "pvalue":     pval_f,
-                    "dataset_id": ds["id"],
-                    "tissue":     ds["tissue"],
-                    "rsid":       a.get("rsid"),
-                    "chromosome": a.get("chromosome"),
-                    "position":   a.get("position"),
-                })
-        except Exception:
-            continue
-
-    eqtls.sort(key=lambda x: x["pvalue"])
-    best = eqtls[0] if eqtls else None
-
-    return {
-        "gene_symbol":  gene,
-        "ensembl_id":   ensembl_id,
-        "best_beta":    best["beta"] if best else None,
-        "best_se":      best.get("se") if best else None,
-        "best_pvalue":  best["pvalue"] if best else None,
-        "best_dataset": best["dataset_id"] if best else None,
-        "eqtls":        eqtls[:10 * len(datasets)],  # cap output at 10 best per dataset
-        "n_significant": len(eqtls),
-        "data_source":  "eQTL_Catalogue_v3_immune_datasets",
-    }
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    if mcp is None:
-        raise RuntimeError("fastmcp required: pip install fastmcp")
-    mcp.run()

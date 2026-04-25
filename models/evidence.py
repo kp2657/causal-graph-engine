@@ -76,7 +76,6 @@ class CausalEdge(BaseModel):
     # Validation fields (populated after causal discovery agent runs)
     validation_sid: float | None = None
     validation_shd: float | None = None
-    validation_anchor_recovery: bool | None = None
     e_value: float | None = None       # sensemakr; flag if < 2.0
 
     # MR fields

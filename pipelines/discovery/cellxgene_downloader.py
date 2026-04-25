@@ -25,36 +25,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # tissue:    tissue context (used to narrow the query to relevant cells)
 # mondo_id:  MONDO disease ontology ID for disease-associated cells
 DISEASE_CELLXGENE_MAP: dict[str, dict] = {
-    "IBD": {
-        "cell_types":  ["macrophage", "enterocyte", "colonocyte",
-                        "CD4-positive, alpha-beta memory T cell",
-                        "CD8-positive, alpha-beta memory T cell",
-                        "B cell", "dendritic cell", "monocyte"],
-        "tissues":     ["small intestine", "large intestine", "colon"],
-        "description": "IBD: intestinal macrophage + epithelial + T cell programs",
-        "priority_cell": "macrophage",
-        "max_cells":   50_000,
-    },
     "RA": {
-        "cell_types":  ["fibroblast", "macrophage", "T cell", "B cell", "dendritic cell"],
-        "tissues":     ["synovium", "blood", "joint"],
-        "description": "Rheumatoid arthritis: synovial fibroblast + immune cell programs",
-        "priority_cell": "fibroblast",
+        # CellxGene Census 2025-11-08: dataset d18736c3 has 23,947 PBMC CD4+ T cells
+        # from RA patients. Using CD4+ T aligns with CZI Perturb-seq β source (czi_2025_cd4t_perturb).
+        "cell_types":  ["naive thymus-derived CD4-positive, alpha-beta T cell",
+                        "CD4-positive, alpha-beta T cell"],
+        "tissues":     ["blood"],
+        "description": "RA: PBMC CD4+ T cells (Census d18736c3, 23,947 cells; matches CZI Perturb-seq β)",
+        "priority_cell": "naive thymus-derived CD4-positive, alpha-beta T cell",
         "max_cells":   30_000,
+        "stratified_disease_hints": {
+            "naive thymus-derived CD4-positive, alpha-beta T cell": "rheumatoid arthritis",
+            "CD4-positive, alpha-beta T cell": "rheumatoid arthritis",
+        },
     },
     "SLE": {
-        "cell_types":  ["plasmacytoid dendritic cell", "B cell", "T cell", "monocyte"],
-        "tissues":     ["blood", "kidney"],
-        "description": "SLE: pDC interferon programs + B cell activation",
+        # CELLxGENE verified labels 2026-04-24: pDC confirmed; "B cell" → use naive B cell
+        "cell_types":  ["plasmacytoid dendritic cell", "naive B cell", "classical monocyte",
+                        "naive thymus-derived CD4-positive, alpha-beta T cell"],
+        "tissues":     ["blood"],
+        "description": "SLE: pDC interferon programs (CellxGENE 436154da) + B cell + monocyte",
         "priority_cell": "plasmacytoid dendritic cell",
         "max_cells":   30_000,
-    },
-    "AD": {
-        "cell_types":  ["microglia", "astrocyte", "neuron", "oligodendrocyte"],
-        "tissues":     ["brain", "cerebral cortex", "hippocampus"],
-        "description": "Alzheimer's: microglia + astrocyte reactive programs",
-        "priority_cell": "microglia",
-        "max_cells":   50_000,
+        "stratified_disease_hints": {
+            "plasmacytoid dendritic cell": "systemic lupus erythematosus",
+        },
     },
     "T2D": {
         "cell_types":  ["pancreatic beta cell", "hepatocyte", "adipocyte"],
@@ -63,37 +58,43 @@ DISEASE_CELLXGENE_MAP: dict[str, dict] = {
         "priority_cell": "pancreatic beta cell",
         "max_cells":   30_000,
     },
-    "AMD": {
-        # RPE = primary lesion site in dry AMD; Müller glia = disease-reactive support cells.
-        # Hepatocyte included because complement proteins (CFH, C3, CFD, CFB, CFI, C5) are
-        # synthesised in the liver — not the retina. Liver h5ad enables state-space scoring
-        # for complement targets and provides the tissue context for liver eQTL instruments.
-        "cell_types":  ["retinal pigment epithelial cell", "Mueller cell",
-                        "rod photoreceptor cell", "hepatocyte"],
-        "tissues":     ["retina", "eye", "liver"],
-        "description": "AMD: RPE + Müller glia (retinal programs) + hepatocyte (complement programs)",
-        "priority_cell": "retinal pigment epithelial cell",
+    "DED": {
+        # Ocular surface cells for state-space embedding. Corneal/conjunctival cells
+        # carry the secretory-mucin and glycocalyx programs altered in DED. T cells
+        # drive the inflammatory signal but CELLxGENE conjunctival data is scarce;
+        # use corneal epithelial + CD4+ T as joint context.
+        "cell_types":  ["corneal epithelial cell", "conjunctival cell",
+                        "naive thymus-derived CD4-positive, alpha-beta T cell"],
+        "tissues":     ["eye", "cornea", "conjunctiva", "blood"],
+        "description": "DED: corneal/conjunctival epithelial programs + T cell inflammatory axis",
+        "priority_cell": "corneal epithelial cell",
         "max_cells":   30_000,
-        # Stratified disease hints: fetch all AMD disease cells first, fill rest with normal.
-        # RPE: "age related macular degeneration 7" — only label with RPE AMD cells in census.
-        # Mueller: "macular degeneration" — 1,115 AMD cells in dataset f5be9ed2.
         "stratified_disease_hints": {
-            "retinal pigment epithelial cell": "age related macular degeneration 7",
-            "Mueller cell": "macular degeneration",
+            "corneal epithelial cell": "dry eye syndrome",
         },
     },
     "CAD": {
-        "cell_types":  ["smooth muscle cell", "macrophage", "cardiac endothelial cell",
-                        "monocyte", "hepatocyte"],
+        # priority_cell = cardiac endothelial cell — matches GSE210681 (Schnitzler 2023) which
+        # is predominantly HAEC (Human Aortic Endothelial Cells). Using endothelial h5ad
+        # for state-space and GPS disease sig aligns cell context with Perturb-seq β source.
+        # Download: python -m pipelines.discovery.cellxgene_downloader download_all CAD
+        # CAD_smooth_muscle_cell.h5ad is still used as fallback when endothelial not present.
+        "cell_types":  ["cardiac endothelial cell", "smooth muscle cell",
+                        "macrophage", "monocyte", "hepatocyte"],
         "tissues":     ["vasculature", "heart", "aorta", "blood", "liver"],
-        "description": "CAD: SMC (atherosclerosis) + hepatocyte (PCSK9/LDLR/HMGCR) + macrophage foam cells",
-        "priority_cell": "smooth muscle cell",
+        "description": "CAD: endothelial (HAEC, matches GSE210681) + SMC (atherosclerosis plaque) + hepatocyte (PCSK9/LDLR/HMGCR)",
+        "priority_cell": "cardiac endothelial cell",
         "max_cells":   50_000,
         # Stratified disease hints: downloader fetches ALL available disease cells first,
         # then fills remaining slots with normal cells. Value = disease label to prioritise.
-        # GPS _build_sig_from_h5ad then splits by obs disease label for DEG computation.
+        # Disease labels verified in census 2025-11-08:
+        #   cardiac endothelial cell:           30,564 MI + 22,981 myocarditis cells
+        #   cardiac blood vessel endothelial:   3,052 coronary artery disorder
+        #   endothelial cell (generic):         11,950 atherosclerosis
+        #   smooth muscle cell:                 atherosclerosis label
         "stratified_disease_hints": {
-            "smooth muscle cell": "atherosclerosis",
+            "cardiac endothelial cell": "myocardial infarction",
+            "smooth muscle cell":       "atherosclerosis",
         },
     },
 }
@@ -353,11 +354,6 @@ def _download_from_census(
 # Phase A cell types per disease (therapeutically relevant subset only).
 # macrophage is already ✓ for IBD + CAD; these are the additional downloads needed.
 PHASE_A_CELL_TYPES: dict[str, list[str]] = {
-    "IBD": [
-        "macrophage",
-        "enterocyte",
-        "CD4-positive, alpha-beta memory T cell",
-    ],
     "CAD": [
         "macrophage",
         "smooth muscle cell",
@@ -404,7 +400,7 @@ def download_all_cell_types(
             }
         }
 
-    requested_types: list[str] = cell_types or PHASE_A_CELL_TYPES.get(disease_key, [ctx["priority_cell"]])
+    requested_types: list[str] = cell_types or PHASE_A_CELL_TYPES.get(disease_key, ctx.get("cell_types", [ctx["priority_cell"]]))
 
     try:
         import cellxgene_census  # noqa: F401
@@ -471,3 +467,38 @@ def list_cached_downloads() -> dict:
     for h5ad in _CACHE_ROOT.rglob("*.h5ad"):
         cached.append({"path": str(h5ad), "size_mb": round(h5ad.stat().st_size / 1e6, 1)})
     return {"downloads": cached, "n_cached": len(cached), "cache_dir": str(_CACHE_ROOT)}
+
+
+if __name__ == "__main__":
+    import logging as _logging
+    _logging.basicConfig(level=_logging.INFO, format="%(levelname)s %(message)s")
+
+    _argv = sys.argv[1:]
+    if not _argv:
+        print("Usage:")
+        print("  python -m pipelines.discovery.cellxgene_downloader download_all <DISEASE>")
+        print("  python -m pipelines.discovery.cellxgene_downloader list")
+        print(f"\nKnown diseases: {sorted(DISEASE_CELLXGENE_MAP.keys())}")
+        sys.exit(0)
+
+    _cmd = _argv[0]
+    if _cmd == "download_all":
+        if len(_argv) < 2:
+            print("Usage: download_all <DISEASE>")
+            sys.exit(1)
+        _disease = _argv[1].upper()
+        if _disease not in DISEASE_CELLXGENE_MAP:
+            print(f"Unknown disease '{_disease}'. Known: {sorted(DISEASE_CELLXGENE_MAP.keys())}")
+            sys.exit(1)
+        print(f"Downloading CellxGene scRNA-seq for {_disease}...")
+        _results = download_all_cell_types(_disease)
+        for _ct, _r in _results.items():
+            _status = _r.get("status", "?")
+            _n = _r.get("n_cells", 0)
+            _path = _r.get("h5ad_path", "")
+            print(f"  {_ct}: {_status} | {_n:,} cells | {_path}")
+    elif _cmd == "list":
+        import json as _json
+        print(_json.dumps(list_cached_downloads(), indent=2))
+    else:
+        print(f"Unknown command: {_cmd}")

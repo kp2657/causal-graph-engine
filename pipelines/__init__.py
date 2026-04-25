@@ -1,1 +1,1 @@
-# Causal Graph Engine — Pipelines
+"""Causal Graph Engine — OTA β/γ estimation, GPS screening, and state-space pipelines."""

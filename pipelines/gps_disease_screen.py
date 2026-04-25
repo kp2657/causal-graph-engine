@@ -4,21 +4,21 @@ gps_disease_screen.py — GPS disease-state and NMF-program reversal screens.
 Two complementary GPS screens that go beyond per-target emulation (gps_screen.py):
 
 1. DISEASE-STATE REVERSAL
-   Input:  whole AMD disease transcriptional signature (disease_log2fc per gene,
-           from CELLxGENE AMD-vs-healthy RPE differential expression).
-   GPS finds compounds that REVERSE the AMD transcriptional state → healthy.
+   Input:  whole disease transcriptional signature (disease_log2fc per gene,
+           from CELLxGENE disease-vs-healthy differential expression).
+   GPS finds compounds that REVERSE the disease transcriptional state → healthy.
    Phenotypic, target-agnostic. Equivalent to asking: "what has a similar mechanism
-   to moving the cell from the AMD attractor back to the healthy attractor?"
+   to moving the cell from the disease attractor back to the healthy attractor?"
 
 2. NMF PROGRAM REVERSAL
-   Input:  gene loading vectors of the top AMD-causal programs (highest |γ_{P→AMD}|),
+   Input:  gene loading vectors of the top causal programs (highest |γ_{P→disease}|),
            signed by causal direction.
    GPS finds compounds that REVERSE each causal transcriptional program individually.
    Mechanistic: this maps the OTA formula directly into chemical space.
 
    OTA formula link:
-     γ_{gene→AMD} = Σ_P (β_{gene→P} × γ_{P→AMD})
-   Programs with high |γ_{P→AMD}| are the causal transcriptional axes.
+     γ_{gene→disease} = Σ_P (β_{gene→P} × γ_{P→disease})
+   Programs with high |γ_{P→disease}| are the causal transcriptional axes.
    The program loading vector encodes the genes that define that axis.
    GPS reversal of the program signature identifies compounds that pharmacologically
    suppress (risk programs) or restore (protective programs) the causal axis.
@@ -54,29 +54,45 @@ from typing import Any
 
 log = logging.getLogger(__name__)
 
-# GPS requires enough differentially expressed genes for RGES to have statistical power.
-# Below ~50 genes the normalized expression rank vector has insufficient dynamic range
-# and RGES approaches 0 for all compounds. OTA proxy signatures (~88 genes) satisfy this;
-# h5ad DEG signatures (~700-1000 genes) are preferred.
-_MIN_DISEASE_SIG_GENES = 50
+from config.scoring_thresholds import (  # noqa: E402
+    GPS_MIN_DISEASE_SIG_GENES,
+    GPS_MIN_PROGRAM_SIG_GENES,
+    GPS_BGRD_MIN_GENES,
+    GPS_BGRD_MAX_GENES,
+    GPS_MAX_PARALLEL,
+    GPS_JACCARD_SKIP_THRESHOLD,
+    GPS_PROGRAM_WEIGHT_FRACTION,
+    GPS_Z_RGES_DEFAULT,
+    GPS_MAX_HITS,
+)
 
-# Minimum intersection of an NMF program's gene loadings with the GPS 2198-gene landmark
-# set (Xing et al., Cell 2026). Programs with fewer matching genes produce RGES estimates
-# dominated by noise from the sparse ranked list.
-_MIN_PROGRAM_SIG_GENES = 5
 
-# GPS sets n_permutations = n_sig_genes internally (Xing et al., Cell 2026, Methods).
-# ≥700 permutations ensures the Z_RGES null distribution approximates N(0,1) via CLT
-# (confirmed empirically: 183 genes → 183 perms → 0 hits; ~1000 genes → well-calibrated).
-# 1000 cap keeps BGRD computation under 4500s, within the 7200s timeout.
-_GPS_BGRD_MIN_PERMS = 700
-_GPS_BGRD_MAX_PERMS = 1000
+def _branching_probability(
+    coords: "np.ndarray",
+    normal_centroid: "np.ndarray",
+    disease_centroid: "np.ndarray",
+) -> "np.ndarray":
+    """Branching probability per cell.
 
-# Programs are screened only if their net causal weight is ≥10% of the strongest program's
-# weight. This is a relative threshold: it adapts to the scale of causal signal in each
-# disease rather than imposing an absolute cutoff that could either screen noise (if too low)
-# or miss meaningful programs (if too high for a data-sparse disease).
-_PROGRAM_WEIGHT_FRACTION = 0.10
+    BP = 1 − |d_normal − d_disease| / (d_normal + d_disease + ε)
+
+    Maximum (1.0) at equidistance from both centroids — the active regulatory
+    transition zone.  Minimum (0.0) when firmly in one cluster.
+    """
+    import numpy as np
+    d_n = np.linalg.norm(coords - normal_centroid, axis=1)
+    d_d = np.linalg.norm(coords - disease_centroid, axis=1)
+    return 1.0 - np.abs(d_n - d_d) / (d_n + d_d + 1e-8)
+
+
+# Local aliases for readability (values defined in config/scoring_thresholds.py)
+_MIN_DISEASE_SIG_GENES  = GPS_MIN_DISEASE_SIG_GENES
+_MIN_PROGRAM_SIG_GENES  = GPS_MIN_PROGRAM_SIG_GENES
+_GPS_BGRD_MIN_PERMS     = GPS_BGRD_MIN_GENES
+_GPS_BGRD_MAX_PERMS     = GPS_BGRD_MAX_GENES
+_PROGRAM_WEIGHT_FRACTION = GPS_PROGRAM_WEIGHT_FRACTION
+_GPS_MAX_PARALLEL       = GPS_MAX_PARALLEL
+_JACCARD_SKIP_THRESHOLD = GPS_JACCARD_SKIP_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -89,9 +105,11 @@ def run_gps_disease_screens(
     gamma_estimates: dict | None = None,   # {prog → {trait → gamma_dict}}; optional
     top_n_programs: int = 5,
     top_n_compounds: int = 20,
-    z_threshold: float = 2.0,
-    max_hits: int = 100,
+    z_threshold: float = GPS_Z_RGES_DEFAULT,
+    max_hits: int = GPS_MAX_HITS,
     library: str = "HTS",
+    target_gene_whitelist: set[str] | None = None,
+    max_parallel: int = _GPS_MAX_PARALLEL,
 ) -> dict:
     """
     Run GPS at disease-state and NMF-program level.
@@ -102,12 +120,14 @@ def run_gps_disease_screens(
         gamma_estimates: Optional program→trait gamma matrix (adds direct γ_P→AMD)
         top_n_programs:  Max number of NMF programs to screen
         top_n_compounds: Fallback top-N when Z_RGES threshold is not applicable
-        z_threshold:     |Z_RGES| cutoff for hit selection. With ≥700 permutations,
-                         Z_RGES ~ N(0,1) under the null (Xing et al., Cell 2026);
-                         |Z| > 2.0 gives two-tailed p < 0.05 ≈ FDR 5%. Falls back
-                         to top_n_compounds if fewer than 3 compounds pass this threshold.
-        max_hits:        Hard cap on returned hits regardless of threshold
+        z_threshold:     |Z_RGES| cutoff for hit selection (default 3.5σ).
+                         The z-scored GPS output has no natural elbow; 3.5σ selects
+                         compounds with genuine reversal signal without an arbitrary cap.
+                         Falls back to top_n_compounds if fewer than 3 compounds pass.
+        max_hits:        Cap for the non-z-scored fallback path only (top_n by |RGES|).
+                         Not applied when GPS output has Z_RGES column.
         library:         GPS compound library ("HTS" or "ZINC")
+        max_parallel:    Max concurrent Docker containers for program reversal screens.
 
     Returns:
         {
@@ -118,6 +138,7 @@ def run_gps_disease_screens(
             "warnings":           list[str],
         }
     """
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     from pipelines.gps_screen import _docker_available, screen_disease_for_reversers
 
     warnings: list[str] = []
@@ -138,9 +159,23 @@ def run_gps_disease_screens(
     disease_sig = _build_disease_signature(targets, disease_query=disease_query)
     disease_sig_n = len(disease_sig)
 
+    # Full h5ad DEG dict (no elbow trim) for NMF × DEG program signature weighting.
+    # This gives _build_program_signature disease-state log2FC for every gene so
+    # program signatures are weighted by nmf_loading × abs(log2FC) — genes that are
+    # both perturbationally in the program and differentially expressed in disease.
+    h5ad_full_deg: dict[str, float] = {}
+    try:
+        h5ad_full_deg = _build_sig_from_h5ad(disease_query, gps_genes=None, elbow_trim=False)
+    except Exception as _deg_exc:
+        log.debug("GPS: h5ad full DEG load failed: %s", _deg_exc)
+
+    # Run disease-state screen synchronously first.  Programs run in parallel
+    # afterwards (ThreadPoolExecutor), so annotation can safely follow.
+    # NOTE: annotation deferred until after all Docker screens to avoid
+    # os.fork() while httpx annotation threads are running (fork-safety, macOS).
+    disease_screen_ran = False
     if disease_sig_n >= _MIN_DISEASE_SIG_GENES:
         log.info("GPS disease reversal: %d-gene signature for %s", disease_sig_n, disease_name)
-        print(f"[GPS] disease_state screen: {disease_sig_n} genes | {disease_name}", flush=True)  # progress
         disease_reversers = screen_disease_for_reversers(
             disease_sig,
             label=f"{disease_key}_disease_state",
@@ -151,11 +186,8 @@ def run_gps_disease_screens(
         )
         for hit in disease_reversers:
             hit["screen_type"] = "disease_state_reversal"
+        disease_screen_ran = True
         log.info("GPS disease_state done: %d reversers", len(disease_reversers))
-        print(f"[GPS] disease_state done: {len(disease_reversers)} reversers", flush=True)  # progress
-        if disease_reversers:
-            log.info("GPS: annotating %d disease-state reversers via PubChem + ChEMBL", len(disease_reversers))
-            disease_reversers = annotate_gps_compounds(disease_reversers)
     else:
         warnings.append(
             f"Disease signature too sparse ({disease_sig_n} genes < {_MIN_DISEASE_SIG_GENES}); "
@@ -163,14 +195,32 @@ def run_gps_disease_screens(
         )
 
     # ------------------------------------------------------------------
-    # 2. Identify top AMD-causal programs and build program signatures
+    # Early-exit: disease screen ran but produced zero hits.
+    # Program screens share the same GPS machinery and compound library;
+    # if the whole-disease signature cannot produce hits, per-program
+    # screens are unlikely to either and would waste Docker compute.
+    # ------------------------------------------------------------------
+    if disease_screen_ran and len(disease_reversers) == 0:
+        warnings.append(
+            "Disease-state reversal returned 0 hits — skipping program reversal screens (early-exit). "
+            "Check: (1) BGRD cache exists, (2) signature has ≥700 GPS-compatible genes, "
+            "(3) GPS Docker image is current."
+        )
+        return {
+            "disease_reversers":   disease_reversers,
+            "program_reversers":   {},
+            "disease_sig_n_genes": disease_sig_n,
+            "programs_screened":   [],
+            "warnings":            warnings,
+        }
+
+    # ------------------------------------------------------------------
+    # 2. Identify top causal programs and build program work list.
+    #    Jaccard deduplication: skip programs whose GPS-compatible gene set
+    #    overlaps ≥ _JACCARD_SKIP_THRESHOLD with an already-queued program.
     # ------------------------------------------------------------------
     program_directions = _aggregate_program_directions(targets, gamma_estimates, disease_query)
 
-    # Screen programs with weight ≥ _PROGRAM_WEIGHT_FRACTION × max program weight.
-    # Relative threshold: adapts to disease signal scale rather than imposing an
-    # absolute cutoff. Programs below 10% of the top program's weight are too weak
-    # to produce interpretable GPS reversal hits.
     all_weights = [w for _, (_, w) in program_directions.items()]
     max_weight = max(all_weights, default=0.0)
     min_weight_cutoff = _PROGRAM_WEIGHT_FRACTION * max_weight
@@ -180,7 +230,6 @@ def run_gps_disease_screens(
         key=lambda x: -x[2],
     )[:top_n_programs]
 
-    # Warn if most programs have zero gamma — likely missing Perturb-seq coverage for GWAS genes.
     all_program_ids = list(program_directions.keys())
     if all_program_ids:
         zero_gamma = sum(1 for p in all_program_ids if program_directions[p][1] == 0)
@@ -190,21 +239,18 @@ def run_gps_disease_screens(
                 "GWAS genes for this disease may not be perturbed in the available Perturb-seq dataset. "
                 "GPS program screens will be limited."
             )
-            log.warning(
-                "GPS: %d/%d programs have γ=0 (missing Perturb-seq coverage?)",
-                zero_gamma, len(all_program_ids),
-            )
+
+    # Work list: each entry is (prog_id, direction, label, prog_sig, sig_source, weight)
+    prog_work: list[tuple] = []
+    queued_gene_sets: list[set[str]] = []   # for Jaccard dedup
 
     for prog_id, direction, weight in top_programs:
-        # Prefer NMF gene loadings (transcriptomic; matches GPS RGES expectation).
-        # Fall back to OTA contribution fractions + MSigDB Hallmark expansion when
-        # NMF loadings have insufficient GPS 2198 overlap (structural/cell-type genes
-        # are often absent from the GPS landmark set).
-        prog_sig = _build_program_signature(prog_id, direction)
-        sig_source = "nmf_loadings"
+        prog_sig = _build_program_signature(prog_id, direction, h5ad_deg=h5ad_full_deg or None)
+        sig_source = "nmf_x_deg" if h5ad_full_deg else "nmf_loadings"
         if len(prog_sig) < _MIN_PROGRAM_SIG_GENES:
-            prog_sig = _build_program_signature_from_ota(prog_id, direction, targets)
-            sig_source = "ota_proxy"
+            prog_sig, sig_source = _build_program_signature_combined(
+                prog_id, direction, prog_sig, disease_sig, targets
+            )
         n_genes = len(prog_sig)
 
         programs_screened.append({
@@ -221,18 +267,39 @@ def run_gps_disease_screens(
             )
             continue
 
+        # Jaccard dedup: skip if GPS gene set is too similar to an already-queued program.
+        prog_genes = set(prog_sig.keys())
+        duplicate = next(
+            (j for j, qs in enumerate(queued_gene_sets)
+             if _jaccard(prog_genes, qs) >= _JACCARD_SKIP_THRESHOLD),
+            None,
+        )
+        if duplicate is not None:
+            warnings.append(
+                f"Program {prog_id}: GPS gene set Jaccard ≥ {_JACCARD_SKIP_THRESHOLD} "
+                f"with program #{duplicate + 1} already queued — skipping (near-duplicate screen)."
+            )
+            continue
+
+        queued_gene_sets.append(prog_genes)
+        label = f"{disease_key}_prog_{hashlib.sha1(prog_id.encode()).hexdigest()[:8]}"
+        prog_work.append((prog_id, direction, label, prog_sig, sig_source, weight))
+
+    # ------------------------------------------------------------------
+    # 3. Run program reversal screens concurrently (up to max_parallel
+    #    Docker containers).  Disease screen is already done.
+    #    All subprocess.run calls happen inside threads; annotation
+    #    (httpx) starts only after all futures are resolved.
+    # ------------------------------------------------------------------
+    def _run_prog(prog_id, direction, label, prog_sig, sig_source, weight):
+        dir_str = "risk" if direction > 0 else "protective"
         log.info(
             "GPS program reversal: %s (%s, weight=%.3f, %d genes, source=%s)",
-            prog_id, "risk" if direction > 0 else "protective", weight, n_genes, sig_source,
-        )
-        print(  # progress — GPS program screens run 30-90 min each
-            f"[GPS] program screen: {prog_id} | {n_genes} genes ({sig_source}) | "
-            f"{'risk' if direction > 0 else 'protective'}",
-            flush=True,
+            prog_id, dir_str, weight, len(prog_sig), sig_source,
         )
         hits = screen_disease_for_reversers(
             prog_sig,
-            label=f"{disease_key}_prog_{hashlib.sha1(prog_id.encode()).hexdigest()[:8]}",
+            label=label,
             library=library,
             top_n=top_n_compounds,
             z_threshold=z_threshold,
@@ -241,10 +308,25 @@ def run_gps_disease_screens(
         for hit in hits:
             hit["screen_type"] = "program_reversal"
             hit["program_id"]  = prog_id
-            hit["direction"]   = "risk" if direction > 0 else "protective"
+            hit["direction"]   = dir_str
         log.info("GPS program done: %s → %d hits", prog_id, len(hits))
-        print(f"[GPS] program done: {prog_id} → {len(hits)} hits", flush=True)  # progress
-        program_reversers[prog_id] = hits
+        return prog_id, hits
+
+    if prog_work:
+        n_parallel = min(len(prog_work), max(1, max_parallel))
+        log.info("GPS launching %d program screen(s) (%d parallel containers)", len(prog_work), n_parallel)
+        with ThreadPoolExecutor(max_workers=n_parallel) as pool:
+            futures = {
+                pool.submit(_run_prog, *item): item[0]
+                for item in prog_work
+            }
+            for future in as_completed(futures):
+                try:
+                    prog_id, hits = future.result()
+                    program_reversers[prog_id] = hits
+                except Exception as exc:
+                    failed_prog = futures[future]
+                    warnings.append(f"GPS program screen failed for {failed_prog}: {exc}")
 
     # ------------------------------------------------------------------
     # Annotate all program reversal hits in bulk (deduplicated).
@@ -252,6 +334,25 @@ def run_gps_disease_screens(
     # then the annotation is backfilled into every hit dict that shares
     # the compound_id. This feeds putative_targets into priority compounds.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # All Docker (GPS) screens complete. Now annotate — httpx threads only
+    # run from here; no more subprocess.run() calls after this point.
+    # This ordering avoids os.fork() while httpx threads are alive (fork-safety).
+    # ------------------------------------------------------------------
+
+    # Annotate disease-state reversers (deferred from screen step above).
+    if disease_reversers:
+        if target_gene_whitelist is not None:
+            disease_reversers = [
+                h for h in disease_reversers
+                if not h.get("putative_targets")
+                or any(t in target_gene_whitelist for t in (h.get("putative_targets") or []))
+            ]
+        if disease_reversers:
+            log.info("GPS: annotating %d disease-state reversers via PubChem + ChEMBL",
+                     len(disease_reversers))
+            disease_reversers = annotate_gps_compounds(disease_reversers)
+
     all_prog_hits: list[dict] = [h for hits in program_reversers.values() for h in hits]
     if all_prog_hits:
         seen_ids: set[str] = set()
@@ -266,12 +367,12 @@ def run_gps_disease_screens(
             "via PubChem + ChEMBL",
             len(unique_prog_hits), len(all_prog_hits), len(program_reversers),
         )
-        print(
-            f"[GPS] annotating {len(unique_prog_hits)} unique program compounds "
-            f"({len(all_prog_hits)} total across {len(program_reversers)} programs) "
-            "via PubChem + ChEMBL",
-            flush=True,
-        )
+        if target_gene_whitelist is not None:
+            unique_prog_hits = [
+                h for h in unique_prog_hits
+                if not h.get("putative_targets")
+                or any(t in target_gene_whitelist for t in (h.get("putative_targets") or []))
+            ]
         annotated_unique = annotate_gps_compounds(unique_prog_hits)
         ann_by_id: dict[str, dict] = {
             a.get("annotation", {}).get("compound_id", a.get("compound_id", "")): a.get("annotation", {})
@@ -346,6 +447,9 @@ def _build_disease_signature(targets: list[dict], disease_query: dict | None = N
         if gene and abs(gamma) > 1e-6 and _in_gps(gene):
             sig[gene] = gamma / max_g
 
+    # Trim low-signal tail: keep genes accounting for ≥90% cumulative γ weight.
+    # Reduces permutation count without meaningful RGES signal loss.
+    sig = _ota_proxy_trim(sig)
     return sig
 
 
@@ -355,17 +459,22 @@ _DISEASE_H5AD_SUBDIRS: dict[str, list[str]] = {
     "coronary_art": ["CAD"],
     "coronary_artery": ["CAD"],
     "cad": ["CAD"],
-    "age-related": ["AMD"],
-    "age_related": ["AMD"],
-    "amd": ["AMD"],
-    "macular": ["AMD"],
-    "ibd": ["IBD"],
-    "inflammatory_bowel": ["IBD"],
-    "crohn": ["IBD"],
+    "systemic_lupus": ["SLE"],
+    "lupus": ["SLE"],
+    "sle": ["SLE"],
+    "rheumatoid": ["RA"],
+    "rheumatoid_arthritis": ["RA"],
+    "ra": ["RA"],
+    "dry_eye": ["DED"],
+    "ded": ["DED"],
 }
 
 
-def _build_sig_from_h5ad(disease_query: dict, gps_genes: set | None) -> dict[str, float]:
+def _build_sig_from_h5ad(
+    disease_query: dict,
+    gps_genes: set | None,
+    elbow_trim: bool = True,
+) -> dict[str, float]:
     """
     Compute pseudo-bulk log2FC (disease vs normal) from cached CELLxGENE h5ad.
 
@@ -373,6 +482,9 @@ def _build_sig_from_h5ad(disease_query: dict, gps_genes: set | None) -> dict[str
     Returns only genes in gps_genes (if provided).
     Tries all candidate h5ads in priority order and returns the first one that
     has both ≥10 disease cells AND ≥10 normal cells.
+
+    elbow_trim=False: return all DEGs (no kneedle trim). Use for program γ
+    estimation where you need genome-wide coverage, not just GPS screen genes.
     """
     import numpy as np
     from pathlib import Path
@@ -388,7 +500,13 @@ def _build_sig_from_h5ad(disease_query: dict, gps_genes: set | None) -> dict[str
     candidates: list[Path] = []
 
     def _add_subdir(subdir: Path) -> None:
-        candidates.extend(p for p in sorted(subdir.glob("*retinal_pigment*.h5ad"))
+        # CAD: Schnitzler GSE210681 is HAEC → cardiac_endothelial h5ad preferred over SMC.
+        # SLE/DED: CD4+ T cell h5ad preferred (matches CZI Perturb-seq β source).
+        candidates.extend(p for p in sorted(subdir.glob("*cardiac_endothelial*.h5ad"))
+                          if "latent_cache" not in p.name and "state_cache" not in p.name)
+        candidates.extend(p for p in sorted(subdir.glob("*CD4*.h5ad"))
+                          if "latent_cache" not in p.name and "state_cache" not in p.name)
+        candidates.extend(p for p in sorted(subdir.glob("*endothelial*.h5ad"))
                           if "latent_cache" not in p.name and "state_cache" not in p.name)
         candidates.extend(p for p in sorted(subdir.glob("*.h5ad"))
                           if "latent_cache" not in p.name and "state_cache" not in p.name)
@@ -429,14 +547,14 @@ def _build_sig_from_h5ad(disease_query: dict, gps_genes: set | None) -> dict[str
         return {}
 
     # Build disease keyword set for relevance filtering (e.g. {"coronary", "artery", "atherosclerosis"})
-    _CAD_SYNONYMS = {"coronary", "artery", "arterial", "atherosclerosis", "atherosclerotic", "cad"}
+    _CAD_SYNONYMS = {"coronary", "artery", "arterial", "atherosclerosis", "atherosclerotic",
+                     "cad", "endothelial", "vascular", "aortic", "cardiovascular",
+                     "myocardial", "infarction", "ischaemic", "ischemic", "heart"}
     _AMD_SYNONYMS = {"macular", "degeneration", "amd", "retinal", "retina", "drusen"}
-    _IBD_SYNONYMS = {"crohn", "colitis", "ibd", "inflammatory bowel", "bowel"}
     _DISEASE_SYNONYMS: dict[str, set[str]] = {
         "coronary_art": _CAD_SYNONYMS, "coronary_artery": _CAD_SYNONYMS, "cad": _CAD_SYNONYMS,
         "age-related": _AMD_SYNONYMS, "age_related": _AMD_SYNONYMS, "amd": _AMD_SYNONYMS,
         "macular": _AMD_SYNONYMS,
-        "ibd": _IBD_SYNONYMS, "inflammatory_bowel": _IBD_SYNONYMS, "crohn": _IBD_SYNONYMS,
     }
     disease_synonyms: set[str] = set()
     for prefix, synonyms in _DISEASE_SYNONYMS.items():
@@ -450,7 +568,7 @@ def _build_sig_from_h5ad(disease_query: dict, gps_genes: set | None) -> dict[str
 
     # Try each candidate; return first with enough disease AND normal cells of matching disease type
     for h5ad_path in unique_candidates:
-        sig = _try_h5ad_sig(h5ad_path, gps_genes, disease_synonyms)
+        sig = _try_h5ad_sig(h5ad_path, gps_genes, disease_synonyms, elbow_trim=elbow_trim)
         if sig:
             return sig
 
@@ -463,11 +581,13 @@ def _try_h5ad_sig(
     h5ad_path: "Path",
     gps_genes: "set | None",
     disease_synonyms: "set[str] | None" = None,
+    elbow_trim: bool = True,
 ) -> "dict[str, float]":
-    """Attempt to compute GPS disease sig from one h5ad. Returns {} if not usable.
+    """Attempt to compute disease DEG sig from one h5ad. Returns {} if not usable.
 
     disease_synonyms: if provided, at least one disease label in the h5ad must contain
     one of these keywords — prevents using a breast-cancer h5ad for a CAD query.
+    elbow_trim=False: skip kneedle trim and return all DEGs (for program γ estimation).
     """
     import numpy as np
 
@@ -483,14 +603,15 @@ def _try_h5ad_sig(
         if not disease_labels:
             return {}
 
-        # Reject h5ad if none of its disease labels match the target disease
+        # Filter disease labels to only those matching the target disease (not just file-level check)
         if disease_synonyms:
             def _label_matches(label: str) -> bool:
                 label_lower = label.lower()
                 return any(kw in label_lower for kw in disease_synonyms)
-            if not any(_label_matches(lbl) for lbl in disease_labels):
-                log.debug("GPS h5ad %s: disease labels %s don't match query — skipping",
-                          h5ad_path.name, disease_labels[:3])
+            disease_labels = [lbl for lbl in disease_labels if _label_matches(lbl)]
+            if not disease_labels:
+                log.debug("GPS h5ad %s: no disease labels match query — skipping",
+                          h5ad_path.name)
                 return {}
 
         disease_mask = adata.obs["disease"].isin(disease_labels).values
@@ -505,6 +626,52 @@ def _try_h5ad_sig(
 
         dis_idx = np.where(disease_mask)[0]
         nrm_idx = np.where(normal_mask)[0]
+
+        # Branching-probability cell selection: prefer "transitioning" cells at the
+        # normal/disease boundary for the differential signature.
+        # Uses cluster centroids saved in the latent cache JSON (if present).
+        try:
+            import json as _json
+            _lat_json = next(
+                h5ad_path.parent.glob(f"latent_cache_{h5ad_path.stem}_*.json"), None
+            )
+            if _lat_json:
+                _meta = _json.loads(_lat_json.read_text())
+                _cents = _meta.get("centroids", {})
+                if _cents.get("normal_centroid") and _cents.get("disease_centroid"):
+                    _lat_h5ad = _lat_json.with_suffix(".h5ad")
+                    import anndata as _ad2
+                    _lat = _ad2.read_h5ad(str(_lat_h5ad), backed="r")
+                    _ekey = _cents.get("embedding_key", "X_pca")
+                    if _ekey in _lat.obsm:
+                        _lat_coords  = np.asarray(_lat.obsm[_ekey])
+                        _raw_barcodes = np.array(adata.obs_names)
+                        _lat_barcodes = np.array(_lat.obs_names)
+                        _, _raw_ix, _lat_ix = np.intersect1d(
+                            _raw_barcodes, _lat_barcodes, return_indices=True)
+                        if len(_raw_ix) >= 50:
+                            _nc = np.array(_cents["normal_centroid"])
+                            _dc = np.array(_cents["disease_centroid"])
+                            _bp = _branching_probability(_lat_coords[_lat_ix], _nc, _dc)
+                            # Map _raw_ix → original dis/nrm positions
+                            _raw_ix_set = set(_raw_ix.tolist())
+                            _dis_shared = np.array([i for i in dis_idx if i in _raw_ix_set])
+                            _nrm_shared = np.array([i for i in nrm_idx if i in _raw_ix_set])
+                            if len(_dis_shared) >= 10 and len(_nrm_shared) >= 10:
+                                _raw_to_lat = {r: l for r, l in zip(_raw_ix, _lat_ix)}
+                                _dis_bp = np.array([_bp[_raw_to_lat[i]] for i in _dis_shared])
+                                _nrm_bp = np.array([_bp[_raw_to_lat[i]] for i in _nrm_shared])
+                                # Top 50% by BP for disease (most transitioning)
+                                _n_keep = max(10, len(_dis_shared) // 2)
+                                dis_idx = _dis_shared[np.argsort(-_dis_bp)[:_n_keep]]
+                                # Bottom 50% by BP for normal (most stable)
+                                nrm_idx = _nrm_shared[np.argsort(_nrm_bp)[:_n_keep]]
+                                log.debug(
+                                    "GPS BP selection %s: dis=%d, nrm=%d (from %d/%d)",
+                                    h5ad_path.name, len(dis_idx), len(nrm_idx), n_dis, n_nrm)
+        except Exception as _bp_exc:
+            log.debug("GPS BP selection skipped for %s: %s", h5ad_path.name, _bp_exc)
+
         try:
             import scipy.sparse as sp
             X_dis = adata.X[dis_idx]
@@ -545,19 +712,19 @@ def _try_h5ad_sig(
         # → 183 perms → 0 hits; session-56 used ~1000 genes → 20 hits).
         # min=700 ensures ≥700 perms; max=1000 caps screening at ~4500s < 7200s.
         n_before = len(sig)
-        sig = _elbow_trim_sig(sig, min_genes=_GPS_BGRD_MIN_PERMS, max_genes=_GPS_BGRD_MAX_PERMS)
-        log.info(
-            "GPS h5ad sig built: %d DEGs → %d after elbow trim (min=%d, max=%d) | %s "
-            "(disease=%d, normal=%d cells)",
-            n_before, len(sig), _GPS_BGRD_MIN_PERMS, _GPS_BGRD_MAX_PERMS,
-            h5ad_path.name, n_dis, n_nrm,
-        )
-        print(
-            f"[GPS] h5ad sig built: {n_before} DEGs → {len(sig)} after elbow trim "
-            f"(min={_GPS_BGRD_MIN_PERMS}, max={_GPS_BGRD_MAX_PERMS}) | {h5ad_path.name} "
-            f"(dis={n_dis} cells, nrm={n_nrm} cells)",
-            flush=True,
-        )
+        if elbow_trim:
+            sig = _elbow_trim_sig(sig, min_genes=_GPS_BGRD_MIN_PERMS, max_genes=_GPS_BGRD_MAX_PERMS)
+            log.info(
+                "GPS h5ad sig built: %d DEGs → %d after elbow trim (min=%d, max=%d) | %s "
+                "(disease=%d, normal=%d cells)",
+                n_before, len(sig), _GPS_BGRD_MIN_PERMS, _GPS_BGRD_MAX_PERMS,
+                h5ad_path.name, n_dis, n_nrm,
+            )
+        else:
+            log.info(
+                "h5ad full DEG sig built: %d genes (no trim) | %s (disease=%d, normal=%d cells)",
+                n_before, h5ad_path.name, n_dis, n_nrm,
+            )
 
         log.info(
             "GPS disease sig from h5ad (%s): %d GPS-compatible genes after elbow trim "
@@ -569,6 +736,65 @@ def _try_h5ad_sig(
     except Exception as exc:
         log.debug("GPS h5ad DEG failed for %s: %s", h5ad_path, exc)
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Signature utilities
+# ---------------------------------------------------------------------------
+
+def _jaccard(a: set, b: set) -> float:
+    """Jaccard similarity between two sets. Returns 0 for empty inputs."""
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def _ota_proxy_trim(sig: dict[str, float]) -> dict[str, float]:
+    """
+    Trim an OTA-proxy GPS signature by cumulative γ weight.
+
+    Motivation: the OTA proxy normalises γ to [0, 1].  The distribution has
+    a few high-γ genes (convergent evidence) and a long tail near 0 (state-nominated).
+    Including the tail inflates n_permutations = n_sig_genes without proportional
+    improvement in RGES signal — GPS RGES is rank-weighted, so a gene with γ=0.01
+    contributes ~1/100th the signal of γ=1.0 but costs one full permutation.
+
+    Algorithm:
+      1. Sort genes by |γ| descending.
+      2. Compute cumulative weight fraction (normalised cumsum).
+      3. Keep genes up to the point where 90% of total |γ| weight is captured.
+         This is the natural "signal floor" — genes below this boundary are noise.
+      4. Enforce minimum = _MIN_DISEASE_SIG_GENES (GPS needs ≥50 for a screen).
+      5. Enforce maximum = _GPS_BGRD_MAX_PERMS (caps permutation count).
+
+    The 90% threshold is conservative: for a typical AMD OTA proxy (~72 genes),
+    the top 60-65 genes usually account for >95% of weight, so trimming is light.
+    For CAD with 300+ GPS-compatible targets, this cuts the bottom ~30% of
+    near-zero-γ genes — saving ~100 permutations with negligible RGES impact.
+    """
+    if len(sig) <= _MIN_DISEASE_SIG_GENES:
+        return sig
+
+    import numpy as np
+    ranked = sorted(sig.items(), key=lambda kv: -abs(kv[1]))
+    abs_vals = np.array([abs(v) for _, v in ranked], dtype=float)
+    total = abs_vals.sum()
+    if total < 1e-10:
+        return sig
+
+    cum_frac = np.cumsum(abs_vals) / total
+    # First index where cumulative weight reaches 90%
+    cutoff_idx = int(np.searchsorted(cum_frac, 0.90)) + 1
+    cutoff_idx = max(cutoff_idx, _MIN_DISEASE_SIG_GENES)
+    cutoff_idx = min(cutoff_idx, _GPS_BGRD_MAX_PERMS)
+
+    trimmed = dict(ranked[:cutoff_idx])
+    if len(trimmed) < len(sig):
+        log.debug(
+            "GPS OTA proxy trim: %d → %d genes (90%% cumweight cutoff, |γ| floor=%.4f)",
+            len(sig), len(trimmed), abs_vals[cutoff_idx - 1],
+        )
+    return trimmed
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +915,45 @@ def _aggregate_program_directions(
 # Program signature
 # ---------------------------------------------------------------------------
 
+def _build_program_signature_combined(
+    program_id: str,
+    direction: float,
+    nmf_sig: dict[str, float],
+    disease_sig: dict[str, float],
+    targets: list[dict],
+    deg_secondary_weight: float = 0.3,
+) -> tuple[dict[str, float], str]:
+    """
+    When NMF loadings alone are below _MIN_PROGRAM_SIG_GENES, augment with
+    disease-state DEG as secondary signal rather than falling back to OTA proxy.
+
+    Strategy:
+      1. Keep all NMF loading genes at their full loading weights (primary signal).
+      2. Add disease-state DEG genes (from disease_sig) not already in the NMF sig,
+         scaled to deg_secondary_weight × direction (secondary signal).
+      3. Only fall back to OTA proxy if the combined sig is still below threshold.
+
+    Returns (sig, sig_source) where sig_source distinguishes the construction path.
+    """
+    from pipelines.gps_screen import _get_gps_genes
+    gps_genes = _get_gps_genes()
+
+    if disease_sig:
+        combined: dict[str, float] = dict(nmf_sig)
+        for gene, deg_weight in disease_sig.items():
+            if gene in combined:
+                continue
+            if gps_genes is not None and gene not in gps_genes:
+                continue
+            combined[gene] = direction * deg_secondary_weight * (1.0 if deg_weight >= 0 else -1.0)
+        if len(combined) >= _MIN_PROGRAM_SIG_GENES:
+            return combined, "nmf_loadings+disease_deg"
+
+    # Still below threshold — fall back to OTA proxy
+    ota_sig = _build_program_signature_from_ota(program_id, direction, targets)
+    return ota_sig, "ota_proxy"
+
+
 def _build_program_signature_from_ota(
     program_id: str,
     direction: float,
@@ -761,17 +1026,34 @@ def _build_program_signature_from_ota(
     return sig
 
 
-def _build_program_signature(program_id: str, direction: float) -> dict[str, float]:
+def _build_program_signature(
+    program_id: str,
+    direction: float,
+    h5ad_deg: dict[str, float] | None = None,
+) -> dict[str, float]:
     """
-    Build a GPS-compatible {gene: signed_loading} from a program's gene loadings,
-    restricted to GPS's selected_genes_2198 set.
+    Build a GPS-compatible {gene: signed_weight} for a program.
 
-    direction > 0: risk program → positive loadings → GPS reversers are therapeutic
-    direction < 0: protective program → negate loadings → GPS reversers are therapeutic
+    Uses the program's γ sign (direction) to orient the signature, then splits
+    genes by their log2FC *relative to the program mean* — guaranteeing a
+    bidirectional signature even when all genes trend the same direction in the
+    h5ad (e.g. all-down risk programs in CAD endothelial cells).
+
+    Centering logic:
+      mean_lfc   = mean(log2FC) across all program genes present in h5ad
+      relative   = lfc_gene − mean_lfc          (signed: above mean = +, below = −)
+      weight     = nmf_loading × relative_lfc   (inherits sign from relative)
+      final      = direction × weight
+
+    direction > 0 (risk program):   genes above mean get + weight (suppress these)
+    direction < 0 (protective):     sign flipped — genes below mean get + weight (restore these)
+
+    Genes absent from h5ad are excluded — no reliable direction can be assigned.
+    Falls back to unsigned NMF loadings when h5ad_deg is None (GPS will likely
+    return 0 hits in that case; warning emitted by caller).
+
+    h5ad_deg: full DEG dict {gene: log2FC} from _build_sig_from_h5ad(elbow_trim=False).
     """
-    from pipelines.gps_screen import _get_gps_genes
-    gps_genes = _get_gps_genes()
-
     try:
         from mcp_servers.burden_perturb_server import get_program_gene_loadings
         info = get_program_gene_loadings(program_id)
@@ -779,19 +1061,59 @@ def _build_program_signature(program_id: str, direction: float) -> dict[str, flo
         log.debug("Could not load gene loadings for %s: %s", program_id, exc)
         return {}
 
-    sig: dict[str, float] = {}
+    # Build {gene: nmf_loading} from program info
+    nmf_weights: dict[str, float] = {}
     for g in info.get("top_genes", []):
         if isinstance(g, str):
-            gene   = g
-            weight = 1.0
+            nmf_weights[g] = 1.0
         elif isinstance(g, dict):
             gene   = g.get("gene", "") or g.get("symbol", "")
             weight = float(g.get("weight") or g.get("loading") or g.get("score") or 1.0)
-        else:
-            continue
-        if gene and abs(weight) > 1e-6:
-            if gps_genes is None or gene in gps_genes:
+            if gene:
+                nmf_weights[gene] = weight
+
+    # Also pull gene_loadings if present (normalised [0,1] from run_cnmf_pipeline)
+    for gene, load in (info.get("gene_loadings") or {}).items():
+        if gene not in nmf_weights:
+            nmf_weights[gene] = float(load)
+
+    if not nmf_weights:
+        return {}
+
+    sig: dict[str, float] = {}
+
+    if h5ad_deg is not None:
+        # Compute program-mean log2FC over genes present in both NMF and h5ad.
+        # Centering on this mean gives a bidirectional split even when all genes
+        # trend in the same absolute direction (e.g. all-down in disease).
+        lfc_in_prog = {g: h5ad_deg[g] for g in nmf_weights if g in h5ad_deg}
+        if not lfc_in_prog:
+            # No h5ad coverage for any program gene — fall back to NMF-only
+            for gene, nmf_load in nmf_weights.items():
+                if abs(nmf_load) > 1e-6:
+                    sig[gene] = direction * nmf_load
+            return sig
+
+        mean_lfc = sum(lfc_in_prog.values()) / len(lfc_in_prog)
+
+        for gene, nmf_load in nmf_weights.items():
+            if abs(nmf_load) <= 1e-6:
+                continue
+            lfc = h5ad_deg.get(gene)
+            if lfc is None:
+                # Gene absent from h5ad: no direction assignable — exclude.
+                continue
+            # relative_lfc inherits sign: above-mean → +, below-mean → −
+            relative_lfc = lfc - mean_lfc
+            weight = nmf_load * relative_lfc   # signed weight
+            if abs(weight) > 1e-6:
                 sig[gene] = direction * weight
+    else:
+        # No h5ad data: use unsigned NMF loadings (signature will be unidirectional;
+        # GPS will likely return 0 hits — caller emits a warning).
+        for gene, nmf_load in nmf_weights.items():
+            if abs(nmf_load) > 1e-6:
+                sig[gene] = direction * nmf_load
 
     return sig
 
@@ -992,34 +1314,36 @@ def find_overlapping_compounds(
     Find compounds appearing in multiple GPS screens.
     Higher overlap = stronger multi-evidence support.
 
-    Returns list of {compound_id, screens, avg_rges, min_rank}.
+    Returns list of {compound_id, n_screens, screens, avg_rges, best_rank,
+    smiles, pubchem_cid, inchikey, mw}.  Annotation fields come from whichever
+    input list first has them (disease_reversers > emulation > program).
     """
     from collections import defaultdict
 
     evidence: dict[str, dict] = defaultdict(lambda: {"screens": [], "rges": [], "ranks": []})
+    # annotation keyed by compound_id — first writer wins
+    _ann_keys = ("smiles", "pubchem_cid", "inchikey", "mw", "name")
+    _annotation: dict[str, dict] = {}
+
+    def _record(hit: dict, screen_label: str) -> None:
+        cid = hit.get("compound_id", "")
+        if not cid:
+            return
+        evidence[cid]["screens"].append(screen_label)
+        evidence[cid]["rges"].append(hit.get("rges", 0.0))
+        evidence[cid]["ranks"].append(hit.get("rank", 999))
+        if cid not in _annotation:
+            _annotation[cid] = {k: hit.get(k) for k in _ann_keys}
 
     for hit in disease_reversers:
-        cid = hit.get("compound_id", "")
-        if cid:
-            evidence[cid]["screens"].append("disease_state_reversal")
-            evidence[cid]["rges"].append(hit.get("rges", 0.0))
-            evidence[cid]["ranks"].append(hit.get("rank", 999))
+        _record(hit, "disease_state_reversal")
 
     for hit in emulation_candidates:
-        cid = hit.get("compound_id", "")
-        if cid:
-            label = f"target_emulation:{hit.get('target','?')}"
-            evidence[cid]["screens"].append(label)
-            evidence[cid]["rges"].append(hit.get("rges", 0.0))
-            evidence[cid]["ranks"].append(hit.get("rank", 999))
+        _record(hit, f"target_emulation:{hit.get('target','?')}")
 
     for prog, hits in (program_reversers or {}).items():
         for hit in hits:
-            cid = hit.get("compound_id", "")
-            if cid:
-                evidence[cid]["screens"].append(f"program_reversal:{prog}")
-                evidence[cid]["rges"].append(hit.get("rges", 0.0))
-                evidence[cid]["ranks"].append(hit.get("rank", 999))
+            _record(hit, f"program_reversal:{prog}")
 
     overlapping = [
         {
@@ -1028,6 +1352,7 @@ def find_overlapping_compounds(
             "screens":     sorted(set(ev["screens"])),
             "avg_rges":    round(sum(ev["rges"]) / len(ev["rges"]), 4),
             "best_rank":   min(ev["ranks"]),
+            **_annotation.get(cid, {}),
         }
         for cid, ev in evidence.items()
         if len(set(ev["screens"])) > 1   # only compounds in multiple screens

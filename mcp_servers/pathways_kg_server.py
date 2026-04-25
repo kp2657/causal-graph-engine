@@ -36,6 +36,8 @@ except ImportError:
         return fn if fn is not None else (lambda f: f)
     mcp = None
 
+from pipelines.api_cache import api_cached
+
 # ---------------------------------------------------------------------------
 # API endpoints
 # ---------------------------------------------------------------------------
@@ -75,6 +77,7 @@ PRIMEKG_CAD_SUBGRAPH: list[dict] = [
 # ---------------------------------------------------------------------------
 
 @_tool
+@api_cached(ttl_days=30)
 def get_reactome_pathways_for_gene(gene_symbol: str, species: str = "Homo sapiens") -> dict:
     """
     Return Reactome pathways containing a gene.
@@ -83,6 +86,29 @@ def get_reactome_pathways_for_gene(gene_symbol: str, species: str = "Homo sapien
         gene_symbol: Gene symbol, e.g. "PCSK9"
         species:     Species, default "Homo sapiens"
     """
+    # Static-data fast path: the Reactome Ensembl→pathway TSV maps every
+    # H. sapiens gene to its leaf pathways.  When the file is on disk and
+    # the gene is known, this returns a dict identical in shape to the live
+    # call with zero network traffic.  Falls through to the REST API when
+    # the file is absent or the gene is not present.
+    if species == "Homo sapiens":
+        try:
+            from pipelines.static_lookups import get_lookups
+            _local = get_lookups().get_reactome_pathways(gene_symbol)
+            if _local:
+                return {
+                    "gene_symbol": gene_symbol,
+                    "n_pathways":  len(_local),
+                    "pathways":    [{
+                        "pathway_id": p["pathway_id"],
+                        "name":       p["name"],
+                        "species":    species,
+                    } for p in _local],
+                    "source":      "Reactome Ensembl2Reactome.txt (static)",
+                }
+        except Exception:
+            pass  # static layer is best-effort
+
     try:
         # Reactome content service: search by gene symbol
         resp = httpx.get(

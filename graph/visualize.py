@@ -100,11 +100,7 @@ def plot_target_rankings(result: dict, output_path: str | Path) -> Path:
     ax.legend(handles=legend_patches, fontsize=8, loc="lower right",
               framealpha=0.9, edgecolor="#cccccc")
 
-    # Annotations
-    recovery = result.get("anchor_edge_recovery", 0.0)
-    ax.text(0.02, 0.02, f"Anchor recovery: {recovery:.0%}",
-            transform=ax.transAxes, fontsize=7.5, color="#666666",
-            verticalalignment="bottom")
+    # Annotations (no anchor recovery — removed)
 
     _style_ax(ax)
     fig.tight_layout()
@@ -301,16 +297,15 @@ def plot_evidence_summary(result: dict, output_path: str | Path) -> Path:
 
     eq       = result.get("evidence_quality", {})
     disease  = result.get("disease_name", "Disease").title()
-    recovery = result.get("anchor_edge_recovery", 0.0)
 
     t1 = eq.get("n_tier1_edges",   result.get("n_tier1_edges", 0))
     t2 = eq.get("n_tier2_edges",   result.get("n_tier2_edges", 0))
     t3 = eq.get("n_tier3_edges",   result.get("n_tier3_edges", 0))
     tv = eq.get("n_virtual_edges", result.get("n_virtual_edges", 0))
-    shd      = eq.get("shd_from_reference", result.get("shd_from_reference"))
     duration = result.get("pipeline_duration_s")
+    n_targets = len(result.get("target_list", []))
 
-    fig, (ax_donut, ax_gauge) = plt.subplots(1, 2, figsize=(11, 5))
+    fig, (ax_donut, ax_metrics) = plt.subplots(1, 2, figsize=(11, 5))
     fig.suptitle(f"Evidence Quality Dashboard — {disease}",
                  fontsize=12, fontweight="bold", y=1.01)
 
@@ -347,72 +342,29 @@ def plot_evidence_summary(result: dict, output_path: str | Path) -> Path:
 
     ax_donut.set_title("Edge Evidence Tiers", fontsize=10, pad=8)
 
-    # ---- Right: Gauge + metrics ----
-    ax_gauge.set_xlim(0, 1)
-    ax_gauge.set_ylim(0, 1)
-    ax_gauge.axis("off")
+    # ---- Right: Metrics table ----
+    ax_metrics.set_xlim(0, 1)
+    ax_metrics.set_ylim(0, 1)
+    ax_metrics.axis("off")
 
-    # Draw gauge arc (anchor recovery)
-    theta = np.linspace(np.pi, 0, 200)  # semicircle left to right
-    r = 0.38
-    cx, cy = 0.5, 0.48
-
-    # Background arc (grey)
-    ax_gauge.plot(cx + r * np.cos(theta), cy + r * np.sin(theta),
-                  color="#e0e0e0", linewidth=18, solid_capstyle="round")
-
-    # Filled arc (coloured by recovery level)
-    if recovery >= 0.8:
-        gauge_color = "#2ca02c"     # green — good
-    elif recovery >= 0.5:
-        gauge_color = "#ff7f0e"     # orange — moderate
-    else:
-        gauge_color = "#d62728"     # red — poor
-
-    theta_fill = np.linspace(np.pi, np.pi - recovery * np.pi, 200)
-    ax_gauge.plot(cx + r * np.cos(theta_fill), cy + r * np.sin(theta_fill),
-                  color=gauge_color, linewidth=18, solid_capstyle="round")
-
-    # Needle
-    needle_angle = np.pi - recovery * np.pi
-    ax_gauge.annotate("", xy=(cx + 0.28 * np.cos(needle_angle),
-                               cy + 0.28 * np.sin(needle_angle)),
-                      xytext=(cx, cy),
-                      arrowprops=dict(arrowstyle="-|>", color="#333333",
-                                      lw=2, mutation_scale=14))
-    ax_gauge.plot(cx, cy, "o", color="#333333", markersize=7, zorder=5)
-
-    # Centre text
-    ax_gauge.text(cx, cy - 0.05, f"{recovery:.0%}",
-                  ha="center", va="top", fontsize=22, fontweight="bold",
-                  color=gauge_color)
-    ax_gauge.text(cx, cy - 0.17, "Anchor Recovery",
-                  ha="center", va="top", fontsize=9, color="#666666")
-
-    # Arc labels
-    ax_gauge.text(cx - r - 0.04, cy, "0%",  ha="right", va="center", fontsize=8, color="#999")
-    ax_gauge.text(cx + r + 0.04, cy, "100%", ha="left",  va="center", fontsize=8, color="#999")
-    ax_gauge.text(cx, cy + r + 0.04, "80% target",
-                  ha="center", va="bottom", fontsize=7.5, color="#888",
-                  style="italic")
-
-    # Metrics table below gauge
     metrics = [
         ("Tier 1 (interventional)", str(t1)),
         ("Tier 2 (convergent MR)",  str(t2)),
         ("Tier 3 (provisional)",    str(t3)),
         ("Virtual (in silico)",     str(tv)),
-        ("SHD from reference",      str(shd) if shd is not None else "N/A"),
+        ("Targets ranked",          str(n_targets)),
         ("Pipeline duration",       f"{duration:.0f}s" if duration else "N/A"),
     ]
-    y_start = 0.24
+    y_start = 0.75
     for label, val in metrics:
-        ax_gauge.text(0.10, y_start, label, fontsize=8, color="#444444", va="center")
-        ax_gauge.text(0.90, y_start, val,   fontsize=8, color="#222222",
-                      va="center", ha="right", fontweight="bold")
-        y_start -= 0.038
+        ax_metrics.text(0.10, y_start, label, fontsize=9, color="#444444", va="center")
+        ax_metrics.text(0.90, y_start, val,   fontsize=9, color="#222222",
+                        va="center", ha="right", fontweight="bold")
+        ax_metrics.axhline(y_start - 0.025, xmin=0.08, xmax=0.92,
+                           color="#eeeeee", linewidth=0.5)
+        y_start -= 0.10
 
-    ax_gauge.set_title("Anchor Recovery & Metrics", fontsize=10, pad=8)
+    ax_metrics.set_title("Pipeline Metrics", fontsize=10, pad=8)
 
     fig.tight_layout()
     out = Path(output_path)

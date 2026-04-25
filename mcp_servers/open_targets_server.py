@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 load_dotenv(Path(__file__).parent.parent / ".env")
 
 import httpx
+from pipelines.api_cache import api_cached
 
 try:
     import fastmcp
@@ -59,9 +60,7 @@ def _stage_to_int(stage: str | None) -> int:
 
 # EFO alias map: some EFOs used in GWAS Catalog / OpenTargets Genetics differ from
 # OT Platform EFOs. Remap before any OT Platform GraphQL query.
-_EFO_ALIASES: dict[str, str] = {
-    "EFO_0001481": "EFO_0001365",   # AMD: OTG/GWAS Catalog → OT Platform
-}
+_EFO_ALIASES: dict[str, str] = {}
 
 def _resolve_efo(efo_id: str) -> str:
     """Resolve EFO aliases so both OTG and OT Platform IDs work transparently."""
@@ -168,6 +167,7 @@ def _gql_request(url: str, query: str, variables: dict | None = None) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=7)
 def get_open_targets_disease_targets(
     efo_id: str,
     max_targets: int = 20,
@@ -321,6 +321,7 @@ def get_open_targets_disease_targets(
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_open_targets_target_info(gene_symbol: str) -> dict:
     """
     Fetch detailed target information from Open Targets Platform.
@@ -432,6 +433,7 @@ def get_open_targets_target_info(gene_symbol: str) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_open_targets_drug_info(drug_name: str) -> dict:
     """
     Fetch drug information and indications from Open Targets Platform.
@@ -549,6 +551,7 @@ def run_txgnn_repurposing(disease_efo: str, n_candidates: int = 10) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_ot_genetic_instruments(
     gene_symbol: str,
     efo_id: str,
@@ -588,7 +591,7 @@ def get_ot_genetic_instruments(
     resolved_efo = _resolve_efo(efo_id)
     studies_q = """
     query DiseaseStudies($efoId: String!) {
-      studies(diseaseIds: [$efoId], studyTypes: [gwas], page: {index: 0, size: 20}) {
+      studies(diseaseIds: [$efoId], page: {index: 0, size: 20}) {
         rows { id studyType }
       }
     }
@@ -597,6 +600,7 @@ def get_ot_genetic_instruments(
     gwas_study_ids = [
         row["id"]
         for row in (studies_data.get("studies", {}).get("rows") or [])
+        if row.get("studyType", "gwas") in ("gwas", "")
     ]
     if not gwas_study_ids:
         return {"gene_symbol": gene_symbol, "efo_id": efo_id, "instruments": [],
@@ -672,27 +676,11 @@ def get_ot_genetic_instruments(
         if instruments:
             break  # stop after first batch with hits
 
-    # eQTL credible sets for this gene (qtlGeneId = ensembl_id)
-    eqtl_cs_q = """
-    query EQTLCredSets($geneId: String!, $size: Int!) {
-      credibleSets(studyTypes: [eqtl], page: {index: 0, size: $size}) {
-        rows {
-          studyId
-          studyType
-          qtlGeneId
-          beta
-          standardError
-          pValueMantissa
-          pValueExponent
-        }
-      }
-    }
-    """
-    # Note: OT Platform v4 does not support direct qtlGeneId filter on credibleSets;
-    # we query a page and filter client-side.  Use small page to limit traffic.
-    eqtl_data = _gql_request(OT_PLATFORM_GQL, eqtl_cs_q, {"size": 100})
-    if "error" not in eqtl_data:
-        for cs in (eqtl_data.get("credibleSets", {}).get("rows") or []):
+    # eQTL credible sets: OT Platform v4 does not accept studyTypes without studyIds,
+    # and qtlGeneId is not a filterable argument. Skip this lookup — GWAS instruments suffice.
+    eqtl_data: dict = {}
+    if False:  # disabled — credibleSets(studyTypes=[eqtl]) without studyIds is unsupported
+        for cs in []:
             if (cs.get("qtlGeneId") or "").upper() != ensembl_id.upper():
                 continue
             beta = cs.get("beta")
@@ -729,6 +717,286 @@ def get_ot_genetic_instruments(
         "n_instruments":   len(instruments),
         "data_source":     "Open Targets Platform v4 credible sets (root query)",
     }
+
+
+@_tool
+def get_ot_genetic_instruments_bulk(
+    gene_symbols: list[str],
+    efo_id: str,
+    min_score: float = 0.5,
+    max_instruments: int = 3,
+) -> dict[str, dict]:
+    """Batched version of `get_ot_genetic_instruments` for a list of genes.
+
+    The per-gene function does ~3 GraphQL round-trips, two of which produce
+    disease-level results identical across genes (DiseaseStudies + GWAS
+    credible sets).  This bulk function hoists those shared queries out of
+    the loop and resolves every gene's Ensembl ID in one aliased Search
+    query (~25 genes per round-trip), cutting a ~405-gene run from
+    ~1,200 HTTPS calls down to ~20.
+
+    Side effect: each gene's result is written into the SQLite API cache
+    under the exact key that `get_ot_genetic_instruments(gene, efo_id)` would
+    produce.  Subsequent single-gene calls in the same run therefore hit
+    cache immediately.
+
+    Returns `{gene_symbol: result_dict}` where `result_dict` has the same
+    shape as the single-gene function.  Genes already present in the cache
+    are served from there without any network traffic.
+    """
+    from pipelines.api_cache import get_cache, _make_key
+
+    if not gene_symbols:
+        return {}
+
+    cache = get_cache()
+    result_by_gene: dict[str, dict] = {}
+    cache_keys: dict[str, str] = {}
+    uncached_genes: list[str] = []
+
+    # Cache-first pass: skip genes that are already populated.  Key shape
+    # matches the @api_cached(get_ot_genetic_instruments) signature when
+    # called with only (gene, efo_id) positional args and no kwargs — the
+    # exact usage at perturbation_genomics_agent.py call sites.
+    for g in gene_symbols:
+        k = _make_key("get_ot_genetic_instruments", (g, efo_id), {})
+        hit = cache.get(k)
+        if hit is not None:
+            result_by_gene[g] = hit
+        else:
+            cache_keys[g] = k
+            uncached_genes.append(g)
+
+    if not uncached_genes:
+        return result_by_gene
+
+    # ------------------------------------------------------------------
+    # Step 1 — Disease studies (shared across genes; one round-trip)
+    # ------------------------------------------------------------------
+    resolved_efo = _resolve_efo(efo_id)
+    studies_q = """
+    query DiseaseStudies($efoId: String!) {
+      studies(diseaseIds: [$efoId], page: {index: 0, size: 20}) {
+        rows { id studyType }
+      }
+    }
+    """
+    studies_data = _gql_request(OT_PLATFORM_GQL, studies_q, {"efoId": resolved_efo})
+    gwas_study_ids = [
+        row["id"]
+        for row in (studies_data.get("studies", {}).get("rows") or [])
+        if row.get("studyType", "gwas") in ("gwas", "")
+    ]
+
+    # ------------------------------------------------------------------
+    # Step 2 — GWAS credible sets for the disease (shared; one round-trip
+    # per chunk of 10 study IDs, but identical output for every gene)
+    # ------------------------------------------------------------------
+    shared_gwas_instruments: list[dict] = []
+    if gwas_study_ids:
+        gwas_cs_q = """
+        query GWASCredSets($studyIds: [String!]!, $size: Int!) {
+          credibleSets(studyIds: $studyIds, page: {index: 0, size: $size}) {
+            rows {
+              studyLocusId
+              studyId
+              studyType
+              beta
+              standardError
+              pValueMantissa
+              pValueExponent
+            }
+          }
+        }
+        """
+        for i in range(0, len(gwas_study_ids), 10):
+            batch = gwas_study_ids[i:i + 10]
+            cs_data = _gql_request(OT_PLATFORM_GQL, gwas_cs_q, {"studyIds": batch, "size": 50})
+            if "error" in cs_data:
+                continue
+            for cs in (cs_data.get("credibleSets", {}).get("rows") or []):
+                beta = cs.get("beta")
+                if beta is None:
+                    continue
+                p_mant = cs.get("pValueMantissa")
+                p_exp  = cs.get("pValueExponent")
+                p_val  = (float(p_mant) * (10 ** float(p_exp))) if (p_mant and p_exp) else None
+                shared_gwas_instruments.append({
+                    "beta":            float(beta),
+                    "se":              float(cs["standardError"]) if cs.get("standardError") else None,
+                    "p_value":         p_val,
+                    "study_type":      cs.get("studyType", "gwas"),
+                    "study_id":        cs.get("studyId"),
+                    "score":           min_score,
+                    "instrument_type": "gwas_credset",
+                })
+            if shared_gwas_instruments:
+                break  # matches single-gene behaviour: first batch with hits wins
+
+    # ------------------------------------------------------------------
+    # Step 3 — Batched Ensembl resolution via GraphQL aliases (~25/query)
+    # ------------------------------------------------------------------
+    ensembl_by_gene: dict[str, str] = {}
+
+    # Static-data fast path: resolve symbols from the local HGNC mapping
+    # when available so we skip the SearchBatch GraphQL entirely for genes
+    # already known.  Only unresolved genes fall through to the live API.
+    try:
+        from pipelines.static_lookups import get_lookups
+        _lookups = get_lookups()
+        _remaining: list[str] = []
+        for g in uncached_genes:
+            eid = _lookups.get_ensembl_id(g)
+            if eid:
+                ensembl_by_gene[g] = eid
+            else:
+                _remaining.append(g)
+        _symbols_to_resolve = _remaining
+    except Exception:
+        _symbols_to_resolve = list(uncached_genes)
+
+    _CHUNK = 10   # OT Platform rejects >~15 aliases per query (complexity limit)
+    for i in range(0, len(_symbols_to_resolve), _CHUNK):
+        chunk = _symbols_to_resolve[i:i + _CHUNK]
+        var_defs = ", ".join(f"$sym{j}: String!" for j in range(len(chunk)))
+        body_parts = [
+            f'g{j}: search(queryString: $sym{j}, entityNames: ["target"], '
+            f'page: {{index: 0, size: 3}}) {{ hits {{ id entity name }} }}'
+            for j in range(len(chunk))
+        ]
+        aliased_q = f"query SearchBatch({var_defs}) {{\n  " + "\n  ".join(body_parts) + "\n}"
+        variables = {f"sym{j}": g for j, g in enumerate(chunk)}
+
+        sr = _gql_request(OT_PLATFORM_GQL, aliased_q, variables)
+        if "error" in sr:
+            # Batch rejected (complexity limit) — resolve individually using the
+            # already-cached single-gene path; results prime the cache for future bulk runs.
+            for g in chunk:
+                sq = """
+                query SearchTarget($sym: String!) {
+                  search(queryString: $sym, entityNames: ["target"], page: {index: 0, size: 3}) {
+                    hits { id entity name }
+                  }
+                }
+                """
+                single = _gql_request(OT_PLATFORM_GQL, sq, {"sym": g})
+                hits = (single.get("search") or {}).get("hits") or []
+                eid = next((h["id"] for h in hits if h.get("entity") == "target"
+                            and h.get("name", "").upper() == g.upper()), None)
+                if not eid:
+                    eid = next((h["id"] for h in hits if h.get("entity") == "target"), None)
+                if eid:
+                    ensembl_by_gene[g] = eid
+            continue
+        for j, g in enumerate(chunk):
+            hits = ((sr.get(f"g{j}") or {}).get("hits")) or []
+            eid: str | None = None
+            for h in hits:
+                if h.get("entity") == "target" and (h.get("name") or "").upper() == g.upper():
+                    eid = h.get("id")
+                    break
+            if not eid:
+                for h in hits:
+                    if h.get("entity") == "target":
+                        eid = h.get("id")
+                        break
+            if eid:
+                ensembl_by_gene[g] = eid
+
+    # ------------------------------------------------------------------
+    # Step 4 — eQTL credible sets (disabled: OT v4 does not accept
+    # studyTypes without studyIds on credibleSets; qtlGeneId is not
+    # a filterable arg.  eqtl_rows stays empty; GWAS instruments suffice.)
+    # ------------------------------------------------------------------
+    eqtl_rows: list[dict] = []
+    eqtl_cs_q = """
+    query EQTLCredSets($size: Int!) {
+      credibleSets(studyTypes: [eqtl], page: {index: 0, size: $size}) {
+        rows {
+          studyId
+          studyType
+          qtlGeneId
+          beta
+          standardError
+          pValueMantissa
+          pValueExponent
+        }
+      }
+    }
+    """
+    # eqtl_rows stays empty — query disabled (see Step 4 comment above)
+
+    # ------------------------------------------------------------------
+    # Step 5 — Per-gene assembly + cache priming
+    # ------------------------------------------------------------------
+    _TTL_SECONDS = 30 * 86400
+
+    for g in uncached_genes:
+        ensembl_id = ensembl_by_gene.get(g)
+        out: dict = {
+            "gene_symbol":    g,
+            "efo_id":         efo_id,
+            "ensembl_id":     ensembl_id,
+            "instruments":    [],
+            "best_nes":       None,
+            "best_gwas_beta": None,
+            "n_instruments":  0,
+            "data_source":    "Open Targets Platform v4 credible sets (bulk)",
+        }
+        if not gwas_study_ids:
+            out["note"] = "No GWAS studies found for EFO"
+            result_by_gene[g] = out
+            cache.set(cache_keys[g], out, _TTL_SECONDS)
+            continue
+        if not ensembl_id:
+            out["note"] = "Gene not found"
+            result_by_gene[g] = out
+            cache.set(cache_keys[g], out, _TTL_SECONDS)
+            continue
+
+        # Disease-level GWAS credsets apply to every gene at the locus; this
+        # matches the single-gene function which attaches them without a
+        # gene-specific filter.
+        gene_instruments: list[dict] = list(shared_gwas_instruments)
+
+        for cs in eqtl_rows:
+            if (cs.get("qtlGeneId") or "").upper() != ensembl_id.upper():
+                continue
+            beta = cs.get("beta")
+            if beta is None:
+                continue
+            p_mant = cs.get("pValueMantissa")
+            p_exp  = cs.get("pValueExponent")
+            p_val  = (float(p_mant) * (10 ** float(p_exp))) if (p_mant and p_exp) else None
+            gene_instruments.append({
+                "beta":            float(beta),
+                "se":              float(cs["standardError"]) if cs.get("standardError") else None,
+                "p_value":         p_val,
+                "study_type":      cs.get("studyType", "eqtl"),
+                "study_id":        cs.get("studyId"),
+                "score":           min_score,
+                "instrument_type": "eqtl",
+            })
+
+        gene_instruments.sort(
+            key=lambda x: (0 if x["instrument_type"] == "eqtl" else 1,
+                           x.get("p_value") or 1.0)
+        )
+        gene_instruments = gene_instruments[:max_instruments]
+
+        out["instruments"]    = gene_instruments
+        out["n_instruments"]  = len(gene_instruments)
+        out["best_nes"]       = next(
+            (i["beta"] for i in gene_instruments if i["instrument_type"] == "eqtl"), None
+        )
+        out["best_gwas_beta"] = next(
+            (i["beta"] for i in gene_instruments if i["instrument_type"] == "gwas_credset"), None
+        )
+
+        result_by_gene[g] = out
+        cache.set(cache_keys[g], out, _TTL_SECONDS)
+
+    return result_by_gene
 
 
 @_tool
@@ -894,11 +1162,11 @@ def get_ot_colocalisation_for_program(
     query CredSets($studyIds: [String!]!, $size: Int!) {
       credibleSets(studyIds: $studyIds, page: {size: $size, index: 0}) {
         rows {
-          colocalisation(studyTypes: [eqtl]) {
+          colocalisation {
             rows {
               h4
               betaRatioSignAverage
-              otherStudyLocus { studyId qtlGeneId }
+              otherStudyLocus { studyId studyType qtlGeneId }
             }
           }
         }
@@ -912,11 +1180,14 @@ def get_ot_colocalisation_for_program(
             continue
         for cs_row in (cs_data.get("credibleSets", {}).get("rows") or []):
             for coloc in (cs_row.get("colocalisation", {}).get("rows") or []):
+                other = coloc.get("otherStudyLocus") or {}
+                if other.get("studyType", "eqtl") != "eqtl":
+                    continue
                 h4 = coloc.get("h4")
                 brs = coloc.get("betaRatioSignAverage")
                 if h4 is None or float(h4) < h4_min:
                     continue
-                ensg = (coloc.get("otherStudyLocus") or {}).get("qtlGeneId")
+                ensg = other.get("qtlGeneId")
                 if ensg:
                     coloc_raw.append({
                         "h4":      float(h4),

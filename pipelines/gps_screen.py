@@ -45,6 +45,10 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+# Prevent Numba TBB fork-safety warning when GPS subprocess is spawned from a
+# non-main thread (e.g. ThreadPoolExecutor in GPS parallel screening).
+os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
+
 log = logging.getLogger(__name__)
 
 _DOCKER_IMAGE  = "binchengroup/gpsimage:latest"
@@ -191,6 +195,42 @@ def _write_dzsig_csv(sig: dict[str, float], path: Path) -> None:
             writer.writerow([gene, f"{val:.6f}"])
 
 
+def _check_gps_library_overlap(
+    label: str,
+    sig: dict[str, float],
+    min_per_direction: int = 2,
+) -> bool:
+    """Return True if sig has enough genes in both directions within the GPS 2198-gene library.
+
+    GPS's Run_reversal_score.py computes rdc_transcrptm = intersection(HTS_2198_genes, sig_genes),
+    then builds a BGRD only for directions present in the filtered signature.  If all filtered
+    genes have the same sign, the BGRD has bins for only one direction (Up_* OR Down_*).
+    Scoring then calls min(bins_up, ...) or min(bins_down, ...) on an empty list → crash.
+
+    Skipping pre-emptively is cheaper and cleaner than catching Docker exit 1.
+    """
+    gps_genes = _get_gps_genes()
+    if gps_genes is None:
+        return True  # no filter available — let GPS try
+    filtered = {g: v for g, v in sig.items() if g in gps_genes}
+    if not filtered:
+        log.warning(
+            "GPS pre-screen %s: 0 / %d sig genes found in GPS 2198-gene library — skipping",
+            label, len(sig),
+        )
+        return False
+    n_up   = sum(1 for v in filtered.values() if v > 0)
+    n_down = sum(1 for v in filtered.values() if v < 0)
+    if n_up < min_per_direction or n_down < min_per_direction:
+        log.warning(
+            "GPS pre-screen %s: filtered sig has only %d up / %d down genes in GPS library "
+            "(need ≥%d each) — skipping to avoid Run_reversal_score min() crash",
+            label, n_up, n_down, min_per_direction,
+        )
+        return False
+    return True
+
+
 def _run_gps_screen(
     label: str,
     sig: dict[str, float],
@@ -205,11 +245,22 @@ def _run_gps_screen(
     step (0.5–6h) is only run once per unique disease signature. Subsequent calls
     for the same label skip permutation and run only Run_reversal_score.py.
     """
+    if not _check_gps_library_overlap(label, sig):
+        return []
+
     safe_label = "".join(c if c.isalnum() or c in "-_" else "_" for c in label)[:40]
     bgrd_dir = _GPS_BGRD_DIR
     bgrd_dir.mkdir(parents=True, exist_ok=True)
     logs_dir = _GPS_LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
+
+    # BGRD null distribution depends only on signature SIZE, not gene identity.
+    # Round to the nearest canonical bucket so any two runs with the same size
+    # share one pre-computed BGRD forever (AMD + CAD disease-state both use ~700).
+    _SIZE_BUCKETS = [5, 10, 20, 50, 100, 200, 300, 500, 700, 1000]
+    sig_size = len(sig)
+    bgrd_size = min(_SIZE_BUCKETS, key=lambda b: abs(b - sig_size))
+    bgrd_key  = f"size{bgrd_size}"
 
     with tempfile.TemporaryDirectory(prefix="gps_screen_") as tmpdir:
         tmp = Path(tmpdir)
@@ -223,26 +274,16 @@ def _run_gps_screen(
 
         # If a cached background exists, copy it into the dzsig dir and pass
         # --RGES_bgrd_ID so GPS skips the expensive permutation step.
-        bgrd_pkl = bgrd_dir / f"BGRD__{safe_label}.pkl"
-        bgrd_id_arg = ["--RGES_bgrd_ID", safe_label] if bgrd_pkl.exists() else []
+        bgrd_pkl = bgrd_dir / f"BGRD__{bgrd_key}.pkl"
+        bgrd_id_arg = ["--RGES_bgrd_ID", bgrd_key] if bgrd_pkl.exists() else []
         run_timeout = _GPS_TIMEOUT_WITH_BGRD if bgrd_pkl.exists() else _GPS_TIMEOUT_NO_BGRD
         if bgrd_pkl.exists():
-            log.info("GPS screen: %s — using cached BGRD (timeout=%ds)", label, run_timeout)
-            print(
-                f"[GPS] screen start: {label} | {len(sig)} genes | BGRD cached "
-                f"| timeout={run_timeout}s",
-                flush=True,
-            )
+            log.info("GPS screen: %s — using cached BGRD size=%d (timeout=%ds)", label, bgrd_size, run_timeout)
         else:
             log.info(
-                "GPS screen: %s vs %s library (%d sig genes) — running permutation "
+                "GPS screen: %s vs %s library (%d sig genes, BGRD size=%d) — running permutation "
                 "(first time, will cache; timeout=%ds)",
-                label, library, len(sig), run_timeout,
-            )
-            print(
-                f"[GPS] screen start: {label} | {len(sig)} genes | NO BGRD — computing "
-                f"permutations (first run) | timeout={run_timeout}s",
-                flush=True,
+                label, library, len(sig), bgrd_size, run_timeout,
             )
 
         cmd = [
@@ -265,22 +306,18 @@ def _run_gps_screen(
                 capture_output=True,
                 text=True,
                 timeout=run_timeout,
+                start_new_session=True,   # prevent fork inheriting parent thread state
+                env={**os.environ, "NUMBA_THREADING_LAYER": "workqueue"},
             )
             if result.returncode != 0:
                 log.warning(
                     "GPS Docker exited %d for %s:\n%s",
                     result.returncode, label, result.stderr[-2000:]
                 )
-                print(f"[GPS] ERROR: {label} Docker exit {result.returncode}", flush=True)
                 return []
-            print(f"[GPS] Docker done: {label}", flush=True)
+            log.info("GPS Docker done: %s", label)
         except subprocess.TimeoutExpired:
             log.warning("GPS screen timed out for %s after %ds", label, run_timeout)
-            print(
-                f"[GPS] TIMEOUT: {label} exceeded {run_timeout}s "
-                f"({'with' if bgrd_pkl.exists() else 'no'} BGRD, {len(sig)} genes)",
-                flush=True,
-            )
             return []
         except Exception as exc:
             log.warning("GPS Docker call failed for %s: %s", label, exc)
@@ -304,10 +341,10 @@ def _parse_gps_output(
 
     Cutoff logic (in priority order):
       1. If GPS output has Z_RGES column AND z_threshold is set:
-           return compounds with Z_RGES < -z_threshold (reversers), capped at max_hits.
-           Falls back to top_n if fewer than 3 compounds pass (avoids empty results
-           from under-powered BGRD with few perms).
-      2. Otherwise: return top_n by |RGES|.
+           return ALL compounds with Z_RGES < -z_threshold (reversers).
+           max_hits is NOT applied here — the threshold governs.
+           Falls back to top_n if fewer than 3 compounds pass (under-powered BGRD).
+      2. Otherwise: return top_n by |RGES| (capped at max_hits).
     """
     csvs = list(output_dir.glob("*.csv"))
     if not csvs:
@@ -375,31 +412,20 @@ def _parse_gps_output(
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    # Dynamic Z_RGES threshold — only when GPS output was z-scored and threshold set
+    # Z_RGES threshold — governs when GPS output is z-scored against permuted null
     if has_z_rges and z_threshold is not None:
         above_threshold = [r for r in results if r["rges"] < -z_threshold]
         if len(above_threshold) >= 3:
-            selected = above_threshold[:max_hits]
             log.info(
-                "GPS dynamic cutoff: %d/%d compounds pass Z_RGES < -%.1f (max_hits=%d)",
-                len(above_threshold), len(results), z_threshold, max_hits,
+                "GPS Z_RGES cutoff: %d/%d compounds pass Z_RGES < -%.1f",
+                len(above_threshold), len(results), z_threshold,
             )
-            print(
-                f"[GPS] dynamic cutoff: {len(above_threshold)} compounds pass "
-                f"|Z_RGES| > {z_threshold:.1f} → returning {len(selected)}",
-                flush=True,
-            )
-            return selected
+            return above_threshold
         else:
             log.info(
-                "GPS dynamic cutoff: only %d compounds pass Z_RGES < -%.1f "
+                "GPS Z_RGES cutoff: only %d compounds pass Z_RGES < -%.1f "
                 "(BGRD may have too few perms); falling back to top_%d",
                 len(above_threshold), z_threshold, top_n,
-            )
-            print(
-                f"[GPS] dynamic cutoff: {len(above_threshold)} pass |Z_RGES| > {z_threshold:.1f} "
-                f"(under-powered BGRD) → falling back to top_{top_n}",
-                flush=True,
             )
 
     return results[:top_n]

@@ -170,6 +170,45 @@ def compute_net_trajectory_improvement(
 
 
 # ---------------------------------------------------------------------------
+# Genetic-track redirection — GWAS genes with no Perturb-seq coverage
+# ---------------------------------------------------------------------------
+
+def compute_genetic_tr(
+    gamma_ota: float,
+    T_baseline: "np.ndarray | None",
+    path_idxs: list[int],
+    healthy_idxs: list[int],
+) -> float:
+    """
+    Genetic-evidence TR for GWAS genes with no Perturb-seq knockout data.
+
+    Uses a full-KO proxy (gene_beta=1.0, p_loading=1.0) so the transition
+    matrix perturbation is derived purely from the state-space geometry, not
+    from transcriptomic perturbation data.  Grounded solely in |γ_ota|.
+
+    Formula: net_trajectory_improvement × |gamma_ota|
+
+    Deliberately does NOT use disease_axis_score — that quantity is estimated
+    from Perturb-seq knockouts and is undefined for GWAS-only genes.  Mixing
+    it with γ would double-count genetics (DAS proxy = f(γ) × γ).
+    """
+    if T_baseline is None or not path_idxs or not healthy_idxs:
+        return 0.0
+    if not math.isfinite(gamma_ota) or abs(gamma_ota) < 1e-8:
+        return 0.0
+
+    T_perturbed = perturb_transition_matrix(
+        T_baseline=T_baseline,
+        gene_beta=1.0,
+        p_loading=1.0,
+        path_idxs=path_idxs,
+        healthy_idxs=healthy_idxs,
+    )
+    net_improvement = compute_net_trajectory_improvement(T_baseline, T_perturbed, path_idxs, healthy_idxs)
+    return net_improvement * abs(gamma_ota)
+
+
+# ---------------------------------------------------------------------------
 # State-direct redirection (Phase F — no NMF membership required)
 # ---------------------------------------------------------------------------
 

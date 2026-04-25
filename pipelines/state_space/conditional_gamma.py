@@ -88,8 +88,6 @@ def estimate_conditional_gamma(
     transition_result: dict[str, Any] | None = None,
     transition_gene_weights: dict[str, float] | None = None,
     evidence_tier: str = "Tier3_TrajectoryProxy",
-    gwas_enrichment: dict[str, Any] | None = None,
-    twmr_result: dict[str, Any] | None = None,
     efo_id: str | None = None,
 ) -> ConditionalGamma:
     """
@@ -100,12 +98,10 @@ def estimate_conditional_gamma(
         trait:                   Trait/disease name (e.g. "IBD", "CAD").
         disease:                 Short disease key (same as trait for most uses).
         program_top_genes:       Top genes of the program (for transition DE heuristic).
-        program_gene_set:        Full gene set (for GWAS enrichment S-LDSC).
+        program_gene_set:        Full gene set (for OT L2G enrichment).
         transition_result:       Output of infer_state_transition_graph.
         transition_gene_weights: Output of compute_transition_gene_weights.
         evidence_tier:           StateEvidenceTier for α selection.
-        gwas_enrichment:         S-LDSC enrichment dict (passed to estimate_gamma).
-        twmr_result:             TWMR result dict (passed to estimate_gamma).
         efo_id:                  EFO ID for live OT GWAS lookup.
 
     Returns:
@@ -122,8 +118,6 @@ def estimate_conditional_gamma(
     gamma_result = estimate_gamma(
         program=program_label,
         trait=trait,
-        gwas_enrichment=gwas_enrichment,
-        twmr_result=twmr_result,
         program_gene_set=program_gene_set,
         efo_id=efo_id,
     )

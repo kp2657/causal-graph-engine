@@ -66,10 +66,96 @@ def _format_state_space_table(state_targets: list[dict]) -> str:
     return header + "\n" + ("\n".join(rows) if rows else "| — | — | — | — | — | — | — | — |")
 
 
+def _lookup_program_gamma(
+    gamma_per_program_per_trait: dict,
+    program: str,
+    trait: str,
+) -> float | None:
+    """Resolve an OT program γ value from the Tier 3 passthrough dict
+    across its three observed shapes: scalar, trait-keyed dict, or
+    dict-with-gamma.  Returns None when no finite value is available."""
+    import math as _m
+    prog_entry = gamma_per_program_per_trait.get(program)
+    if prog_entry is None:
+        return None
+    if isinstance(prog_entry, (int, float)):
+        f = float(prog_entry)
+        return f if _m.isfinite(f) else None
+    if not isinstance(prog_entry, dict):
+        return None
+    # Trait-keyed first; then fall back to any finite scalar γ in the map.
+    candidate = prog_entry.get(trait)
+    if candidate is None:
+        candidate = prog_entry.get("gamma")
+    if candidate is None:
+        # Last resort: pick the largest |γ| across all traits keyed in.
+        best = None
+        for v in prog_entry.values():
+            if isinstance(v, dict):
+                v = v.get("gamma")
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if not _m.isfinite(f):
+                continue
+            if best is None or abs(f) > abs(best):
+                best = f
+        return best
+    if isinstance(candidate, dict):
+        candidate = candidate.get("gamma")
+    try:
+        f = float(candidate)
+    except (TypeError, ValueError):
+        return None
+    return f if _m.isfinite(f) else None
+
+
+def _inherited_genetic_evidence(
+    target: dict,
+    gamma_per_program_per_trait: dict,
+    trait: str,
+    ot_threshold: float = 0.05,
+    top_n: int = 3,
+) -> list[dict] | None:
+    """For mechanistic-only targets (no direct GWAS/L2G), summarise the OT program γ
+    of the top programs the gene controls — bridging the narrative to
+    heritability even when the gene itself has no coding hit.
+
+    Returns None when the target already has direct genetic support
+    (`ot_genetic_score >= ot_threshold`).  Otherwise returns up to `top_n`
+    entries `{program, beta, program_gamma, contribution}`, sorted by
+    |contribution| desc.  Returns `[]` (not None) when the gene is
+    mechanistic-only but has no program-level contributions to report — this
+    distinguishes "no bridge available" from "not applicable".
+    """
+    ot_gen = float(target.get("ot_genetic_score") or 0.0)
+    if ot_gen >= ot_threshold:
+        return None
+
+    programs_raw = target.get("top_programs") or {}
+    if not isinstance(programs_raw, dict):
+        return []
+
+    sorted_progs = sorted(programs_raw.items(), key=lambda kv: -abs(kv[1] or 0.0))[:top_n]
+    out: list[dict] = []
+    for prog, contribution in sorted_progs:
+        slldsc = _lookup_program_gamma(gamma_per_program_per_trait, prog, trait)
+        out.append({
+            "program":      prog,
+            "beta":         None,  # β_{gene→P} is computed in Tier 3 but not surfaced per-target
+            "program_gamma": slldsc,
+            "contribution": contribution,
+        })
+    return out
+
+
 def _causal_narrative(
     target: dict,
     chemistry: dict,
     trials: dict,
+    gamma_per_program_per_trait: dict | None = None,
+    trait: str = "",
 ) -> str:
     """Generate a causal pathway narrative for a single target."""
     gene       = target.get("target_gene", "?")
@@ -112,7 +198,23 @@ def _causal_narrative(
         else ""
     )
 
+    # "Master regulator" prefix: when the gene has no direct GWAS hit but
+    # controls a program with strong OT γ, surface the heritability bridge.
+    prefix = ""
+    ot_gen = float(target.get("ot_genetic_score") or 0.0)
+    if ot_gen < 0.05 and isinstance(programs_raw, dict) and programs_raw and gamma_per_program_per_trait:
+        top_prog, top_contrib = max(programs_raw.items(), key=lambda kv: abs(kv[1] or 0.0))
+        slldsc = _lookup_program_gamma(gamma_per_program_per_trait, top_prog, trait)
+        if slldsc is not None and abs(slldsc) >= 0.3:
+            beta_hint = f"β={top_contrib:.2f}" if top_contrib else "non-zero β"
+            prefix = (
+                f"{gene} is a master regulator of {top_prog} ({beta_hint}). "
+                f"Although no direct GWAS hit, it controls the {top_prog} axis which "
+                f"is genetically causal for {trait} (program γ={slldsc:.2f}).\n"
+            )
+
     return (
+        f"{prefix}"
         f"{gene} {direction} {prog_str} → disease trait{virtual_label}.\n"
         f"Evidence: {key_evidence}.\n"
         f"Composite Ota estimate: γ_{{{gene}→trait}} = {gamma:.3f} ({tier}).\n"
@@ -151,7 +253,7 @@ def _limitations_text(n_virtual: int) -> str:
         "entire analysis: GWAS/L2G and other tiers may still be experimentally grounded. Treat "
         "virtual-tier rows as hypothesis-generating. Full quantitative Perturb-seq β coverage "
         "may require local GEO GSE246756 downloads (~50GB; Replogle 2022) when not cached. "
-        "S-LDSC γ and MR layers remain context-dependent; validate lead findings experimentally."
+        "Program γ estimates are context-dependent; validate lead findings experimentally."
     )
 
 
@@ -177,6 +279,31 @@ def run(
     efo_id       = phenotype_result.get("efo_id", "")
     targets      = prioritization_result.get("targets", [])
     state_space_targets = prioritization_result.get("state_space_targets", [])
+    # Passthrough from Tier 3 — per-program × per-trait γ map used to populate
+    # `inherited_genetic_evidence` and the master-regulator narrative prefix.
+    gamma_per_program_per_trait: dict = causal_result.get("gamma_per_program_per_trait", {}) or {}
+    # Short trait key used in Tier 3's gamma_estimates (DISEASE_TRAIT_MAP-derived).
+    # Writer receives the display disease_name, so resolve via the registry and
+    # fall back to the first trait actually present in gamma_per_program_per_trait.
+    try:
+        from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        _short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), disease_name.upper())
+        _traits = DISEASE_TRAIT_MAP.get(_short, [_short])
+        narrative_trait = _traits[0] if _traits else disease_name
+    except Exception:
+        narrative_trait = disease_name
+    # Final fallback: scan any program's trait keys for a finite match.
+    if gamma_per_program_per_trait and narrative_trait:
+        for _prog_entry in gamma_per_program_per_trait.values():
+            if isinstance(_prog_entry, dict) and narrative_trait in _prog_entry:
+                break
+        else:
+            for _prog_entry in gamma_per_program_per_trait.values():
+                if isinstance(_prog_entry, dict):
+                    _keys = [k for k in _prog_entry.keys() if k != "gamma"]
+                    if _keys:
+                        narrative_trait = _keys[0]
+                        break
     warnings_all: list[str] = []
 
     # Collect warnings from all tiers
@@ -194,25 +321,11 @@ def run(
     top3_genes = [t["target_gene"] for t in top3]
     n_written = causal_result.get("n_edges_written", 0)
     n_virtual_beta = beta_matrix_result.get("n_virtual", 0)
-    # Anchor recovery is optional (Tier 3 may omit it). Default to 0/12.
-    _anchor = causal_result.get("anchor_recovery") or {}
-    _anchor_total = _anchor.get("n_reference") or _anchor.get("total") or 12
-    _anchor_recov = _anchor.get("n_recovered") or _anchor.get("recovered") or 0
-    try:
-        _anchor_total = int(_anchor_total)
-    except Exception:
-        _anchor_total = 12
-    try:
-        _anchor_recov = int(_anchor_recov)
-    except Exception:
-        _anchor_recov = 0
-    recovery_rate = (_anchor_recov / _anchor_total) if _anchor_total else 0.0
 
     executive_summary = (
         f"Causal graph analysis of {disease_name} (EFO: {efo_id}) identified "
         f"{n_written} significant causal edges spanning {len(targets)} therapeutic targets. "
         f"Top-ranked targets are {', '.join(top3_genes) if top3_genes else 'none identified'}. "
-        f"Anchor edge recovery: {recovery_rate:.0%} of 12 reference edges. "
         f"{n_virtual_beta} gene–program β estimate(s) use the `provisional_virtual` evidence tier "
         "(in silico / weak perturbation support); other evidence streams may still be experimental."
     )
@@ -228,7 +341,11 @@ def run(
     # -------------------------------------------------------------------------
     top_target_narratives: list[str] = []
     for target in top3:
-        narrative = _causal_narrative(target, chemistry_result, trials_result)
+        narrative = _causal_narrative(
+            target, chemistry_result, trials_result,
+            gamma_per_program_per_trait=gamma_per_program_per_trait,
+            trait=narrative_trait,
+        )
         top_target_narratives.append(narrative)
 
     # -------------------------------------------------------------------------
@@ -281,16 +398,21 @@ def run(
                 or (t.get("therapeutic_redirection_result") or {}).get("tau_specificity_class")
             ),
             # Multi-dimensional ranking fields (Phase 39 redesign)
-            # beta_amd_concentration: pleiotropic diagnostic — fraction of β-mass in AMD-specific
+            # beta_program_concentration: pleiotropic diagnostic — fraction of β-mass in AMD-specific
             # programs; low = spread across generic programs (e.g. JAZF1). Reporting only.
-            "beta_amd_concentration":  t.get("beta_amd_concentration"),
+            "beta_program_concentration":  t.get("beta_program_concentration"),
             "causal_gamma":            t.get("causal_gamma"),
             "genetic_evidence_score":  t.get("genetic_evidence_score"),
             "ot_genetic_score":        t.get("ot_genetic_score"),
             "partition":               t.get("partition"),
             "mechanistic_score":       t.get("mechanistic_score"),
             "therapeutic_redirection": t.get("therapeutic_redirection"),
+            "state_influence":         (
+                t.get("state_influence")
+                or (t.get("evidence_summary") or {}).get("state_influence")
+            ),
             "stability_score":         t.get("stability_score"),
+            "dominant_tier":           t.get("dominant_tier") or t.get("evidence_tier"),
             "entry_score":             t.get("entry_score"),
             "persistence_score":       t.get("persistence_score"),
             "recovery_score":          t.get("recovery_score"),
@@ -303,6 +425,14 @@ def run(
             # Program classification (Phase Z6)
             "ot_l2g_score":            t.get("ot_l2g_score"),
             "program_drivers":         t.get("program_drivers"),
+            # Heritability bridge for mechanistic-only targets: surfaces the
+            # OT γ of programs the gene controls, so a gene with
+            # ot_genetic_score < 0.05 can still be defended as genetically
+            # anchored via the programs it regulates.  None = target has direct
+            # GWAS support already; [] = mechanistic-only with no bridge data.
+            "inherited_genetic_evidence": _inherited_genetic_evidence(
+                t, gamma_per_program_per_trait, trait=narrative_trait,
+            ),
         }
         for t in targets
     ]
@@ -331,7 +461,7 @@ def run(
             "tau_disease_specificity": t.get("tau_disease_specificity"),
             "tau_disease_log2fc": t.get("disease_log2fc"),
             "tau_specificity_class": t.get("tau_specificity_class"),
-            "beta_amd_concentration": t.get("beta_amd_concentration"),
+            "beta_program_concentration": t.get("beta_program_concentration"),
         }
         for t in state_space_targets
     ]

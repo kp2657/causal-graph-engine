@@ -20,10 +20,6 @@ def populate_motif_library():
     motif_library = {}
 
     diseases = {
-        "IBD": {
-            "h5ad": cellxgene_dir / "IBD" / "IBD_macrophage.h5ad",
-            "json": data_dir / "analyze_inflammatory_bowel_disease.json"
-        },
         "CAD": {
             "h5ad": cellxgene_dir / "CAD" / "CAD_macrophage.h5ad",
             "json": data_dir / "analyze_coronary_artery_disease.json"

@@ -8,17 +8,19 @@ This pipeline estimates γ_{P→trait}: the causal effect of a cellular program
 on a disease trait.
 
 γ estimation sources (in decreasing reliability):
-  1. GWAS S-LDSC enrichment: program gene loadings enriched in trait heritability
-  2. Transcriptome-wide MR (TWMR): MR from program gene expression → trait
-  3. Pathway association score: OT overall score × program overlap
-  4. Literature-curated provisional estimates (for anchor programs)
+  1. Live OT L2G score proxy: mean locus→gene score across program genes
+  2. Hypergeometric GWAS enrichment: program gene overlap with GWAS hits
+  3. Provisional fallback: zero (no evidence)
 """
 from __future__ import annotations
 
+import logging
 import math
 import sys
 from pathlib import Path
 from typing import Any, TypedDict
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -165,142 +167,26 @@ def compute_cnmf_gamma(
             "trait":          trait,
         }
     except (ValueError, ArithmeticError, OverflowError) as _e:
-        print(f"[WARN] hypergeometric enrichment math error (program={program_id!r}): {_e}")
+        logger.warning("hypergeometric enrichment math error (program=%r): %s", program_id, _e)
         return None
 
-
-def estimate_gamma_fused(
-    program: str,
-    trait: str,
-    program_gene_set: set[str] | None,
-    efo_id: str | None,
-    ldsc_result: dict | None = None,
-    ot_result: dict | None = None,
-) -> dict | None:
-    """
-    Bayesian fusion of S-LDSC heritability enrichment and OT Genetic Score proxy.
-
-    γ_fused = (τ_ldsc * w_ldsc + γ_ot * w_ot) / (w_ldsc + w_ot)
-
-    Weights:
-      - w_ldsc: proportional to LDSC Z-score (confidence in enrichment)
-      - w_ot:   constant prior weight (0.2), representing evidence from association
-    """
-    if not efo_id or not program_gene_set:
-        return None
-
-    # 1. Get LDSC component (Likelihood)
-    gamma_ldsc = 0.0
-    w_ldsc = 0.0
-    ldsc_source = "none"
-    if ldsc_result:
-        tau = ldsc_result.get("tau", 0.0)
-        z_score = ldsc_result.get("z_score", 0.0)
-        if tau > 0 and z_score > 0:
-            gamma_ldsc = tau
-            w_ldsc = min(z_score, 10.0)  # cap weight to avoid extreme dominance
-            ldsc_source = "S-LDSC"
-
-    # 2. Get OT component (Prior)
-    gamma_ot = 0.0
-    w_ot = 0.2  # Prior weight for OT genetic evidence
-    ot_source = "none"
-    if ot_result:
-        mean_score = float(ot_result.get("mean_genetic_score") or ot_result.get("mean_l2g_score") or 0.0)
-        if mean_score >= _OT_GENETIC_SCORE_MIN:
-            gamma_ot = mean_score * 0.65
-            ot_source = "OT_L2G"
-    else:
-        # Fetch live if not provided (aggregated L2G across GWAS studies)
-        try:
-            from mcp_servers.gwas_genetics_server import aggregate_l2g_scores_for_program_genes
-            genes = sorted(program_gene_set)  # sorted for deterministic query order
-            live_ot = aggregate_l2g_scores_for_program_genes(efo_id, genes)
-            mean_score = float(live_ot.get("mean_genetic_score") or live_ot.get("mean_l2g_score") or 0.0)
-            if mean_score >= _OT_GENETIC_SCORE_MIN:
-                gamma_ot = mean_score * 0.65
-                ot_source = "OT_L2G"
-        except Exception:
-            pass
-
-    if w_ldsc == 0 and ot_source == "none":
-        return None
-
-    # 3. Fusion
-    total_w = w_ldsc + w_ot
-    gamma_fused = (gamma_ldsc * w_ldsc + gamma_ot * w_ot) / total_w
-    
-    # SE estimation: conservatively high if only one source
-    if w_ldsc > 0 and ot_source != "none":
-        gamma_se = round(abs(gamma_fused - gamma_ldsc) * 0.5 + 0.05, 4)
-    else:
-        gamma_se = round(gamma_fused * 0.35, 4)
-
-    evidence_tier = "Tier2_Convergent" if w_ldsc > 2.0 and ot_source != "none" else "Tier3_Provisional"
-    
-    return {
-        "gamma":         round(gamma_fused, 4),
-        "gamma_se":      gamma_se,
-        "evidence_tier": evidence_tier,
-        "data_source":   f"fused_{ldsc_source}+{ot_source}",
-        "program":       program,
-        "trait":         trait,
-        "w_ldsc":        round(w_ldsc, 2),
-        "w_ot":          round(w_ot, 2),
-    }
 
 
 def estimate_gamma(
     program: str,
     trait: str,
-    gwas_enrichment: dict | None = None,
-    twmr_result: dict | None = None,
     program_gene_set: set[str] | None = None,
     efo_id: str | None = None,
-    finngen_phenocode: str | None = None,
 ) -> dict:
     """
     Estimate γ_{program→trait} from best available evidence.
 
     Priority:
-      1. TWMR result (if available and significant, p < 0.05)
-      2. Bayesian Fused Gamma (S-LDSC + OT)
-      3. Provisional hardcoded estimate
-      4. Zero (no evidence)
-
-    Args:
-        program:          cNMF program name
-        trait:            Trait/disease name
-        gwas_enrichment:  S-LDSC enrichment result dict with {"tau", "tau_se", "enrichment_p"}
-        twmr_result:      TWMR result dict with {"beta", "se", "p"}
+      1. Live OT L2G score proxy
+      2. Zero (no evidence)
     """
-    # Tier 1: TWMR (causal estimate)
-    if twmr_result and twmr_result.get("p") is not None:
-        if twmr_result["p"] < 0.05:
-            return {
-                "gamma":         twmr_result["beta"],
-                "gamma_se":      twmr_result.get("se"),
-                "evidence_tier": "Tier2_Convergent",
-                "data_source":   "TWMR",
-                "program":       program,
-                "trait":         trait,
-            }
-
-    # Tier 2: Bayesian Fused Gamma (S-LDSC + OT)
-    if program_gene_set and efo_id:
-        # Use gwas_enrichment as the LDSC component if available
-        fused = estimate_gamma_fused(
-            program=program,
-            trait=trait,
-            program_gene_set=program_gene_set,
-            efo_id=efo_id,
-            ldsc_result=gwas_enrichment,
-        )
-        if fused:
-            return fused
-
-    # Tier 2b: Live OT genetic evidence (fallback if no LDSC component or fusion failed)
-    live = estimate_gamma_live(program, trait, program_gene_set, efo_id, finngen_phenocode)
+    # Live OT genetic evidence
+    live = estimate_gamma_live(program, trait, program_gene_set, efo_id)
     if live is not None:
         return live
 
@@ -320,6 +206,7 @@ def compute_ota_gamma(
     trait: str,
     beta_estimates: dict[str, dict],
     gamma_estimates: dict[str, dict],
+    skip_programs: frozenset[str] | None = None,
 ) -> dict:
     """
     Compute the Ota composite γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait}).
@@ -329,6 +216,9 @@ def compute_ota_gamma(
         trait:            Disease trait
         beta_estimates:   {program → {beta, evidence_tier, ...}}
         gamma_estimates:  {program → {gamma, evidence_tier, ...}}
+        skip_programs:    Optional frozenset of program IDs to exclude from the sum.
+                          Pass HALLMARK_PROGRAM_IDS | {"__protein_channel__"} to
+                          restrict the OTA sum to cNMF + state-transition programs only.
 
     Returns:
         {
@@ -345,6 +235,8 @@ def compute_ota_gamma(
     tiers_used = []
 
     for program in beta_estimates:
+        if skip_programs and program in skip_programs:
+            continue
         beta_info = beta_estimates[program]
         if beta_info is None:
             continue
@@ -353,8 +245,6 @@ def compute_ota_gamma(
         beta_val  = beta_info.get("beta") if isinstance(beta_info, dict) else beta_info
         gamma_val = gamma_info.get("gamma") if isinstance(gamma_info, dict) else (float(gamma_info) if gamma_info is not None else None)
 
-        # Tier2s / Tier2pt embed their own program_gamma when no gamma_estimates entry
-        # exists for the synthetic / protein-channel program ID.  Use it as fallback.
         if gamma_val is None and isinstance(beta_info, dict):
             gamma_val = beta_info.get("program_gamma")
 
@@ -416,17 +306,13 @@ def compute_ota_gamma(
 def build_gamma_matrix(
     programs: list[str],
     traits: list[str],
-    gwas_enrichment_data: dict | None = None,
-    twmr_data: dict | None = None,
 ) -> dict[str, dict[str, dict]]:
     """
     Build the full γ_{program→trait} matrix.
 
     Args:
-        programs:               List of cNMF program names
-        traits:                 List of disease/trait names
-        gwas_enrichment_data:   {(program, trait) → enrichment_dict}
-        twmr_data:              {(program, trait) → twmr_dict}
+        programs:  List of cNMF program names
+        traits:    List of disease/trait names
 
     Returns:
         Nested dict: {program → {trait → gamma_dict}}
@@ -435,12 +321,7 @@ def build_gamma_matrix(
     for program in programs:
         matrix[program] = {}
         for trait in traits:
-            key = (program, trait)
-            gwas_e = (gwas_enrichment_data or {}).get(key)
-            twmr_r = (twmr_data or {}).get(key)
-            matrix[program][trait] = estimate_gamma(
-                program, trait, gwas_enrichment=gwas_e, twmr_result=twmr_r
-            )
+            matrix[program][trait] = estimate_gamma(program, trait)
     return matrix
 
 
@@ -474,7 +355,7 @@ def estimate_cad_gammas() -> dict:
         "traits":     traits,
         "matrix":     matrix,
         "top_program_trait_pairs": nonzero[:15],
-        "note":       "Provisional γ values. Refine with S-LDSC + TWMR after GWAS download.",
+        "note":       "Provisional γ values. Refine with live OT L2G data after GWAS download.",
     }
 
 
@@ -483,7 +364,6 @@ def estimate_gamma_live(
     trait: str,
     program_gene_set: set[str] | None,
     efo_id: str | None,
-    finngen_phenocode: str | None = None,
 ) -> dict | None:
     """
     Live γ_{program→trait} from aggregated Open Targets **L2G** (locus→gene) scores.
@@ -496,16 +376,12 @@ def estimate_gamma_live(
     L2G is queried via ``gwas_genetics_server`` (credibleSets → l2GPredictions), not
     via disease ``associatedTargets`` GraphQL. Colocalisation is not used.
 
-    FinnGen augmentation: if finngen_phenocode is provided and the mean FinnGen
-    p-value across program genes is < 5e-4, the γ estimate is upgraded to
-    Tier2_Convergent (replication in an independent cohort).
 
     Args:
         program:           cNMF program name
         trait:             Disease/trait name (used for display)
         program_gene_set:  Set of gene symbols defining the program
         efo_id:            EFO trait ID for OT queries (required)
-        finngen_phenocode: FinnGen R10 phenocode for replication check
 
     Returns:
         gamma estimate dict (same schema as estimate_gamma()) or None if
@@ -536,24 +412,6 @@ def estimate_gamma_live(
     evidence_tier = "Tier3_Provisional"
     data_source   = f"OT_L2G_mean_{n_with_data}_genes"
 
-    # FinnGen replication check
-    if finngen_phenocode:
-        try:
-            from mcp_servers.finngen_server import get_finngen_gene_associations
-            fg_pvals = []
-            for gene in list(program_gene_set)[:5]:  # sample 5 genes
-                fg_res = get_finngen_gene_associations(finngen_phenocode, gene, p_threshold=5e-4)
-                if fg_res.get("n_variants", 0) > 0:
-                    fg_pvals.append(min(
-                        v["pval"] for v in fg_res["variants"]
-                        if v.get("pval") is not None
-                    ))
-            if fg_pvals and min(fg_pvals) < 5e-4:
-                evidence_tier = "Tier2_Convergent"
-                data_source   = f"OT_L2G+FinnGen_replication_{n_with_data}_genes"
-        except Exception:
-            pass
-
     return {
         "gamma":         gamma_value,
         "gamma_se":      gamma_se,
@@ -575,6 +433,7 @@ def compute_ota_gamma_with_uncertainty(
     beta_estimates: dict[str, dict],
     gamma_estimates: dict[str, dict],
     genebayes_result: dict | None = None,
+    skip_programs: frozenset[str] | None = None,
 ) -> dict:
     """
     Compute Ota composite γ with 95% CI and optional GeneBayes grounding.
@@ -600,10 +459,13 @@ def compute_ota_gamma_with_uncertainty(
         "provisional_virtual":  0.70,
     }
 
-    base = compute_ota_gamma(gene, trait, beta_estimates, gamma_estimates)
+    base = compute_ota_gamma(gene, trait, beta_estimates, gamma_estimates,
+                             skip_programs=skip_programs)
 
     variance = 0.0
     for prog, beta_info in beta_estimates.items():
+        if skip_programs and prog in skip_programs:
+            continue
         if not isinstance(beta_info, dict):
             continue
 

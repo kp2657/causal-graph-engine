@@ -211,60 +211,95 @@ class TherapeuticRedirectionResult(BaseModel):
     tau_disease_specificity: float = 0.5
 
     @property
-    def final_score(self) -> float:
+    def assessment(self) -> dict:
         """
-        Unified scoring formula (Phase G + Phase R + Phase Z7):
+        Structured per-dimension readout replacing the collapsed final_score formula.
 
-          core = 0.60 × genetic_component + 0.40 × mechanistic_component
-
-        genetic_component  = OTA γ (disease-grounding, anchors causal relevance)
-        mechanistic_component = (TR + weighted_transition) × stability_score
-          weighted_transition = 0.35×entry + 0.35×persistence + 0.20×recovery + 0.10×boundary
-
-        translational_modifier = clamp(1 + 0.15×OT + 0.10×trial - 0.10×safety
-                                       + tau_bonus, 0.5, 1.5)
-          tau_bonus = clamp(0.15 × (τ_disease − 0.4), −0.05, 0.10)
-          → disease-specific genes get a small reward; ubiquitously expressed get a small penalty
-          → multiplicative, bounded: cannot rescue a zero-core target
-
-        risk_discount = 1 - 0.20×escape_risk - 0.15×failure_risk  (scales with core)
-
-        final = core × translational_modifier × risk_discount
-
-        NOTE: state_influence_score (legacy DAS) is retained as annotation only
-        and no longer contributes to the formula.
+        Returns a dict with five labeled dimensions. Primary ranking uses ota_gamma
+        (genetic_grounding) directly — not a weighted average of these dimensions.
+        Each dimension can be read independently or rendered as prose by the writer.
         """
-        # Genetic grounding: OTA γ, normalised to [0,1] (PROVISIONAL range ~0.1–0.7)
-        genetic_component = min(abs(self.genetic_grounding) / 0.7, 1.0)
+        ota = float(self.genetic_grounding)
 
-        # Phase G: weighted transition decomposition replaces DAS * 0.3
+        # Causal dimension: OTA γ and its uncertainty
+        if abs(ota) >= 0.3:
+            causal_confidence = "high"
+        elif abs(ota) >= 0.1:
+            causal_confidence = "moderate"
+        elif abs(ota) > 0:
+            causal_confidence = "low"
+        else:
+            causal_confidence = "absent"
+
+        # Mechanistic dimension: TR + transition scores
         weighted_transition = (
             0.35 * self.entry_score +
             0.35 * self.persistence_score +
             0.20 * self.recovery_score +
             0.10 * self.boundary_score
         )
-        # Phase Z7: Stability-weighted mechanistic component
-        mech_raw = (abs(self.therapeutic_redirection) + weighted_transition) * self.stability_score
-        mechanistic_component = min(mech_raw, 1.0)
-
-        core = 0.60 * genetic_component + 0.40 * mechanistic_component
-
-        # Phase R: disease-state τ bonus
-        # τ_disease in [0, 1]; neutral at 0.4; range: [-0.05, +0.10]
-        tau_bonus = max(-0.05, min(0.10, 0.15 * (self.tau_disease_specificity - 0.4)))
-
-        # Translational modifier: multiplicative, bounded [0.5, 1.5]
-        t_mod = (1.0 + 0.15 * self.ot_combined + 0.10 * self.trial_bonus
-                 - 0.10 * self.safety_penalty + tau_bonus)
-        t_mod = max(0.5, min(1.5, t_mod))
-
-        # Risk scales with core (not independent additive)
-        risk_discount = max(0.1,
-            1.0 - 0.20 * min(self.escape_risk, 1.0) - 0.15 * min(self.failure_risk, 1.0)
+        mech_strength = (abs(self.therapeutic_redirection) + weighted_transition) * self.stability_score
+        mech_verdict = (
+            "strong" if mech_strength >= 0.6
+            else "moderate" if mech_strength >= 0.3
+            else "weak"
         )
 
-        return core * t_mod * risk_discount
+        # Disease specificity dimension
+        tau = self.tau_disease_specificity
+        specificity_verdict = (
+            "disease-specific" if tau >= 0.6
+            else "moderate specificity" if tau >= 0.4
+            else "broadly expressed"
+        )
+
+        # Translational dimension: OT + trials
+        translational_verdict = (
+            "clinical evidence" if self.trial_bonus >= 0.5
+            else "OT-supported" if self.ot_combined >= 0.3
+            else "preclinical only"
+        )
+
+        # Safety dimension
+        total_risk = (
+            0.20 * min(self.escape_risk, 1.0)
+            + 0.15 * min(self.failure_risk, 1.0)
+            + 0.30 * min(self.safety_penalty, 1.0)
+        )
+        safety_verdict = (
+            "high risk" if total_risk >= 0.25
+            else "moderate risk" if total_risk >= 0.10
+            else "low risk"
+        )
+
+        return {
+            "causal": {
+                "ota_gamma":   round(ota, 4),
+                "confidence":  causal_confidence,
+            },
+            "mechanistic": {
+                "therapeutic_redirection": round(float(self.therapeutic_redirection), 4),
+                "state_influence":         round(float(self.state_influence_score), 4),
+                "weighted_transition":     round(float(weighted_transition), 4),
+                "stability":               round(float(self.stability_score), 4),
+                "verdict":                 mech_verdict,
+            },
+            "disease_specificity": {
+                "tau":     round(float(tau), 4),
+                "verdict": specificity_verdict,
+            },
+            "translational": {
+                "ot_combined":  round(float(self.ot_combined), 4),
+                "trial_bonus":  round(float(self.trial_bonus), 4),
+                "safety_penalty": round(float(self.safety_penalty), 4),
+                "verdict":      translational_verdict,
+            },
+            "safety": {
+                "escape_risk":  round(float(self.escape_risk), 4),
+                "failure_risk": round(float(self.failure_risk), 4),
+                "verdict":      safety_verdict,
+            },
+        }
 
 
 # ---------------------------------------------------------------------------

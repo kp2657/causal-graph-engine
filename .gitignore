@@ -4,21 +4,24 @@
 # Internal development scripts — not part of the supported pipeline
 scripts/dev/
 
-# Data and graph databases (too large; download instructions in README/docs/DATA_SOURCES.md)
-data/
-# Exception: keep the two canonical validated output JSON files
-!data/analyze_age_related_macular_degeneration.json
+# Data and graph databases (too large; download instructions in README)
+data/**
+*.kuzu
+*.h5ad
+# Exception: keep validated pipeline output JSON files
 !data/analyze_coronary_artery_disease.json
+!data/analyze_rheumatoid_arthritis.json
 
 # Run logs (contain API traces and personal data)
 *.log
-amd_run_v2.log
-poag_run_v2.log
 
-# Internal research / presentation outputs
+# Internal research / presentation outputs (not part of public API)
 AMD_*.md
 dynamical_state_space_redesign_for_claude.md
 CHANGELOG_archive.md
+
+# Claude plan files
+.claude/plans/
 
 # Python artifacts
 __pycache__/

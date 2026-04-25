@@ -20,15 +20,16 @@ cd causal-graph-engine/
 ## Run commands
 ```bash
 # Full pipeline (first run or after changing Tier 1–3 data)
+# Active diseases: CAD (cardiac endothelial cell) + RA (CD4+ T cell)
 conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "coronary artery disease"
-conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "age-related macular degeneration"
+conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "rheumatoid arthritis"
 
 # Re-run Tier 4+5 from saved Tier 3 checkpoint (skips Tiers 1–3 re-computation)
 conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "coronary artery disease"
-conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "age-related macular degeneration"
+conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "rheumatoid arthritis"
 
 # Unit tests (fast, targeted — NEVER run the full suite via pytest tests/)
-/opt/anaconda3/envs/causal-graph/bin/python -m pytest tests/test_phase_*.py tests/test_pipelines.py tests/test_pi_orchestrator_v2.py -q --tb=short
+/opt/anaconda3/envs/causal-graph/bin/python -m pytest tests/test_state_space_*.py tests/test_causal_*.py tests/test_gps_*.py tests/test_scoring_*.py tests/test_pipelines*.py tests/test_pi_orchestrator_v2.py -q --tb=short
 ```
 
 ---
@@ -50,11 +51,17 @@ conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 "a
 
 ## Architecture
 ```
-orchestrator/pi_orchestrator_v2.py   — 5-tier multiagent pipeline
-agents/tier{1-5}_*/                  — per-tier agents
-pipelines/                           — ota_beta/gamma_estimation, discovery, state_space
-mcp_servers/                         — 8 live servers (GWAS, gnomAD, GTEx, CELLxGENE, OT, ...)
-graph/db.py, schema.py, export.py    — Kùzu CRUD + RDF/Turtle export
+orchestrator/pi_orchestrator_v2.py   — 5-tier pipeline (the entry point; run this)
+orchestrator/sdk/                    — optional Claude SDK dispatch (AGENT_MODE=sdk only)
+agents/tier{1-5}_*/                  — per-tier agents (plain functions, called directly)
+  tier3_causal/causal_discovery_agent.py — run() only: OTA γ + graph construction
+  tier3_causal/causal_filters.py         — utility fns: stress discount, entropy, Pareto
+  tier3_causal/causal_therapeutic.py    — _maybe_therapeutic_redirection helper
+pipelines/                           — OTA β/γ estimation, GPS screening, state-space
+mcp_servers/                         — 8 live data servers (GWAS, gnomAD, GTEx, CELLxGENE, OT, …)
+graph/                               — Kùzu graph DB + RDF/Turtle export
+config/scoring_thresholds.py         — all numeric constants with citations (import from here, never inline)
+models/disease_registry.py           — canonical disease name/EFO/GWAS mapping; disease_key set by phenotype_architect
 data/cellxgene/{disease}/            — cached h5ad files
 ```
 
@@ -70,22 +77,14 @@ data/cellxgene/{disease}/            — cached h5ad files
 | `GRAPH_DB_PATH` → temp dir in DB tests | Prevents corrupting `data/graph.kuzu` |
 | `model_construct()` for unknown-agent stubs | Bypasses AgentName Literal without crash |
 | **Do not use `get_anndata(obs_coords=numpy_array)`** | Segfaults in tiledbsoma 2.3.0 — use axis_query |
+| All numeric thresholds in `config/scoring_thresholds.py` | Never inline magic numbers — import from there |
+| `disease_query["disease_key"]` is set once by `phenotype_architect.run()` | Never re-derive via `get_disease_key()` in downstream agents |
 
 ---
 
 ## State-space refactor: Phases A–F COMPLETE ✓
 
-Phase F unified scoring formula (locked):
-```
-core    = 0.60 × genetic_component + 0.40 × mechanistic_component
-final   = core × t_mod × risk_discount
-t_mod   = clamp(1 + 0.15×OT + 0.10×trial - 0.10×safety, 0.5, 1.5)
-risk    = max(0.1, 1 - 0.20×escape_risk - 0.15×failure_risk)
-```
-- `genetic_component` = OTA γ / 0.7 (disease grounding)
-- `mechanistic_component` = min(|TR| + state_influence×0.3, 1.0)
-- TR fires for ALL genes via `compute_state_direct_redirection` (no NMF gate)
-- `state_influence.py` → continuous `disease_axis_score` [0,1] per gene
+**Target sort order (actual implementation):** partition rank first (Tier1 > Tier2 > Tier3 > Tier4), then `−|ota_gamma|` within partition.
 
 Key modules: `pipelines/state_space/` — `state_influence.py`, `therapeutic_redirection.py`, `conditional_beta.py`, `conditional_gamma.py`, `latent_model.py`, `transition_graph.py`
 
@@ -137,11 +136,9 @@ Everything else — pytest, probes, diagnostics, inline python, any command <5 m
 
 # Broader check (~30s) — targeted file list, never the whole directory
 /opt/anaconda3/envs/causal-graph/bin/python -m pytest \
-  tests/test_phase_a_models.py tests/test_phase_b_conditional.py \
-  tests/test_phase_c_therapeutic_redirection.py tests/test_phase_d_evidence_disagreement.py \
-  tests/test_phase_g_transition_scoring.py tests/test_phase_h_controller_classifier.py \
-  tests/test_phase_i_disagreement_profile.py tests/test_phase_j_benchmark.py \
-  tests/test_agents.py -q --tb=short
+  tests/test_state_space_*.py tests/test_causal_*.py \
+  tests/test_gps_*.py tests/test_scoring_*.py \
+  tests/test_pipelines*.py tests/test_agents.py -q --tb=short
 ```
 
 **NEVER run `pytest tests/`** — the full suite exceeds the 2-minute Bash tool timeout and is
@@ -177,5 +174,5 @@ AGENT_MODE=sdk     # CSO + discovery_refinement dispatch via Claude API
 ANTHROPIC_API_KEY=<key>   # only needed for AGENT_MODE=sdk
 OPENGWAS_JWT=<jwt>        # expires 2026-05-06
 NCBI_API_KEY=<key>
-GRAPH_DB_PATH=./data/graph.kuzu
+GRAPH_DB_PATH=./data/graph_test.kuzu   # tests only; unset in prod → per-disease graph_{slug}.kuzu
 ```

@@ -20,12 +20,9 @@ Dataset coverage
 ----------------
   Dataset                  Cell line    Disease context       #Genes  Access
   replogle_2022_k562       K562         generic (CML)         9,866   figshare DOI 10.6084/m9.figshare.20029387
-  replogle_2022_rpe1       RPE1         generic (epithelial)  2,393   same figshare
-  papalexi_2021_thp1       THP-1        IBD / RA / inflammation  49   GEO GSE153056
-  dixit_2016_bmdc          BMDC         IBD / RA / LPS           24   GEO GSE90063
-  frangieh_2021_a375       A375         melanoma / SLE / RA     750   Broad SCP1064
-  norman_2019_k562         K562         generic (CRISPRa)       105   GEO GSE133344
   natsume_2023_haec        HAEC         CAD (endothelial)     2,285   PLOS Gen doi:10.1371/journal.pgen.1010680
+  schnitzler_cad_vascular  HCASMC/HAEC  CAD (vascular)          332   GEO GSE210681
+  czi_2025_cd4t_perturb    CD4+ T       SLE/DED (Th17)       11,281   S3 Marson 2025
 
 Run standalone:  python mcp_servers/perturbseq_server.py
 """
@@ -96,137 +93,6 @@ _DATASET_REGISTRY: dict[str, dict] = {
         "geo":                        "PRJNA831566",
         "note": "Largest genome-wide screen; best coverage; K562 is CML so tissue mismatch for most diseases.",
     },
-    "replogle_2022_rpe1": {
-        "name":              "Replogle 2022 essential-gene CRISPRi (RPE1, bulk pseudobulk)",
-        "citation":          "Replogle et al., Cell 2022. doi:10.1016/j.cell.2022.05.013",
-        "cell_line":         "RPE1",
-        "tissue":            "retinal_epithelium",
-        "disease_context":   "generic",
-        "perturbation_type": "CRISPRi",
-        "n_genes_perturbed": 2393,
-        "access": {
-            "type":            "figshare_bulk_h5ad",
-            "doi":             "10.6084/m9.figshare.20029387",
-            "figshare_file_id": 35775512,
-            "file":            "rpe1_normalized_bulk_01.h5ad",
-            "size_gb":         0.10,
-        },
-        "h5ad_format":               "replogle_bulk",
-        "h5ad_obs_perturbation_col": "gene",
-        "h5ad_nt_label":             "non-targeting",
-        "geo":                        "PRJNA831566",
-        "note": "Non-cancerous cell line; near-diploid. Essential gene coverage only (~2400 genes).",
-    },
-
-    # ── Papalexi 2021 ────────────────────────────────────────────────────────
-    "papalexi_2021_thp1": {
-        "name":              "Papalexi 2021 checkpoint screen (THP-1 monocytes)",
-        "citation":          "Papalexi et al., Nature Genetics 2021. doi:10.1038/s41588-021-00778-2",
-        "cell_line":         "THP-1",
-        "tissue":            "monocyte",
-        "disease_context":   "IBD_RA_inflammation",
-        "perturbation_type": "CRISPRko",
-        "n_genes_perturbed": 49,
-        "access": {
-            "type":    "geo_h5ad",
-            "geo":     "GSE153056",
-            "figshare_doi": "10.35092/yhjc.c.5303193",
-        },
-        "h5ad_obs_perturbation_col": "perturbation",
-        "h5ad_nt_label":             "NT",
-        "note": (
-            "Monocytic cell line — most relevant for IBD macrophage / RA inflammatory context. "
-            "Targeted screen (49 genes) around PD-L1/KEAP1/NRF2/CD58 axis."
-        ),
-    },
-
-    # ── Dixit 2016 ───────────────────────────────────────────────────────────
-    "dixit_2016_bmdc": {
-        "name":              "Dixit 2016 TF screen in bone marrow dendritic cells (LPS stimulation)",
-        "citation":          "Dixit et al., Cell 2016. doi:10.1016/j.cell.2016.11.038",
-        "cell_line":         "BMDC",
-        "tissue":            "dendritic_cell",
-        "disease_context":   "IBD_RA_inflammation",
-        "perturbation_type": "CRISPRko",
-        "n_genes_perturbed": 24,
-        "access": {
-            "type": "geo_matrix",
-            "geo":  "GSE90063",
-        },
-        "h5ad_obs_perturbation_col": "perturbation",
-        "h5ad_nt_label":             "CTRL",
-        "note": (
-            "Primary-like dendritic cells under LPS stimulation — captures inflammatory "
-            "response. TF-focused (24 genes). Important for IBD/RA innate immune pathway."
-        ),
-    },
-
-    # ── Frangieh 2021 ────────────────────────────────────────────────────────
-    "frangieh_2021_a375": {
-        "name":              "Frangieh 2021 melanoma immune evasion CRISPR screen",
-        "citation":          "Frangieh et al., Nature Genetics 2021. doi:10.1038/s41588-021-00779-1",
-        "cell_line":         "A375",
-        "tissue":            "melanoma",
-        "disease_context":   "SLE_RA_cancer",
-        "perturbation_type": "CRISPRko",
-        "n_genes_perturbed": 750,
-        "access": {
-            "type":   "broad_scp",
-            "scp_id": "SCP1064",
-        },
-        "h5ad_obs_perturbation_col": "perturbation",
-        "h5ad_nt_label":             "NT",
-        "note": (
-            "CITE-seq (RNA + protein). Melanoma + TIL co-culture; captures IFN-gamma "
-            "pathway and immune checkpoint biology. Useful for SLE/RA immune programs."
-        ),
-    },
-
-    # ── Norman 2019 ──────────────────────────────────────────────────────────
-    "norman_2019_k562": {
-        "name":              "Norman 2019 combinatorial CRISPRa (K562)",
-        "citation":          "Norman et al., Science 2019. doi:10.1126/science.aax4438",
-        "cell_line":         "K562",
-        "tissue":            "blood_CML",
-        "disease_context":   "generic",
-        "perturbation_type": "CRISPRa",
-        "n_genes_perturbed": 105,
-        "access": {
-            "type": "geo_matrix",
-            "geo":  "GSE133344",
-        },
-        "h5ad_obs_perturbation_col": "perturbation",
-        "h5ad_nt_label":             "ctrl",
-        "note": (
-            "Activation screen (CRISPRa = overexpression). Useful when genes are "
-            "loss-of-function disease-linked and gain-of-function β is needed."
-        ),
-    },
-
-    # ── Ursu 2022 iPSC Neurons ───────────────────────────────────────────────
-    "ursu_2022_ipsc_neuron": {
-        "name":              "Ursu 2022 CRISPRi iPSC-derived neurons (NeurIPS 2022 benchmark)",
-        "citation":          "Ursu et al., NeurIPS 2022. GEO: GSE196862.",
-        "cell_line":         "iPSC_neuron",
-        "tissue":            "neuron_iPSC",
-        "disease_context":   "AD_SCZ_neurodegeneration",
-        "perturbation_type": "CRISPRi",
-        "n_genes_perturbed": 96,
-        "access": {
-            "type":    "zenodo_harmonized",
-            "zenodo":  "7041690",
-            "scperturb_id": "Ursu2022_neurips",
-        },
-        "h5ad_obs_perturbation_col": "perturbation",
-        "h5ad_nt_label":             "control",
-        "geo":                        "GSE196862",
-        "note": (
-            "Only human iPSC neuron Perturb-seq in the scPerturb harmonized collection. "
-            "96 genes only — limited genome coverage; use with eQTL-MR to fill gaps. "
-            "Cell type is directly relevant for AD/neurodegenerative disease programs."
-        ),
-    },
-
     # ── Schnitzler comprehensive CAD Perturb-seq ─────────────────────────────
     "schnitzler_cad_vascular": {
         "name":              "Schnitzler comprehensive Perturb-seq of 332 CAD risk genes in vascular cells",
@@ -256,6 +122,41 @@ _DATASET_REGISTRY: dict[str, dict] = {
             "the disease-relevant vascular cell types. Signatures must be preprocessed from "
             "GEO h5ad before use (run preprocess CLI). "
             "Supersedes K562 (myeloid proxy) for all CAD vascular biology."
+        ),
+    },
+
+    # ── CZI / Marson 2025 CD4+ T genome-scale (SLE) ──────────────────────────
+    "czi_2025_cd4t_perturb": {
+        "name":              "CZI/Marson 2025 genome-scale CRISPRi in primary human CD4+ T cells",
+        "citation":          "Zhu*, Dann* et al., bioRxiv 2025. doi:10.1101/2025.12.23.696273",
+        "cell_line":         "primary_CD4_T",
+        "tissue":            "CD4_T_cell",
+        "disease_context":   "SLE_RA",
+        "perturbation_type": "CRISPRi",
+        "n_genes_perturbed": 11327,
+        "access": {
+            "type": "s3_de_stats_h5ad",
+            "s3_url": "https://genome-scale-tcell-perturb-seq.s3.amazonaws.com/marson2025_data/GWCD4i.DE_stats.h5ad",
+            "size_gb": 15.6,
+            "local_path": "data/perturbseq/czi_2025_cd4t_perturb/GWCD4i.DE_stats.h5ad",
+            "note": (
+                "Public S3 bucket (no auth). Download: "
+                "curl -L -o data/perturbseq/czi_2025_cd4t_perturb/GWCD4i.DE_stats.h5ad "
+                "https://genome-scale-tcell-perturb-seq.s3.amazonaws.com/marson2025_data/GWCD4i.DE_stats.h5ad\n"
+                "Then preprocess: python -m mcp_servers.perturbseq_server preprocess "
+                "czi_2025_cd4t_perturb data/perturbseq/czi_2025_cd4t_perturb/GWCD4i.DE_stats.h5ad"
+            ),
+        },
+        "h5ad_format":               "czi_de_stats",
+        "h5ad_obs_perturbation_col": "index",   # ENSG00000xxx_Condition
+        "h5ad_nt_label":             "non-targeting",
+        "geo":                        "GSE314342",
+        "note": (
+            "Best-available SLE+DED Perturb-seq β source. 11,327 genes perturbed in primary human "
+            "CD4+ T cells (4 donors × 3 stimulation conditions: Rest, Stim8hr, Stim48hr). "
+            "DE stats h5ad has layers['log_fc'] = (33983, 10282) matrix of log2FC per "
+            "perturbation-condition vs non-targeting. Use Stim48hr condition for T cell "
+            "activation programs (SLE/DED-relevant); Rest for basal regulatory network."
         ),
     },
 
@@ -291,20 +192,12 @@ _DATASET_REGISTRY: dict[str, dict] = {
 _DISEASE_DATASET_PRIORITY: dict[str, list[str]] = {
     # CAD: Schnitzler 332 CAD-specific vascular > Natsume HAEC > genome-wide generic
     "CAD":  ["schnitzler_cad_vascular", "natsume_2023_haec", "replogle_2022_k562"],
-    # IBD: monocyte/DC (tissue match) > genome-wide
-    "IBD":  ["papalexi_2021_thp1",  "dixit_2016_bmdc",    "replogle_2022_k562"],
-    # RA: monocyte/melanoma-immune > genome-wide
-    "RA":   ["papalexi_2021_thp1",  "frangieh_2021_a375", "replogle_2022_k562"],
-    # T2D: no liver/pancreas Perturb-seq available yet; genome-wide as best proxy
-    "T2D":  ["replogle_2022_k562",  "replogle_2022_rpe1"],
-    # AD: iPSC neurons (cell type match, 96 genes) > RPE1 (non-cancerous) > K562
-    "AD":   ["ursu_2022_ipsc_neuron", "replogle_2022_rpe1", "replogle_2022_k562"],
-    # SLE: immune-context first
-    "SLE":  ["papalexi_2021_thp1",  "frangieh_2021_a375", "replogle_2022_k562"],
-    # AMD: RPE1 (retinal epithelial = tissue match) > K562 (generic fallback)
-    "AMD":  ["replogle_2022_rpe1",  "replogle_2022_k562"],
+    # SLE: CZI CD4+ T (genome-scale, primary cells) > K562 fallback
+    "SLE":  ["czi_2025_cd4t_perturb", "replogle_2022_k562"],
+    # RA: CZI CD4+ T (Th1/Th17 mechanism shared with SLE) > K562 fallback
+    "RA":   ["czi_2025_cd4t_perturb", "replogle_2022_k562"],
     # Generic: largest genome-wide screen first
-    "GENERIC": ["replogle_2022_k562", "replogle_2022_rpe1"],
+    "GENERIC": ["replogle_2022_k562"],
 }
 
 # In-process signature cache: dataset_id → {gene: {downstream_gene: log2fc}}
@@ -624,6 +517,102 @@ def preprocess_log2fc_matrix(
     }
 
 
+def preprocess_czi_de_stats(
+    dataset_id: str,
+    h5ad_path: str | Path,
+    condition: str = "Stim48hr",
+    top_k: int = 200,
+    min_abs_log2fc: float = 0.1,
+) -> dict:
+    """
+    Preprocess CZI/Marson 2025 GWCD4i.DE_stats.h5ad into per-gene signatures.
+
+    The h5ad has:
+      obs.index = "{ENSEMBL_ID}_{condition}"  (33,983 rows)
+      layers["log_fc"] = (33983, 10282)  — log2FC vs non-targeting per gene
+      var["gene_name"] = gene symbols
+
+    Args:
+        condition: "Rest", "Stim8hr", or "Stim48hr" (default Stim48hr for SLE T cell activation)
+        top_k: top downstream genes per perturbation to keep
+        min_abs_log2fc: minimum |log2FC| threshold
+    """
+    import gzip as _gz
+    try:
+        import anndata as ad
+    except ImportError:
+        return {"error": "anndata not installed; run: pip install anndata"}
+
+    path = Path(h5ad_path)
+    if not path.exists():
+        return {"error": f"File not found: {path}"}
+
+    log.info("Loading CZI DE stats h5ad: %s (condition=%s)", path, condition)
+    adata = ad.read_h5ad(str(path))
+
+    # Filter to requested condition
+    cond_mask = adata.obs.index.str.endswith(f"_{condition}")
+    if cond_mask.sum() == 0:
+        available = sorted({idx.rsplit("_", 1)[-1] for idx in adata.obs.index})
+        return {"error": f"Condition '{condition}' not found. Available: {available}"}
+    adata = adata[cond_mask]
+    log.info("Filtered to condition '%s': %d perturbations", condition, adata.n_obs)
+
+    # Build ENSEMBL → symbol map from obs.index (format: ENSGxxxx_Condition)
+    # and var gene names
+    var_symbols = list(adata.var["gene_name"] if "gene_name" in adata.var.columns else adata.var_names)
+
+    # Load log2FC matrix
+    log_fc = adata.layers["log_fc"]
+    if hasattr(log_fc, "toarray"):
+        log_fc = log_fc.toarray()
+    import numpy as np
+    log_fc = np.asarray(log_fc, dtype=np.float32)
+
+    # Build per-gene signatures
+    # obs.index format: "ENSG00000121410_Stim48hr" → perturbation gene = ENSEMBL ID
+    # Map ENSEMBL → symbol using HGNC if available
+    try:
+        from pipelines.static_lookups import get_lookups as _get_lookups
+        _lu = _get_lookups()
+        def _ensg_to_sym(ensg: str) -> str:
+            sym = _lu.get_symbol_from_ensembl(ensg)
+            return sym if sym else ensg
+    except Exception:
+        def _ensg_to_sym(ensg: str) -> str:
+            return ensg
+
+    signatures: dict[str, dict[str, float]] = {}
+    for i, obs_id in enumerate(adata.obs.index):
+        ensg = obs_id.rsplit("_", 1)[0]
+        gene_sym = _ensg_to_sym(ensg)
+
+        row = log_fc[i]
+        # Pair with gene symbols
+        pairs = [(sym, float(lfc)) for sym, lfc in zip(var_symbols, row)
+                 if abs(float(lfc)) >= min_abs_log2fc and lfc == lfc]  # finite check
+
+        if not pairs:
+            continue
+        # Top-k by |log2FC|
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        signatures[gene_sym] = dict(pairs[:top_k])
+
+    sig_path = _sig_path(dataset_id)
+    sig_path.parent.mkdir(parents=True, exist_ok=True)
+    with _gz.open(sig_path, "wt") as out:
+        json.dump(signatures, out)
+
+    log.info("Saved %d signatures to %s", len(signatures), sig_path)
+    return {
+        "dataset_id":        dataset_id,
+        "condition_used":    condition,
+        "n_perturbed_genes": len(signatures),
+        "n_cached_genes":    len(signatures),
+        "sig_path":          str(sig_path),
+    }
+
+
 def download_h5ad(dataset_id: str, dest_dir: str | Path | None = None) -> dict:
     """
     Download the h5ad for a dataset to dest_dir (default: data/perturbseq/{dataset_id}/).
@@ -652,6 +641,11 @@ def download_h5ad(dataset_id: str, dest_dir: str | Path | None = None) -> dict:
         if not file_id:
             return {"error": "figshare_file_id not set in registry"}
         url = f"https://ndownloader.figshare.com/files/{file_id}"
+    elif acc_type == "s3_de_stats_h5ad":
+        url      = access.get("s3_url")
+        filename = Path(url).name if url else f"{dataset_id}.h5ad"
+        if not url:
+            return {"error": "s3_url not set in registry"}
     else:
         return {"error": f"Automatic download not supported for access type '{acc_type}'"}
 
@@ -719,7 +713,9 @@ def activate_dataset(
     h5ad_path = dl["path"]
     h5ad_fmt  = meta.get("h5ad_format", "single_cell")
 
-    if h5ad_fmt == "replogle_bulk":
+    if h5ad_fmt == "czi_de_stats":
+        result = preprocess_czi_de_stats(dataset_id, h5ad_path)
+    elif h5ad_fmt == "replogle_bulk":
         result = preprocess_replogle_bulk(dataset_id, h5ad_path, top_k, min_abs_log2fc)
     else:
         result = preprocess_h5ad(dataset_id, h5ad_path, top_k, min_abs_log2fc)
@@ -793,17 +789,13 @@ def get_perturbseq_signature(
 
     Priority order (must stay in sync with `_DISEASE_DATASET_PRIORITY`):
       CAD  → schnitzler_cad_vascular → natsume_2023_haec → replogle_2022_k562
-      IBD  → papalexi_2021_thp1 → dixit_2016_bmdc → replogle_2022_k562
-      RA   → papalexi_2021_thp1 → frangieh_2021_a375 → replogle_2022_k562
-      T2D  → replogle_2022_k562 → replogle_2022_rpe1
-      AD   → ursu_2022_ipsc_neuron → replogle_2022_rpe1 → replogle_2022_k562
-      SLE  → papalexi_2021_thp1 → frangieh_2021_a375 → replogle_2022_k562
-      AMD  → replogle_2022_rpe1 → replogle_2022_k562
-      else → replogle_2022_k562 → replogle_2022_rpe1  (GENERIC)
+      SLE  → czi_2025_cd4t_perturb → replogle_2022_k562
+      DED  → czi_2025_cd4t_perturb → replogle_2022_k562
+      else → replogle_2022_k562 (GENERIC)
 
     Args:
         gene_symbol:     Gene to query (e.g. "PCSK9")
-        disease_context: Disease key — "CAD" | "IBD" | "RA" | "T2D" | "AD" | "SLE" | "AMD"
+        disease_context: Disease key — "CAD" | "SLE" | "DED"
         dataset_id:      Override dataset (see list_perturbseq_datasets())
         top_k:           Max downstream genes returned in signature
 
@@ -1013,150 +1005,3 @@ def list_perturbseq_datasets(disease_context: str | None = None) -> dict:
         ),
     }
 
-
-@_tool
-def find_upstream_regulators(
-    target_genes: list[str],
-    disease_context: str | None = None,
-    dataset_id: str | None = None,
-    min_abs_log2fc: float = 0.25,
-    min_target_overlap: int = 1,
-) -> dict:
-    """
-    Reverse-lookup: find knockouts whose perturbation downstream signature overlaps
-    with target_genes.  Used to nominate upstream TF regulators from GWAS hit genes.
-
-    For each knockout in the dataset, counts how many target_genes appear in its
-    downstream signature with |log2fc| >= min_abs_log2fc.  Returns knockouts ranked
-    by number of regulated targets (descending), then by sum |log2fc|.
-
-    Args:
-        target_genes:        Genes to look for in downstream signatures (e.g. GWAS hits)
-        disease_context:     Disease key for dataset selection ("IBD", "CAD", ...)
-        dataset_id:          Override dataset (skips disease-priority selection)
-        min_abs_log2fc:      Minimum absolute log2FC to count a regulation event
-        min_target_overlap:  Minimum target genes regulated to include a knockout
-
-    Returns:
-        {
-          "regulators": [
-            {
-              "gene":                str,
-              "n_targets_regulated": int,
-              "regulated_targets":   list[str],
-              "sum_abs_log2fc":      float,
-              "dataset_id":          str,
-              "evidence_tier":       "regulator_nomination",
-            }, ...
-          ],
-          "target_genes_queried": list[str],
-          "n_knockouts_tested":   int,
-          "dataset_id":           str,
-        }
-    """
-    ds_id = _select_dataset(disease_context, dataset_id)
-    if ds_id is None:
-        return {
-            "regulators": [],
-            "target_genes_queried": target_genes,
-            "n_knockouts_tested": 0,
-            "dataset_id": None,
-        }
-
-    sigs = _load_cached_signatures(ds_id)
-    if sigs is None:
-        return {
-            "regulators": [],
-            "target_genes_queried": target_genes,
-            "n_knockouts_tested": 0,
-            "dataset_id": ds_id,
-        }
-
-    targets_upper = {g.upper() for g in target_genes}
-    results = []
-    for ko_gene, downstream in sigs.items():
-        regulated = [
-            g for g, lfc in downstream.items()
-            if g.upper() in targets_upper and abs(lfc) >= min_abs_log2fc
-        ]
-        if len(regulated) < min_target_overlap:
-            continue
-        results.append({
-            "gene":                ko_gene,
-            "n_targets_regulated": len(regulated),
-            "regulated_targets":   regulated,
-            "sum_abs_log2fc":      round(sum(abs(downstream[g]) for g in regulated), 4),
-            "dataset_id":          ds_id,
-            "evidence_tier":       "regulator_nomination",
-        })
-
-    results.sort(key=lambda r: (-r["n_targets_regulated"], -r["sum_abs_log2fc"]))
-
-    return {
-        "regulators":           results,
-        "target_genes_queried": list(target_genes),
-        "n_knockouts_tested":   len(sigs),
-        "dataset_id":           ds_id,
-    }
-
-
-# ---------------------------------------------------------------------------
-# CLI: preprocess a dataset from h5ad
-# ---------------------------------------------------------------------------
-
-def _cli_preprocess(args: list[str]) -> None:
-    import logging as _log
-    _log.basicConfig(level=_log.INFO, format="%(levelname)s %(message)s")
-    if len(args) < 2:
-        print("Usage: python -m mcp_servers.perturbseq_server preprocess <dataset_id> <h5ad_path>")
-        print("\nAvailable dataset_ids:")
-        for k, v in _DATASET_REGISTRY.items():
-            print(f"  {k:30s}  {v['cell_line']:10s}  {v['n_genes_perturbed']:>6d} genes")
-        sys.exit(1)
-    dataset_id = args[0]
-    h5ad_path  = args[1]
-    meta = _DATASET_REGISTRY.get(dataset_id, {})
-    # Auto-detect format from file extension or registry access type
-    access_type = meta.get("access", {}).get("type", "")
-    if access_type == "log2fc_matrix" or h5ad_path.endswith(".txt.gz") or h5ad_path.endswith(".txt"):
-        result = preprocess_log2fc_matrix(dataset_id, h5ad_path)
-    elif meta.get("h5ad_format") == "replogle_bulk":
-        result = preprocess_replogle_bulk(dataset_id, h5ad_path)
-    else:
-        result = preprocess_h5ad(dataset_id, h5ad_path)
-    print(json.dumps(result, indent=2))
-
-
-def _cli_activate(args: list[str]) -> None:
-    import logging as _log
-    _log.basicConfig(level=_log.INFO, format="%(levelname)s %(message)s")
-    if not args:
-        print("Usage: python -m mcp_servers.perturbseq_server activate <dataset_id> [--keep-raw]")
-        print("       python -m mcp_servers.perturbseq_server activate all [--keep-raw]")
-        print("\nAvailable dataset_ids:")
-        for k, v in _DATASET_REGISTRY.items():
-            cached = "✓ cached" if _sig_path(k).exists() else "  not cached"
-            acc = v["access"]
-            size = f"  {acc.get('size_gb', '?')} GB" if acc.get("size_gb") else ""
-            print(f"  {k:30s}  {v['cell_line']:10s}  {v['n_genes_perturbed']:>6d} genes  {cached}{size}")
-        sys.exit(1)
-    keep_raw   = "--keep-raw" in args
-    dataset_id = args[0]
-    targets = list(_DATASET_REGISTRY.keys()) if dataset_id == "all" else [dataset_id]
-    for ds_id in targets:
-        print(f"\n{'='*60}")
-        print(f"Activating: {ds_id}")
-        result = activate_dataset(ds_id, delete_raw=not keep_raw)
-        print(json.dumps(result, indent=2))
-
-
-if __name__ == "__main__":
-    argv = sys.argv[1:]
-    if argv and argv[0] == "preprocess":
-        _cli_preprocess(argv[1:])
-    elif argv and argv[0] == "activate":
-        _cli_activate(argv[1:])
-    elif mcp is not None:
-        mcp.run()
-    else:
-        raise RuntimeError("fastmcp required: pip install fastmcp")

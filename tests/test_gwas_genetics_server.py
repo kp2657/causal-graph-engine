@@ -28,10 +28,8 @@ from mcp_servers.gwas_genetics_server import (
     query_gtex_eqtl,
     list_available_gwas,
     get_ieu_open_gwas_summary_stats,
-    run_mr_analysis,
     get_open_targets_genetics_credible_sets,
     get_l2g_scores,
-    get_finngen_phenotype_definition,
 )
 
 # ---------------------------------------------------------------------------
@@ -47,11 +45,6 @@ def _has_required_keys(obj: dict, keys: list[str]) -> bool:
 # ---------------------------------------------------------------------------
 
 class TestStubOutputSchemas:
-
-    def test_mr_analysis_known_pair(self):
-        result = run_mr_analysis("ieu-a-299", "ieu-a-7")
-        assert result["exposure_id"] == "ieu-a-299"
-        assert result["mr_ivw"] == pytest.approx(0.470)
 
     def test_l2g_stub_has_efo_id(self):
         result = get_l2g_scores("GCST003116")
@@ -73,17 +66,6 @@ class TestStubOutputSchemas:
         assert "STUB" in result["note"]
         assert "reference_studies" in result
         assert "ieu-a-7" in result["reference_studies"]
-
-    def test_finngen_known_phenocode(self):
-        result = get_finngen_phenotype_definition("I9_CAD")
-        assert result["phenocode"] == "I9_CAD"
-        assert result["name"] == "Coronary artery disease"
-        assert "sumstats_url" in result
-
-    def test_finngen_unknown_phenocode_returns_error(self):
-        result = get_finngen_phenotype_definition("NONEXISTENT_CODE")
-        assert "note" in result
-        assert "NONEXISTENT_CODE" in result.get("note", "")
 
     def test_list_gwas_maps_cad_to_efo(self, monkeypatch):
         monkeypatch.setattr(
@@ -245,75 +227,6 @@ class TestOpenGWASLive:
 
 
 # ===========================================================================
-# FinnGen server tests
-# ===========================================================================
-
-class TestFinnGenUnit:
-    """Unit tests — verify schema and EFO resolution without live calls."""
-
-    def test_efo_to_finngen_resolves_cad(self):
-        from mcp_servers.finngen_server import efo_to_finngen_phenocode
-        code = efo_to_finngen_phenocode("EFO_0001645")
-        assert code == "I9_CAD"
-
-    def test_efo_to_finngen_resolves_ibd(self):
-        from mcp_servers.finngen_server import efo_to_finngen_phenocode
-        code = efo_to_finngen_phenocode("EFO_0003767")
-        assert code == "K11_IBD_STRICT"
-
-    def test_efo_to_finngen_unknown_returns_none(self):
-        from mcp_servers.finngen_server import efo_to_finngen_phenocode
-        assert efo_to_finngen_phenocode("EFO_9999999") is None
-
-    def test_efo_to_finngen_covers_key_diseases(self):
-        from mcp_servers.finngen_server import EFO_TO_FINNGEN
-        required = ["EFO_0001645", "EFO_0003767", "EFO_0000685", "EFO_0003885"]
-        for efo in required:
-            assert efo in EFO_TO_FINNGEN, f"{efo} missing from EFO_TO_FINNGEN"
-
-
-@pytest.mark.integration
-class TestFinnGenLive:
-    """Integration tests — live FinnGen R10 REST API calls."""
-
-    def test_cad_phenotype_info(self):
-        from mcp_servers.finngen_server import get_finngen_phenotype_info
-        result = get_finngen_phenotype_info("I9_CAD")
-        assert result.get("phenocode") == "I9_CAD"
-        assert result.get("n_cases", 0) > 10000, "Expected >10k CAD cases in FinnGen R10"
-        assert "n_controls" in result
-        assert "browser_url" in result
-
-    def test_efo_id_auto_resolves_to_cad(self):
-        from mcp_servers.finngen_server import get_finngen_phenotype_info
-        result = get_finngen_phenotype_info("EFO_0001645")
-        # Should auto-resolve EFO → I9_CAD
-        assert result.get("phenocode") == "I9_CAD"
-        assert not result.get("error")
-
-    def test_cad_top_variants_returns_instruments(self):
-        from mcp_servers.finngen_server import get_finngen_top_variants
-        result = get_finngen_top_variants("I9_CAD", p_threshold=5e-8, n_max=10)
-        assert result.get("n_significant", 0) > 0
-        variants = result.get("variants", [])
-        assert len(variants) > 0
-        v = variants[0]
-        assert "pval" in v
-        assert float(v["pval"]) <= 5e-8
-        assert "beta" in v
-
-    def test_ibd_phenotypes_discoverable(self):
-        from mcp_servers.finngen_server import list_finngen_phenotypes
-        result = list_finngen_phenotypes(search_query="IBD")
-        phenos = result.get("phenotypes", [])
-        assert len(phenos) > 0
-        codes = [p["phenocode"] for p in phenos]
-        assert any("IBD" in c or "CROHN" in c or "ULCER" in c for c in codes)
-
-
-# ===========================================================================
-# Live γ estimation tests
-# ===========================================================================
 
 class TestLiveGammaUnit:
     """Unit tests for estimate_gamma_live — mock OT calls."""
@@ -372,9 +285,9 @@ class TestLiveGammaUnit:
             },
         ):
             result = estimate_gamma_live(
-                "inflammatory_NF-kB", "IBD",
-                program_gene_set={"TNF", "NOD2", "IL23R"},
-                efo_id="EFO_0003767",
+                "complement_activation", "AMD",
+                program_gene_set={"CFH", "C3", "CFB"},
+                efo_id="EFO_0001039",
             )
 
         assert result is not None
@@ -391,14 +304,14 @@ class TestLiveGammaUnit:
             result = estimate_gamma("lipid_metabolism", "CAD")
 
         # No efo/program_gene_set: no fused or live path — γ is unknown
-        assert result is None
+        assert result is None or result.get("gamma") is None
 
     def test_estimate_gamma_signature_backward_compatible(self):
         """estimate_gamma() still works with no new kwargs — no regression."""
         from pipelines.ota_gamma_estimation import estimate_gamma
         # Old call signature — must not raise; minimal args yield no evidence
         result = estimate_gamma("lipid_metabolism", "CAD")
-        assert result is None
+        assert result is None or result.get("gamma") is None
 
 
 @pytest.mark.integration

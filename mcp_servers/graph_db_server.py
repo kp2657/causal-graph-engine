@@ -35,8 +35,6 @@ except ImportError:
         return fn if fn is not None else (lambda f: f)
     mcp = None
 
-from graph.schema import ANCHOR_EDGES
-
 _EXPLICIT_DB_PATH = os.getenv("GRAPH_DB_PATH")
 
 
@@ -114,6 +112,9 @@ def write_causal_edges(edges: list[dict[str, Any]], disease: str) -> dict:
     db = _get_db_for_key(disease)
     errors: list[str] = []
     written_edges = []
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"Writing {len(edges)} edges to DB for {disease}")
 
     for raw in edges:
         try:
@@ -131,6 +132,30 @@ def write_causal_edges(edges: list[dict[str, Any]], disease: str) -> dict:
         "disease": disease,
         "errors": errors,
     }
+
+
+def write_program_gamma_edges(
+    gamma_estimates: dict,
+    disease: str,
+    efo_id: str | None = None,
+    cell_type: str = "unknown",
+) -> dict:
+    """
+    Upsert CellularProgram nodes and write CellularProgram→DiseaseTrait DrivesTrait
+    edges for all programs in gamma_estimates.
+
+    gamma_estimates: {program_id: {trait: {gamma, gamma_se, evidence_tier, data_source}}}
+
+    Returns {"written": int, "rejected": int, "errors": list[str]}
+    """
+    db = _get_db_for_key(disease)
+    from graph.ingestion import ingest_program_gamma_edges
+    return ingest_program_gamma_edges(
+        db, gamma_estimates,
+        disease_name=disease,
+        efo_id=efo_id,
+        cell_type=cell_type,
+    )
 
 
 @_tool
@@ -180,99 +205,6 @@ def demote_edge_tier(
         "success": True,
         "edge": f"{from_node} → {to_node}",
         "reason": full_reason,
-    }
-
-
-@_tool
-def compute_sid_metric(predicted_edges: list[dict], reference_edges: list[dict]) -> dict:
-    """
-    Graph agreement metric aligned with `validate_graph` (not full causal-learn SID).
-
-    True **Structural Intervention Distance** between DAGs requires interventional
-    distributions; we instead report the same **orientation-overlap score** as
-    `graph.validation.compute_sid_approximation` (fraction of reference directed
-    edges recovered). This avoids reporting a misleading constant zero.
-
-    If `reference_edges` is empty, anchor edges from `graph.schema.ANCHOR_EDGES` are used.
-
-    Returns:
-        {
-          "sid": float in [0, 1],
-          "metric": "orientation_overlap",
-          "n_predicted": int,
-          "n_reference": int,
-          "note": str,
-        }
-    """
-    from graph.schema import ANCHOR_EDGES
-    from graph.validation import compute_sid_approximation
-
-    ref = list(reference_edges) if reference_edges else list(ANCHOR_EDGES)
-    sid_score = float(compute_sid_approximation(predicted_edges, ref))
-    return {
-        "sid": sid_score,
-        "metric": "orientation_overlap",
-        "n_predicted": len(predicted_edges),
-        "n_reference": len(ref),
-        "note": (
-            "Same orientation-overlap score as validate_graph (not interventional SID "
-            "from causal-learn)."
-        ),
-    }
-
-
-@_tool
-def compute_shd_metric(predicted_edges: list[dict], reference_edges: list[dict]) -> dict:
-    """
-    Compute Structural Hamming Distance (SHD) between predicted and reference graphs.
-    SHD counts missing + extra + reversed edges.
-
-    STUB — returns mocked SHD. Wire in causal-learn SHD when pipelines are ready.
-    """
-    pred_set = {(e["from_node"], e["to_node"]) for e in predicted_edges}
-    ref_set  = {(e["from"], e["to"]) for e in reference_edges}
-    missing = len(ref_set - pred_set)
-    extra   = len(pred_set - ref_set)
-    shd = missing + extra
-    return {
-        "shd": shd,
-        "missing_edges": missing,
-        "extra_edges": extra,
-        "n_predicted": len(predicted_edges),
-        "n_reference": len(reference_edges),
-    }
-
-
-@_tool
-def run_anchor_edge_validation(predicted_edges: list[dict]) -> dict:
-    """
-    Check whether known ground-truth causal edges (anchor edges) are recovered.
-
-    Returns:
-        {
-            "total_anchors": int,
-            "recovered": int,
-            "recovery_rate": float,
-            "missing": list[str]
-        }
-    """
-    pred_set = {(e["from_node"], e["to_node"]) for e in predicted_edges}
-    recovered = []
-    missing = []
-
-    for anchor in ANCHOR_EDGES:
-        key = (anchor["from"], anchor["to"])
-        if key in pred_set:
-            recovered.append(f"{anchor['from']} → {anchor['to']}")
-        else:
-            missing.append(f"{anchor['from']} → {anchor['to']}")
-
-    total = len(ANCHOR_EDGES)
-    return {
-        "total_anchors": total,
-        "recovered": len(recovered),
-        "recovery_rate": len(recovered) / total if total else 0.0,
-        "missing": missing,
     }
 
 

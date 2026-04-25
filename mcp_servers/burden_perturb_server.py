@@ -253,7 +253,7 @@ def get_gene_perturbation_effect(
     Full quantitative β requires:
       1. GEO GSE246756 h5ad download (~50GB)
       2. pipelines/cnmf_programs.py for program loadings
-      3. pipelines/virtual_cell_beta.py for 4-tier β fallback
+      3. pipelines/ota_beta_estimation.py for β fallback chain
 
     Args:
         gene:      Gene symbol, e.g. "PCSK9", "TET2"

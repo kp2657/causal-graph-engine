@@ -84,39 +84,21 @@ _SCEQTL_STUDIES = {
 DISEASE_SC_EQTL_CELL_TYPES: dict[str, list[str]] = {
     "CAD":  ["monocyte", "macrophage"],
     "RA":   ["CD4", "B cell", "monocyte"],
-    "IBD":  ["monocyte", "CD4"],
-    "AMD":  ["monocyte"],            # RPE cells not in OneK1K; monocyte as proxy
-    "AD":   ["monocyte", "dendritic"],  # microglia not in PBMC; monocyte proxy
     "T2D":  ["monocyte"],            # pancreatic beta cells not in OneK1K
     "MS":   ["CD4", "monocyte"],
     "T1D":  ["CD4", "B cell"],
-    "SLE":  ["plasmacytoid", "B cell", "monocyte"],
+    "SLE":  ["plasmacytoid", "B cell", "CD4", "monocyte"],
 }
 
 # Disease → relevant pQTL proteins (gene symbol → protein label in eQTL Catalogue)
 # Key proteins where coding variants drive GWAS signal and cis-eQTL is absent/weak
 DISEASE_KEY_PQTL_PROTEINS: dict[str, dict[str, str]] = {
-    "AMD": {
-        "CFH":   "CFH",    # Y402H (rs1061170) — complement regulator; no cis-eQTL in GTEx
-        "C3":    "C3",     # rs2230199 (R102G) — complement activation
-        "CFB":   "CFB",    # rs4151667 (L9H) — alternative complement pathway
-        "CFD":   "CFD",    # complement factor D
-        "C5":    "C5",     # rs17611 — anaphylatoxin
-        "CFI":   "CFI",    # complement factor I
-        "LIPC":  "LIPC",   # hepatic lipase; has eQTL in liver
-        "VEGFA": "VEGFA",  # neovascular AMD target (ranibizumab, bevacizumab)
-    },
     "CAD": {
         "PCSK9":  "PCSK9",
         "APOB":   "APOB",
         "LPA":    "LPA",   # Lp(a); no eQTL — driven by LPA kringle repeat number
         "LDLR":   "LDLR",
         "CRP":    "CRP",   # C-reactive protein — inflammatory marker
-    },
-    "AD": {
-        "CLU":   "CLU",    # clusterin; pQTL driven
-        "CR1":   "CR1",    # complement receptor 1
-        "TREM2": "TREM2",  # microglia receptor; coding variant R47H
     },
     "RA": {
         "IL6":   "IL6",
@@ -532,5 +514,5 @@ if __name__ == "__main__":
         top = r["top_pqtl"]
         print(f"  Top pQTL: rsid={top.get('rsid')}, beta={top.get('beta')}, p={top.get('pvalue')}")
     # scEQTL test
-    r2 = get_sc_eqtl("IL23R", disease="IBD")
+    r2 = get_sc_eqtl("IL23R", disease="CAD")
     print(f"IL23R scEQTL: n={r2['n_found']}, cell_type={r2['cell_type']}")

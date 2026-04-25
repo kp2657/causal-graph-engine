@@ -24,60 +24,20 @@ from __future__ import annotations
 from models.evidence import FailureRecord
 from pipelines.state_space.schemas import FAILURE_MODES
 
-# ---------------------------------------------------------------------------
-# Curated IBD seed failures (published phase 2/3 trial outcomes)
-# Evidence strength: 0.0–1.0 (1.0 = terminated phase 3 RCT, 0.5 = phase 2)
-# ---------------------------------------------------------------------------
-
-_IBD_SEED_FAILURES: list[dict] = [
+_SLE_SEED_FAILURES: list[dict] = [
     {
-        "perturbation_id":  "anti-IL12p40",  # Ustekinumab/Briakinumab ancestor programs
+        "perturbation_id":  "anti-CD20",     # Rituximab
         "failure_mode":     "non_responder",
-        "evidence_strength": 0.6,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "~30–40% primary non-response in CD; escape in some UC subsets",
+        "evidence_strength": 0.8,
+        "data_source":      "curated_sle_seed",
+        "notes":            "Phase 2/3 trials failed primary endpoints despite B cell depletion; plasmablast-mediated flares persist",
     },
     {
-        "perturbation_id":  "anti-TNF",      # Infliximab / Adalimumab class
-        "failure_mode":     "escape",
-        "evidence_strength": 0.9,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Secondary loss of response ~40–50% by year 2; escape via alternative NF-kB pathways",
-    },
-    {
-        "perturbation_id":  "anti-TNF",
-        "failure_mode":     "non_responder",
-        "evidence_strength": 0.9,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Primary non-response in ~25–30% CD patients; higher in fistulizing disease",
-    },
-    {
-        "perturbation_id":  "tofacitinib",   # JAK1/3 inhibitor
-        "failure_mode":     "transient_only",
-        "evidence_strength": 0.7,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Durable remission rates lower than anti-TNF class in CD; approved UC only",
-    },
-    {
-        "perturbation_id":  "anti-IL17A",    # Secukinumab, Ixekizumab
-        "failure_mode":     "disease_context_mismatch",
-        "evidence_strength": 0.85,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Worsens Crohn's disease despite efficacy in psoriasis/AS (tissue context mismatch)",
-    },
-    {
-        "perturbation_id":  "SMAD7-ASO",     # Mongersen
+        "perturbation_id":  "abatacept",     # CTLA4-Ig
         "failure_mode":     "no_effect",
-        "evidence_strength": 0.95,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Phase 3 failure despite positive phase 2 (Sands et al. 2019 NEJM); mechanism contested",
-    },
-    {
-        "perturbation_id":  "anti-MAdCAM1",  # Ontamalimab
-        "failure_mode":     "non_responder",
-        "evidence_strength": 0.65,
-        "data_source":      "curated_ibd_seed",
-        "notes":            "Phase 2b modest effect; MAdCAM1 not universally expressed in fibrotic IBD",
+        "evidence_strength": 0.75,
+        "data_source":      "curated_sle_seed",
+        "notes":            "Phase 3 ACCESS trial missed primary endpoint in lupus nephritis",
     },
 ]
 
@@ -112,9 +72,27 @@ _CAD_SEED_FAILURES: list[dict] = [
     },
 ]
 
+_DED_SEED_FAILURES: list[dict] = [
+    {
+        "perturbation_id":  "corticosteroid_topical",
+        "failure_mode":     "transient_only",
+        "evidence_strength": 0.75,
+        "data_source":      "curated_ded_seed",
+        "notes":            "Topical steroids give short-term relief but cause IOP elevation and cataract with chronic use; not durable",
+    },
+    {
+        "perturbation_id":  "anti-IL17A",
+        "failure_mode":     "disease_context_mismatch",
+        "evidence_strength": 0.6,
+        "data_source":      "curated_ded_seed",
+        "notes":            "IL-17A elevated in DED tears but systemic anti-IL17A (secukinumab) not tested in DED; topical trial results mixed",
+    },
+]
+
 _SEED_FAILURES_BY_DISEASE: dict[str, list[dict]] = {
-    "IBD": _IBD_SEED_FAILURES,
     "CAD": _CAD_SEED_FAILURES,
+    "SLE": _SLE_SEED_FAILURES,
+    "DED": _DED_SEED_FAILURES,
 }
 
 
@@ -225,10 +203,8 @@ def build_failure_records(
     # --- ClinicalTrials.gov ---
     if include_ct:
         disease_query_map = {
-            "IBD": "Inflammatory Bowel Disease",
             "CAD": "Coronary Artery Disease",
             "RA":  "Rheumatoid Arthritis",
-            "AD":  "Alzheimer Disease",
             "T2D": "Type 2 Diabetes",
             "SLE": "Systemic Lupus Erythematosus",
         }

@@ -150,6 +150,17 @@ def get_gnomad_constraint(gene: str) -> dict:
     Returns:
         {gene, pli, loeuf, oe_lof, missense_z, n_exp_lof, n_obs_lof, data_source}
     """
+    # Static-data fast path: if the gnomAD v4.1 constraint TSV is on disk,
+    # skip the GraphQL call entirely.  Falls back to live API below when the
+    # file is missing or the gene isn't in the table.
+    try:
+        from pipelines.static_lookups import get_lookups
+        _local = get_lookups().get_gnomad_constraint(gene)
+        if _local is not None:
+            return _local
+    except Exception:
+        pass   # static layer is best-effort; never blocks live lookup
+
     time.sleep(_DELAY)
     data = _gnomad_gql(_GNOMAD_CONSTRAINT_QUERY, {"geneSymbol": gene})
     gene_data = data.get("gene") or {}
@@ -300,13 +311,9 @@ _UKB_WES_BURDEN_STUDY_PREFIX = "UKBIOBANK_WES_"
 # Disease → OT genetics study IDs for UKB WES burden tests
 # These are approximate — OT uses EFO trait IDs as study handles
 _DISEASE_BURDEN_EFO: dict[str, str] = {
-    "AMD":  "EFO_0001365",   # age-related macular degeneration
     "CAD":  "EFO_0001645",   # coronary artery disease
+    "SLE":  "EFO_0002690",   # systemic lupus erythematosus
     "RA":   "EFO_0000685",   # rheumatoid arthritis
-    "IBD":  "EFO_0003767",   # inflammatory bowel disease
-    "AD":   "EFO_0000249",   # Alzheimer's disease
-    "T2D":  "EFO_0001360",   # type 2 diabetes
-    "MS":   "EFO_0003885",   # multiple sclerosis
 }
 
 
@@ -543,5 +550,5 @@ if __name__ == "__main__":
     print("Testing UKB WES server...")
     r = get_gnomad_constraint("CFH")
     print(f"CFH constraint: pLI={r['pli']}, LOEUF={r['loeuf']}")
-    r2 = get_gene_burden("HMCN1", disease="AMD")
+    r2 = get_gene_burden("TREM2", disease="AD")
     print(f"HMCN1 burden: p={r2['burden_p']}, interpretation={r2['interpretation'][:80]}")

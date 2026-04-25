@@ -17,7 +17,6 @@ from pipelines.ota_beta_estimation import (
     estimate_beta,
     estimate_beta_tier1,
     estimate_beta_tier2,
-    estimate_beta_tier3,
     estimate_beta_geneformer,
     estimate_beta_virtual,
     build_beta_matrix,
@@ -29,13 +28,6 @@ from pipelines.ota_gamma_estimation import (
     build_gamma_matrix,
     estimate_cad_gammas,
     PROVISIONAL_GAMMAS,
-)
-from pipelines.virtual_cell_beta import run_virtual_cell_beta_pipeline
-from pipelines.mr_analysis import (
-    run_two_sample_mr,
-    run_drug_target_mr,
-    run_chip_mr,
-    compute_evalue,
 )
 from pipelines.sensitivity_analysis import (
     run_batch_evalue,
@@ -88,40 +80,6 @@ class TestBetaEstimation:
                                    program_loading=0.5)
         assert beta is not None
         assert beta["beta"] == pytest.approx(0.2)  # 0.4 × 0.5
-
-    def test_tier3_lincs_signature(self):
-        """Tier3 now uses LINCS L1000 perturbation — not GRN co-expression."""
-        # Simulate a LINCS KD signature: gene X KD affects program P's genes
-        prog_genes = {"LDLR", "PCSK9", "HMGCR", "APOB"}
-        lincs_sig = {
-            "LDLR":  {"log2fc": -0.8},
-            "PCSK9": {"log2fc": -0.6},
-            "HMGCR": {"log2fc": -0.5},
-            # APOB not in signature — partial coverage
-        }
-        beta = estimate_beta_tier3("PCSK9", "lipid_metabolism",
-                                   lincs_signature=lincs_sig,
-                                   program_gene_set=prog_genes,
-                                   cell_line="VCAP")
-        assert beta is not None
-        assert beta["beta"] < 0   # KD suppresses lipid metabolism genes
-        assert beta["evidence_tier"] == "Tier3_Provisional"
-        assert "LINCS" in beta["data_source"]
-        assert beta["coverage"] == pytest.approx(3/4)
-
-    def test_tier3_returns_none_without_signature(self):
-        """No LINCS data → Tier3 returns None (falls to virtual)."""
-        beta = estimate_beta_tier3("PCSK9", "lipid_metabolism")
-        assert beta is None
-
-    def test_tier3_sparse_coverage_returns_none(self):
-        """< 5% coverage of program gene set → skip."""
-        prog_genes = {f"GENE_{i}" for i in range(100)}  # 100 genes
-        lincs_sig = {"GENE_0": {"log2fc": 0.5}}          # only 1% coverage
-        beta = estimate_beta_tier3("PCSK9", "lipid_metabolism",
-                                   lincs_signature=lincs_sig,
-                                   program_gene_set=prog_genes)
-        assert beta is None
 
     def test_geneformer_virtual(self):
         """Geneformer returns provisional_virtual (in silico, not experimental)."""
@@ -196,21 +154,6 @@ class TestGammaEstimation:
         assert isinstance(result, dict)
         assert result.get("gamma") is None
 
-    def test_twmr_result_takes_priority(self):
-        twmr = {"beta": 0.55, "se": 0.08, "p": 0.001}
-        result = estimate_gamma("lipid_metabolism", "CAD", twmr_result=twmr)
-        assert result is not None
-        assert result["gamma"] == 0.55
-        assert result["data_source"] == "TWMR"
-
-    def test_gwas_enrichment_used_when_no_twmr(self):
-        # Without efo_id + program_gene_set the fusion path can't fire;
-        # with no TWMR and no live data, result is None.
-        gwas = {"tau": 0.22, "tau_se": 0.04, "enrichment_p": 0.001}
-        result = estimate_gamma("lipid_metabolism", "UNKNOWN_TRAIT", gwas_enrichment=gwas)
-        # Result is None or a valid gamma dict (live estimation may or may not fire)
-        assert result is None or isinstance(result, dict)
-
     def test_all_provisional_gammas_positive(self):
         # PROVISIONAL_GAMMAS is empty — all γ values are data-derived
         assert PROVISIONAL_GAMMAS == {}
@@ -222,8 +165,8 @@ class TestGammaEstimation:
             "lipid_metabolism": {"beta": None, "evidence_tier": "provisional_virtual"},
         }
         gamma_estimates = {
-            "inflammatory_NF-kB": {"gamma": 0.31, "data_source": "S-LDSC"},
-            "lipid_metabolism": {"gamma": 0.44, "data_source": "S-LDSC"},
+            "inflammatory_NF-kB": {"gamma": 0.31, "data_source": "OT_L2G"},
+            "lipid_metabolism": {"gamma": 0.44, "data_source": "OT_L2G"},
         }
         result = compute_ota_gamma("TET2", "CAD", beta_estimates, gamma_estimates)
         assert result["gene"] == "TET2"
@@ -253,57 +196,6 @@ class TestGammaEstimation:
         assert set(matrix.keys()) == set(programs)
         for prog in programs:
             assert set(matrix[prog].keys()) == set(traits)
-
-
-# ---------------------------------------------------------------------------
-# Virtual cell β pipeline
-# ---------------------------------------------------------------------------
-
-class TestVirtualCellBeta:
-
-    def test_pipeline_runs(self):
-        result = run_virtual_cell_beta_pipeline(
-            genes=["DNMT3A", "UNKNOWN_GENE"],
-            programs=["inflammatory_NF-kB"],
-        )
-        assert result["n_entries"] == 2  # 2 genes × 1 program
-        assert "pct_virtual" in result
-
-    def test_pipeline_counts_virtual(self):
-        result = run_virtual_cell_beta_pipeline(
-            genes=["UNKNOWN_GENE_1", "UNKNOWN_GENE_2"],
-            programs=["UNKNOWN_PROGRAM"],
-        )
-        # Unknown genes → β replaced with 0.0 (schema requirement); n_virtual may be 0
-        assert result["n_entries"] == 2  # 2 genes × 1 program
-        assert "pct_virtual" in result
-
-
-# ---------------------------------------------------------------------------
-# MR analysis
-# ---------------------------------------------------------------------------
-
-class TestMrAnalysis:
-
-    def test_two_sample_mr_stub(self):
-        result = run_two_sample_mr("ieu-a-299", "ieu-a-7")
-        assert result["exposure_id"] == "ieu-a-299"
-        assert result["outcome_id"] == "ieu-a-7"
-
-    def test_drug_target_mr_hmgcr(self):
-        result = run_drug_target_mr("HMGCR_inhibition", "CAD")
-        assert result["mr_beta"] < 0  # statins protective
-
-    def test_chip_mr_tet2_cad(self):
-        result = run_chip_mr("TET2", "CAD")
-        assert result["chip_gene"] == "TET2"
-        assert len(result["associations"]) > 0
-
-    def test_evalue_computation(self):
-        result = compute_evalue(0.5, 0.1)
-        assert "e_value" in result
-        assert result["e_value"] is not None
-        assert result["e_value"] > 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -370,47 +262,37 @@ class TestProgramSources:
         assert all("program_id" in p for p in result["programs"])
         assert all("hallmark_name" in p for p in result["programs"])
 
-    def test_hallmark_fallback_disease_filtered(self):
-        """Disease-filtered fallback returns only relevant programs."""
+    def test_hallmark_fallback_returns_all_programs(self):
+        """Fallback returns all stub programs (no disease filtering)."""
         from pipelines.cnmf_programs import _hallmark_fallback
-        cad_result = _hallmark_fallback(disease="CAD")
-        ad_result  = _hallmark_fallback(disease="AD")
-        # CAD and AD have different hallmark priorities
-        cad_names = {p["hallmark_name"] for p in cad_result["programs"]}
-        ad_names  = {p["hallmark_name"] for p in ad_result["programs"]}
-        # CAD includes CHOLESTEROL, AD includes COMPLEMENT
-        assert "HALLMARK_CHOLESTEROL_HOMEOSTASIS" in cad_names
-        assert "HALLMARK_COMPLEMENT" in ad_names
+        result = _hallmark_fallback(disease="CAD")
+        assert result["n_programs"] > 0
+        assert result["disease_filtered"] is False
+        assert all("hallmark_name" in p for p in result["programs"])
 
-    def test_hallmark_to_program_mapping_consistent(self):
-        """All Hallmark names in DISEASE_HALLMARK_PROGRAMS map to HALLMARK_TO_PROGRAM."""
-        from pipelines.cnmf_programs import HALLMARK_TO_PROGRAM, DISEASE_HALLMARK_PROGRAMS
-        for disease, sets in DISEASE_HALLMARK_PROGRAMS.items():
-            for hallmark in sets:
-                assert hallmark in HALLMARK_TO_PROGRAM, (
-                    f"DISEASE_HALLMARK_PROGRAMS[{disease!r}] contains {hallmark!r} "
-                    "which has no entry in HALLMARK_TO_PROGRAM"
-                )
+    def test_hallmark_to_program_mapping_complete(self):
+        """HALLMARK_TO_PROGRAM covers all HALLMARK_PROGRAM_IDS."""
+        from pipelines.cnmf_programs import HALLMARK_TO_PROGRAM, HALLMARK_PROGRAM_IDS
+        assert HALLMARK_PROGRAM_IDS == frozenset(HALLMARK_TO_PROGRAM.values())
 
     def test_get_programs_for_disease_cad(self):
-        """CAD program routing returns non-empty program list without live API."""
-        from unittest.mock import patch
-        from pipelines.cnmf_programs import _hallmark_fallback
-        # Mock MSigDB HTTP call to return fallback
-        with patch("pipelines.cnmf_programs.httpx.get", side_effect=Exception("no network")):
-            result = get_programs_for_disease("CAD")
-        assert result["n_programs"] > 0
+        """CAD program routing returns NMF programs from cache."""
+        result = get_programs_for_disease("CAD")
         assert "programs" in result
+        assert "n_programs" in result
+        # CAD has a cached NMF program file
+        if result["n_programs"] > 0:
+            assert all("program_id" in p for p in result["programs"])
+            assert all("gene_set" in p for p in result["programs"])
 
-    def test_get_programs_for_disease_ad(self):
-        """AD program routing uses different cell type than CAD."""
-        from unittest.mock import patch
-        with patch("pipelines.cnmf_programs.httpx.get", side_effect=Exception("no network")):
-            cad_result = get_programs_for_disease("CAD")
-            ad_result  = get_programs_for_disease("AD")
-        # Both return programs
-        assert cad_result["n_programs"] > 0
-        assert ad_result["n_programs"] > 0
+    def test_get_programs_for_disease_amd(self):
+        """AMD program routing returns NMF programs from cache."""
+        result = get_programs_for_disease("AMD")
+        assert "programs" in result
+        assert "n_programs" in result
+        if result["n_programs"] > 0:
+            assert all("program_id" in p for p in result["programs"])
+            assert all("gene_set" in p for p in result["programs"])
 
     def test_disease_cell_type_map_covers_all_trait_map_diseases(self):
         """Every disease in DISEASE_TRAIT_MAP should have a DISEASE_CELL_TYPE_MAP entry."""

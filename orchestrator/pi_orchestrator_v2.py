@@ -37,14 +37,16 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Force line-buffered stdout so print() output appears immediately when piped
+# (conda run and tee both trigger block-buffering otherwise).
+sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+
 import os
 
 # ---------------------------------------------------------------------------
 # Quality gate constants and helpers (inlined from v1)
 # ---------------------------------------------------------------------------
 
-F_STATISTIC_MIN       = 10.0
-EVALUE_MIN            = 2.0
 VIRTUAL_TOP5_ESCALATE = True
 
 
@@ -57,13 +59,6 @@ def _escalate(message: str, context: dict) -> None:
 
 def _run_quality_gate_tier1(disease_query: dict, genetics_result: dict) -> list[str]:
     issues: list[str] = []
-    for inst in genetics_result.get("instruments", []):
-        f_stat = inst.get("f_statistic")
-        if f_stat is not None and float(f_stat) < F_STATISTIC_MIN:
-            issues.append(
-                f"ESCALATE: {inst.get('exposure','?')} F-statistic={f_stat:.1f} < {F_STATISTIC_MIN} "
-                "(weak instruments — MR estimates unreliable)"
-            )
     not_validated = [
         g for g, ok in genetics_result.get("anchor_genes_validated", {}).items() if not ok
     ]
@@ -121,7 +116,6 @@ def _build_final_output(pipeline_outputs: dict) -> dict:
         "h5ad_disease_sig_loaded": bool(pipeline_outputs.get("h5ad_disease_sig")),
         "gps_screen_run":          bool(chemistry.get("gps_disease_reversers")),
         "n_gps_reversers":         len(chemistry.get("gps_disease_reversers") or []),
-        "synthetic_betas_used":    False,  # Tier2s removed in v0.2.0
     }
 
     return {
@@ -145,27 +139,6 @@ def _build_final_output(pipeline_outputs: dict) -> dict:
     }
 
 
-def _build_evidence_landscape_output(pipeline_outputs: dict) -> dict:
-    """Build a minimal evidence landscape dict from pipeline outputs."""
-    targets = pipeline_outputs.get("prioritization_result", {}).get("targets", [])
-    return {
-        "summary": {
-            "n_targets": len(targets),
-            "n_tier1": sum(1 for t in targets if "Tier1" in (t.get("evidence_tier") or "")),
-            "n_tier2": sum(1 for t in targets if "Tier2" in (t.get("evidence_tier") or "")),
-        },
-        "profiles": [
-            {
-                "gene": t.get("target_gene"),
-                "evidence_class": t.get("evidence_tier"),
-                "ota_gamma": t.get("ota_gamma"),
-                "target_score": t.get("target_score"),
-            }
-            for t in targets
-        ],
-    }
-
-
 # ---------------------------------------------------------------------------
 # Logging helpers
 # ---------------------------------------------------------------------------
@@ -176,12 +149,6 @@ def _ts() -> str:
 
 def _log(tag: str, agent: str, msg: str) -> None:
     print(f"[{tag:8s}] {agent:<30s} {msg}  ({_ts()})")
-
-
-# ---------------------------------------------------------------------------
-# Somatic edge write — must happen before Tier 3 (anchor recovery requires it)
-# ---------------------------------------------------------------------------
-
 
 
 # ---------------------------------------------------------------------------
@@ -236,26 +203,6 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
                 print(f"[WARN] gene_set lookup failed for program {pid!r}: {_e}")
                 program_gene_sets[pid] = set()
 
-    # Pre-compute GWAS Catalog enrichment for each program (S-LDSC Mode 1).
-    # One EFO-level HTTP call is shared across all programs (cached in ldsc_pipeline).
-    # If the GWAS Catalog endpoint is unreachable, gwas_enrichments stays empty and
-    # estimate_gamma falls back to the OT genetic score proxy automatically.
-    gwas_enrichments: dict[str, dict] = {}
-    if efo_id:
-        try:
-            from pipelines.discovery.ldsc_pipeline import estimate_program_gamma_enrichment
-            for pid in program_names:
-                gene_set = program_gene_sets.get(pid)
-                if gene_set:
-                    gwas_enrichments[pid] = estimate_program_gamma_enrichment(
-                        program_gene_set=gene_set,
-                        efo_id=efo_id,
-                        program_id=pid,
-                        trait=short_name,
-                    )
-        except Exception:
-            pass  # LDSC unavailable; OT fallback fires in estimate_gamma
-
     # Precomputed OT genetic scores from disease_query (populated by Tier 1 GWAS fetch).
     # Used as fallback when estimate_gamma returns None — covers diseases like AMD where
     # NMF program genes are RPE-specific and absent from OT L2G credible sets, but the
@@ -269,7 +216,10 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     h5ad_disease_sig: dict[str, float] = {}
     try:
         from pipelines.gps_disease_screen import _build_sig_from_h5ad
-        _h5ad_sig = _build_sig_from_h5ad(disease_query, gps_genes=None)
+        # elbow_trim=False: return all ~18k DEGs for program γ overlap.
+        # GPS screen uses a separate trimmed call; here we need genome-wide
+        # coverage so cNMF program genes (30 RPE-specific genes each) can match.
+        _h5ad_sig = _build_sig_from_h5ad(disease_query, gps_genes=None, elbow_trim=False)
         if _h5ad_sig:
             h5ad_disease_sig = _h5ad_sig
     except Exception:
@@ -284,9 +234,11 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
                 prog, trait,
                 program_gene_set=program_gene_sets.get(prog) or None,
                 efo_id=efo_id,
-                gwas_enrichment=gwas_enrichments.get(prog),
             )
-            if result is not None:
+            # estimate_gamma returns {"gamma": None, ...} for no_evidence — treat as
+            # a miss so the OT/h5ad fallbacks below can fire.
+            if result is not None and result.get("gamma") is not None:
+                result.setdefault("gamma_source_type", "ot_l2g")
                 return prog, trait, result
 
             prog_genes = program_gene_sets.get(prog) or set()
@@ -298,13 +250,14 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
                 if mean_score >= 0.05:
                     gamma_val = round(mean_score * 0.65, 4)
                     return prog, trait, {
-                        "gamma":         gamma_val,
-                        "gamma_se":      round(gamma_val * 0.5, 4),
-                        "evidence_tier": "Tier3_Provisional",
-                        "data_source":   f"OT_precomputed_overlap_{len(matched_ot)}_genes",
-                        "program":       prog,
-                        "trait":         trait,
-                        "note":          (
+                        "gamma":            gamma_val,
+                        "gamma_se":         round(gamma_val * 0.5, 4),
+                        "evidence_tier":    "Tier3_Provisional",
+                        "gamma_source_type": "gwas_ot_overlap",
+                        "data_source":      f"OT_precomputed_overlap_{len(matched_ot)}_genes",
+                        "program":          prog,
+                        "trait":            trait,
+                        "note":             (
                             f"Gamma from overlap of {len(matched_ot)} program genes with "
                             "precomputed GWAS OT genetic scores."
                         ),
@@ -318,22 +271,27 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
                 matched_h5ad = {g: h5ad_disease_sig[g] for g in prog_genes if g in h5ad_disease_sig}
                 if len(matched_h5ad) >= 3:
                     mean_lfc = sum(matched_h5ad.values()) / len(matched_h5ad)
-                    # Scale: log2FC is typically ±0.5–3; map to γ in [0.05, 0.8]
-                    gamma_val = round(min(abs(mean_lfc) * 0.25, 0.8), 4)
-                    if gamma_val >= 0.02:  # below this it's just noise
+                    # Scale: 0.25 cap (down from 0.8).  h5ad DEG overlap fires for programs
+                    # that are differentially expressed but not GWAS-supported — capping at 0.25
+                    # prevents Perturb-seq essential-gene artefacts from dominating the OTA rank.
+                    # Programs with real GWAS support already fire Fallback 1 (OT overlap, ~0.4–0.5)
+                    # which is higher than this cap, so GWAS-anchored programs are unaffected.
+                    gamma_val = round(min(abs(mean_lfc), 0.25), 4)
+                    if gamma_val >= 0.01:  # filter near-zero noise (mean_lfc < 0.01)
                         # Sign: positive mean_lfc = risk (upregulated in disease)
                         signed_gamma = gamma_val if mean_lfc >= 0 else -gamma_val
                         return prog, trait, {
-                            "gamma":         signed_gamma,
-                            "gamma_se":      round(gamma_val * 0.4, 4),
-                            "evidence_tier": "Tier3_Provisional",
-                            "data_source":   f"h5ad_DEG_mean_lfc_{len(matched_h5ad)}_genes",
-                            "program":       prog,
-                            "trait":         trait,
-                            "note":          (
+                            "gamma":             signed_gamma,
+                            "gamma_se":          round(gamma_val * 0.4, 4),
+                            "evidence_tier":     "Tier3_Provisional",
+                            "gamma_source_type": "h5ad_deg",
+                            "data_source":       f"h5ad_DEG_mean_lfc_{len(matched_h5ad)}_genes",
+                            "program":           prog,
+                            "trait":             trait,
+                            "note":              (
                                 f"Gamma from mean log2FC ({mean_lfc:+.3f}) of {len(matched_h5ad)} "
-                                "program genes in disease vs normal h5ad (cell-type-specific program "
-                                "genes absent from GWAS credible sets)."
+                                "program genes in disease vs normal h5ad (full DEG, no elbow trim). "
+                                "Transcriptomic — not GWAS-derived."
                             ),
                         }
         except Exception:
@@ -354,71 +312,7 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
 # Gene list — identical to chief_of_staff._collect_gene_list
 # ---------------------------------------------------------------------------
 
-from models.disease_registry import get_disease_key as _get_disease_key
 
-
-def _run_regulator_nomination(
-    disease_query: dict,
-    gene_list: list[str],
-) -> tuple[list[str], dict]:
-    """
-    Collect upstream TF regulator evidence via Perturb-seq reverse lookup.
-
-    GWAS and Perturb-seq are treated as independent lines of evidence:
-      - GWAS gene_list → drug target scoring track (unchanged)
-      - Perturb-seq reverse lookup → upstream regulator evidence track (returned separately)
-
-    Nominated genes are still added to gene_list so that Tier 2/3 compute their
-    Perturb-seq beta values (needed for the evidence block), but their presence in
-    the drug-target ranked list is expected to be low — that is correct behaviour.
-    The evidence dict is the primary output of this step.
-
-    Returns:
-        (augmented_gene_list, regulator_evidence)
-        regulator_evidence keys:
-          dataset_id, n_knockouts_tested, target_genes_queried,
-          regulators: [{gene, n_targets_regulated, regulated_targets, sum_abs_log2fc, evidence_tier}]
-    """
-    empty_evidence: dict = {"regulators": [], "dataset_id": None, "n_knockouts_tested": 0}
-    try:
-        from mcp_servers.perturbseq_server import find_upstream_regulators
-        from pathlib import Path as _Path
-        import json as _json
-
-        raw_name = (disease_query.get("disease_name") or "").lower()
-        disease_key = _get_disease_key(raw_name) or raw_name.upper() or None
-
-        # Augment reverse-lookup targets with terminal markers from benchmark config.
-        # Terminal markers (LYZ, S100A9…) appear in papalexi downstream signatures;
-        # GWAS hits (NOD2, IL23R) generally do not.
-        target_genes = list(gene_list)
-        _benchmarks_dir = _Path(__file__).parent.parent / "data" / "benchmarks"
-        if disease_key:
-            _cfg_candidates = list(_benchmarks_dir.glob(
-                f"{disease_key.lower()}_upstream_regulators_*.json"
-            ))
-            if _cfg_candidates:
-                _cfg = _json.loads(sorted(_cfg_candidates)[-1].read_text())
-                for g in _cfg.get("terminal_markers", []):
-                    if g not in target_genes:
-                        target_genes.append(g)
-
-        evidence = find_upstream_regulators(
-            target_genes=target_genes,
-            disease_context=disease_key,
-        )
-
-        # Add nominated regulators to gene_list so Tier 2/3 can compute their betas
-        new_regs = [r["gene"] for r in evidence.get("regulators", [])]
-        to_add = [g for g in new_regs if g not in gene_list]
-        if to_add:
-            _log("REG_NOM", "perturbseq_reverse_lookup",
-                 f"nominated={to_add}  from {evidence.get('n_knockouts_tested', 0)} knockouts "
-                 f"in {evidence.get('dataset_id', '?')}  [evidence track, not scoring]")
-
-        return to_add + gene_list, evidence
-    except Exception:
-        return gene_list, empty_evidence
 
 
 def _collect_gene_list(
@@ -429,8 +323,7 @@ def _collect_gene_list(
     Returns (gwas_gene_list, ot_genetic_scores, ot_disease_targets_cache).
 
     Gene list is entirely data-derived: OT L2G GWAS associations + GWAS-validated genes
-    from the statistical geneticist. ANCHOR_EDGES / CHIP / somatic excluded — we score
-    GWAS/perturb-seq targets only; ANCHOR_EDGES are for QC validation only.
+    from the statistical geneticist. CHIP / somatic excluded — GWAS/perturb-seq targets only.
     """
     genes: list[str] = []
     ot_scores: dict[str, float] = {}
@@ -495,6 +388,47 @@ def _collect_gene_list(
     return genes, ot_scores, ot_cache
 
 
+def _collect_perturbseq_genes(disease_query: dict) -> list[str]:
+    """
+    Return all gene symbols present in the Perturb-seq beta cache for this disease.
+
+    Reads the existing cache file (JSON keys) without recomputing any betas.
+    Falls back to empty list if no cache exists yet (first run before β computation).
+    """
+    dataset_id: str | None = None
+    disease_name = (disease_query.get("disease_name") or "").lower()
+    try:
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        short_key = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name, "")
+        if short_key and short_key in DISEASE_CELL_TYPE_MAP:
+            dataset_id = DISEASE_CELL_TYPE_MAP[short_key].get("scperturb_dataset")
+    except Exception:
+        pass
+
+    if not dataset_id:
+        return []
+
+    try:
+        from pipelines.replogle_parser import _PERTURBSEQ_DIR
+        cache_dir = _PERTURBSEQ_DIR / dataset_id
+        # Any beta cache for this dataset works — we only need the gene keys
+        cache_files = list(cache_dir.glob("beta_cache_*.json")) if cache_dir.exists() else []
+        if not cache_files:
+            _log("PERTURB_SEED", "_collect_perturbseq_genes",
+                 f"No beta cache found for {dataset_id} — Perturb-seq genes will be added after first β computation")
+            return []
+        cache_path = max(cache_files, key=lambda p: p.stat().st_size)
+        with open(cache_path) as f:
+            data = json.load(f)
+        genes = list(data.keys())
+        _log("PERTURB_SEED", "_collect_perturbseq_genes",
+             f"{len(genes)} Perturb-seq KO genes loaded from {cache_path.name}")
+        return genes
+    except Exception as exc:
+        _log("PERTURB_SEED_FAIL", "_collect_perturbseq_genes", str(exc))
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Tier 4 feedback helper
 # ---------------------------------------------------------------------------
@@ -535,13 +469,18 @@ def _build_tier4_context(
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
-def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
+def analyze_disease_v2(
+    disease_name: str,
+    _ckpt_dir: "Path | None" = None,
+) -> dict[str, Any]:
     """
     Run the full 5-tier OTA causal pipeline for a disease.
 
     Args:
         disease_name: Human-readable disease name (e.g. "age-related macular degeneration").
                       Canonical names are in models/disease_registry.py.
+        _ckpt_dir: Override checkpoint directory (tests only).  Production code leaves
+                   this as None so checkpoints go to data/checkpoints/.
 
     Returns:
         Dict with keys: disease_name, target_list, genetic_anchors, gps_disease_state_reversers,
@@ -571,6 +510,9 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     from agents.tier1_phenomics.statistical_geneticist import run as _sg_run
 
     t0 = time.time()
+    # disease_query["disease_key"] (e.g. "CAD", "AMD") is set by phenotype_architect
+    # and propagated as-is through all tiers. Agents must read it from disease_query,
+    # not re-derive it via get_disease_key() — single source of truth.
     disease_query = _pa_run(disease_name)
     _log("COMPLETE", "phenotype_architect",
          f"efo_id={disease_query.get('efo_id')}  {time.time()-t0:.1f}s")
@@ -607,16 +549,45 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     # Gene list: OT L2G + GWAS-validated hits
     gene_list, gwas_ot_scores, ot_disease_targets_cache = _collect_gene_list(disease_query, genetics_result)
     gwas_gene_list = list(gene_list)
+
+    # Union all Perturb-seq KO genes — GWAS genes retain priority; non-GWAS
+    # Perturb-seq genes are appended so OTA scores them via program-level γ.
+    perturb_genes = _collect_perturbseq_genes(disease_query)
+    perturb_only_genes = [g for g in perturb_genes if g not in gwas_gene_list]
+    gene_list = gwas_gene_list + perturb_only_genes
+    if perturb_only_genes:
+        _log("PERTURB_UNION", "gene_list",
+             f"added {len(perturb_only_genes)} Perturb-seq-only genes "
+             f"(total {len(gene_list)}: {len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} novel)")
+
+    _disease_key_for_pareto = disease_query.get("disease_key") or ""
+
     disease_query = {
         **disease_query,
-        "gwas_genes": gwas_gene_list,
+        "gwas_genes": gwas_gene_list,          # unchanged — used for γ grounding & anchor QC
+        "perturb_only_genes": perturb_only_genes,  # novel candidates with no GWAS prior
         "ot_genetic_scores": gwas_ot_scores,
         "_ot_disease_targets_cache": ot_disease_targets_cache,
     }
 
-    # Regulator nomination (Perturb-seq reverse lookup — evidence track only)
-    gene_list, regulator_evidence = _run_regulator_nomination(disease_query, gene_list)
-    pipeline_outputs["regulator_nomination_evidence"] = regulator_evidence
+    # Pre-run NMF on disease h5ad so {disease}_programs.json exists on disk before
+    # both Tier 2 (beta matrix) and gamma estimation call get_programs_for_disease.
+    # Must run BEFORE Tier 2 to guarantee consistent program names across both.
+    try:
+        from pipelines.discovery.cnmf_runner import run_nmf_programs as _run_nmf
+        from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS as _DSN2
+        import pathlib as _pl
+        _short2 = _DSN2.get(disease_query.get("disease_name", "").lower(), "")
+        if _short2:
+            _h5ad_dir = _pl.Path(f"data/cellxgene/{_short2}")
+            _h5ad_candidates = sorted(
+                p for p in _h5ad_dir.glob(f"{_short2}_*.h5ad")
+                if "latent_cache" not in p.name and "state_cache" not in p.name
+            )
+            if _h5ad_candidates:
+                _run_nmf(str(_h5ad_candidates[0]), _short2, n_programs=20, n_top_genes=50)
+    except Exception as _nmf_pre_exc:
+        pass  # non-fatal: falls back to cell-type programs if h5ad absent
 
     # =========================================================================
     # TIER 2 — Pathway
@@ -644,9 +615,25 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     all_warnings.extend(beta_result.get("warnings", []))
     all_warnings.extend(regulatory_result.get("warnings", []))
 
+    # Forward Tier 2 program-membership map into disease_query so Tier 3 can
+    # reconstruct `top_programs` for genes that reach gamma via the OT genetic
+    # fallback (n_programs_contributing == 0).  Without this, classify_program_drivers
+    # returns the "no_program_data" sentinel for every GWAS-only target.
+    disease_query["gene_program_overlap"] = regulatory_result.get("gene_program_overlap", {})
+
     # Gamma estimates — live OT + S-LDSC per program
     gamma_estimates = _get_gamma_estimates(disease_query)
     pipeline_outputs["_gamma_estimates"] = gamma_estimates
+
+    # Probe h5ad disease sig so data_completeness.h5ad_disease_sig_loaded is accurate.
+    # _build_sig_from_h5ad is cached; this second call is cheap when the file is on disk.
+    try:
+        from pipelines.gps_disease_screen import _build_sig_from_h5ad as _probe_h5ad
+        _h5ad_probe = _probe_h5ad(disease_query, gps_genes=None)
+        if _h5ad_probe:
+            pipeline_outputs["h5ad_disease_sig"] = _h5ad_probe
+    except Exception:
+        pass
 
     # =========================================================================
     # TIER 3 — Causal Discovery
@@ -661,11 +648,27 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     _log("COMPLETE", "causal_discovery_agent",
          f"n_written={causal_result.get('n_edges_written',0)}  {time.time()-t0:.1f}s")
 
+    # Write program→trait DrivesTrait edges (program nodes + γ edges)
+    try:
+        from mcp_servers.graph_db_server import write_program_gamma_edges as _wpge
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS as _DSN
+        _dkey = _DSN.get(disease_name.lower(), disease_name.upper())
+        _cell_type = (DISEASE_CELL_TYPE_MAP.get(_dkey, {}).get("cell_types") or ["unknown"])[0]
+        _pg_result = _wpge(
+            gamma_estimates,
+            disease=disease_name,
+            efo_id=disease_query.get("efo_id"),
+            cell_type=_cell_type,
+        )
+        _log("COMPLETE", "program_gamma_edges",
+             f"written={_pg_result['written']} rejected={_pg_result['rejected']}")
+    except Exception as _exc_pg:
+        all_warnings.append(f"program gamma edge write failed (non-fatal): {_exc_pg}")
+
     t0 = time.time()
     kg_result = _kgc_run(causal_result, disease_query)
     _log("COMPLETE", "kg_completion_agent",
-         f"pathways={kg_result.get('n_pathway_edges_added',0)}, "
-         f"drugs={kg_result.get('n_drug_target_edges_added',0)}  {time.time()-t0:.1f}s")
+         f"pathways={kg_result.get('n_pathway_edges_added',0)}  {time.time()-t0:.1f}s")
 
     pipeline_outputs["causal_result"] = causal_result
     pipeline_outputs["kg_result"]     = kg_result
@@ -688,7 +691,7 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
 
     # Tier 3 checkpoint — saves all inputs needed to re-run Tier 4 independently.
     try:
-        ckpt_dir = Path(__file__).parent.parent / "data" / "checkpoints"
+        ckpt_dir = _ckpt_dir if _ckpt_dir is not None else Path(__file__).parent.parent / "data" / "checkpoints"
         ckpt_dir.mkdir(exist_ok=True)
         _disease_slug_t3 = disease_name.lower().replace(" ", "_").replace("-", "_")
         ckpt3_path = ckpt_dir / f"{_disease_slug_t3}__tier3.json"
@@ -730,12 +733,34 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     _log("COMPLETE", "target_prioritization_agent",
          f"n_targets={len(prioritization_result.get('targets',[]))}  {time.time()-t0:.1f}s")
 
+    # Gate ChEMBL annotation to post-Tier-3 gene whitelist (Phase G).
+    _post_filter_genes = {r["gene"] for r in causal_result.get("top_genes", [])}
+    if _post_filter_genes:
+        disease_query = {**disease_query, "_gps_target_whitelist": _post_filter_genes}
+
     # Independent: run chemistry + clinical trialist in parallel.
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         fut_chem = pool.submit(_chem_run, prioritization_result, disease_query)
         fut_ct   = pool.submit(_ct_run, prioritization_result, disease_query)
         chemistry_result = fut_chem.result()
         clinical_result  = fut_ct.result()
+
+    # GPS × OTA convergence — cross-reference reversers against ranked targets.
+    try:
+        from pipelines.gps_convergence import compute_gps_convergence, annotate_targets_with_gps
+        _gps_for_conv = {
+            "disease_reversers": chemistry_result.get("gps_disease_reversers") or [],
+            "program_reversers": chemistry_result.get("gps_program_reversers") or {},
+        }
+        _targets_for_conv = prioritization_result.get("targets") or []
+        if _targets_for_conv and (_gps_for_conv["disease_reversers"] or _gps_for_conv["program_reversers"]):
+            _conv = compute_gps_convergence(_targets_for_conv, _gps_for_conv, top_n=200)
+            annotate_targets_with_gps(_targets_for_conv, _conv)
+            chemistry_result["gps_convergence"] = _conv
+            _log("GPS_CONV", "convergence",
+                 f"converged={_conv['n_converged']} novel_mechanism={_conv['n_novel_mechanism']}")
+    except Exception as _conv_exc:
+        all_warnings.append(f"GPS convergence failed (non-fatal): {_conv_exc}")
 
     # No Tier4 feedback loop: ranking is owned by target_prioritization_agent (OTA-first).
     pipeline_outputs["prioritization_result"] = prioritization_result
@@ -748,7 +773,7 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     # Checkpoint — save Tier 4 output so writer can be re-run independently
     _disease_slug = disease_name.lower().replace(" ", "_").replace("-", "_")
     try:
-        ckpt_dir = Path(__file__).parent.parent / "data" / "checkpoints"
+        ckpt_dir = _ckpt_dir if _ckpt_dir is not None else Path(__file__).parent.parent / "data" / "checkpoints"
         ckpt_dir.mkdir(exist_ok=True)
         ckpt_path = ckpt_dir / f"{_disease_slug}__tier4.json"
         with ckpt_path.open("w") as _cf:
@@ -792,18 +817,12 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     pipeline_outputs["graph_output"] = graph_output
     all_warnings.extend(graph_output.get("warnings", []))
 
-    # Evidence landscape
-    pipeline_outputs["evidence_landscape"] = _build_evidence_landscape_output(pipeline_outputs)
-    pipeline_outputs["upstream_regulator_evidence"] = regulator_evidence
 
     # =========================================================================
     # Finalise
     # =========================================================================
     _n_causal = int(causal_result.get("n_edges_written", 0) or 0)
     _n_path   = int(kg_result.get("n_pathway_edges_added", 0) or 0)
-    _n_drug   = int(kg_result.get("n_drug_target_edges_added", 0) or 0)
-    _n_ppi    = int(kg_result.get("n_ppi_edges_added", 0) or 0)
-    _n_pkg    = int(kg_result.get("n_primekg_edges_added", 0) or 0)
     total_edges = _n_causal + _n_path
     total_duration = time.time() - pipeline_start
     pipeline_outputs.update({
@@ -812,11 +831,8 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
         "all_warnings":        all_warnings,
         "total_edges_written": total_edges,
         "edge_write_breakdown": {
-            "tier3_causal_graph_writes": _n_causal,
+            "tier3_causal_graph_writes":  _n_causal,
             "tier3_kg_reactome_pathways": _n_path,
-            "tier3_kg_drug_target":        _n_drug,
-            "tier3_kg_string_ppi":        _n_ppi,
-            "tier3_kg_primekg":           _n_pkg,
         },
     })
 
@@ -829,11 +845,7 @@ def analyze_disease_v2(disease_name: str) -> dict[str, Any]:
     print(f"  Disease:         {disease_name}")
     print(f"  Targets ranked:  {len(final.get('target_list', []))}")
     print(f"  Escalations:     {final.get('n_escalations', 0)}")
-    print(
-        f"  Edges written:   {total_edges}  "
-        f"(Tier3 causal graph: {_n_causal}; Reactome pathways: {_n_path}; "
-        f"also KG drugs={_n_drug}, PPI={_n_ppi}, PrimeKG={_n_pkg})"
-    )
+    print(f"  Edges written:   {total_edges}  (Tier3 causal graph: {_n_causal}; Reactome pathways: {_n_path})")
     print(f"  Duration:        {total_duration:.1f}s")
     print(f"  Status:          {final.get('pipeline_status')}")
 
@@ -927,7 +939,6 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
         causal_result         = {
             "top_genes": prioritization_result.get("targets", []),
             "n_edges_written": 0,
-            "anchor_recovery": {},
             "edges_written": [],
         }
         kg_result             = {}
@@ -944,11 +955,33 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
             f"Run the full pipeline first: analyze_disease_v2 \"{disease_name}\""
         )
 
+    # Gate ChEMBL annotation to post-Tier-3 gene whitelist (Phase G).
+    _post_filter_genes_t4 = {r["gene"] for r in causal_result.get("top_genes", [])}
+    if _post_filter_genes_t4:
+        disease_query = {**disease_query, "_gps_target_whitelist": _post_filter_genes_t4}
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         fut_chem = pool.submit(_chem_run, prioritization_result, disease_query)
         fut_ct   = pool.submit(_ct_run, prioritization_result, disease_query)
         chemistry_result = fut_chem.result()
         clinical_result  = fut_ct.result()
+
+    # GPS × OTA convergence
+    try:
+        from pipelines.gps_convergence import compute_gps_convergence, annotate_targets_with_gps
+        _gps_for_conv = {
+            "disease_reversers": chemistry_result.get("gps_disease_reversers") or [],
+            "program_reversers": chemistry_result.get("gps_program_reversers") or {},
+        }
+        _targets_for_conv = prioritization_result.get("targets") or []
+        if _targets_for_conv and (_gps_for_conv["disease_reversers"] or _gps_for_conv["program_reversers"]):
+            _conv = compute_gps_convergence(_targets_for_conv, _gps_for_conv, top_n=200)
+            annotate_targets_with_gps(_targets_for_conv, _conv)
+            chemistry_result["gps_convergence"] = _conv
+            _log("GPS_CONV", "convergence",
+                 f"converged={_conv['n_converged']} novel_mechanism={_conv['n_novel_mechanism']}")
+    except Exception as _conv_exc:
+        all_warnings.append(f"GPS convergence (tier4 path) failed (non-fatal): {_conv_exc}")
 
     # Save updated tier4 checkpoint
     try:

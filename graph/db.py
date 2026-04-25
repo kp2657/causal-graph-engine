@@ -93,7 +93,6 @@ class GraphDB:
             n_modifier_paths INT64,
             validation_sid DOUBLE,
             validation_shd DOUBLE,
-            validation_anchor_recovery BOOLEAN,
             mr_ivw DOUBLE,
             mr_egger_intercept DOUBLE,
             e_value DOUBLE,
@@ -203,6 +202,57 @@ class GraphDB:
             f"""
             MATCH (a:{kfrom} {{id: $from_id}}), (b:DiseaseTrait {{id: $to_id}})
             CREATE (a)-[:CausesTrait {{{kv_pairs}}}]->(b)
+            """,
+            params,
+        )
+
+    def write_drives_trait_edge(self, props: dict[str, Any]) -> None:
+        """Write a CellularProgram → DiseaseTrait DrivesTrait edge."""
+        from_id = props["program_id"]
+        to_id   = props["trait_id"]
+
+        edge_props = {k: v for k, v in props.items()
+                      if k not in ("program_id", "trait_id")}
+        edge_props.setdefault("is_demoted", False)
+        edge_props = {k: v for k, v in edge_props.items() if v is not None}
+
+        if "method" in edge_props:
+            edge_props["edge_method"] = edge_props.pop("method")
+
+        kv_pairs = ", ".join(f"{k}: ${k}" for k in edge_props)
+        params = {"from_id": from_id, "to_id": to_id, **edge_props}
+
+        self._conn.execute(
+            f"""
+            MATCH (a:CellularProgram {{id: $from_id}}), (b:DiseaseTrait {{id: $to_id}})
+            CREATE (a)-[:DrivesTrait {{{kv_pairs}}}]->(b)
+            """,
+            params,
+        )
+
+    def write_regulates_program_edge(self, props: dict[str, Any]) -> None:
+        """Write a Gene/Drug/Virus → CellularProgram regulatory edge."""
+        from_id = props["from_node"]
+        to_id   = props["to_node"]
+
+        _type_map = {"gene": "Gene", "drug": "Drug", "virus": "Virus"}
+        kfrom = _type_map.get(props.get("from_type", "gene"), "Gene")
+
+        edge_props = {k: v for k, v in props.items()
+                      if k not in ("from_node", "to_node", "from_type", "to_type")}
+        edge_props.setdefault("is_demoted", False)
+        edge_props = {k: v for k, v in edge_props.items() if v is not None}
+
+        if "method" in edge_props:
+            edge_props["edge_method"] = edge_props.pop("method")
+
+        kv_pairs = ", ".join(f"{k}: ${k}" for k in edge_props)
+        params = {"from_id": from_id, "to_id": to_id, **edge_props}
+
+        self._conn.execute(
+            f"""
+            MATCH (a:{kfrom} {{id: $from_id}}), (b:CellularProgram {{id: $to_id}})
+            CREATE (a)-[:RegulatesProgram {{{kv_pairs}}}]->(b)
             """,
             params,
         )

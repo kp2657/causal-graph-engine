@@ -253,6 +253,28 @@ def _cache_paths(
     return h5ad_p, meta_p
 
 
+def _compute_cluster_centroids(adata: Any) -> dict:
+    """Compute normal/disease PCA centroids for branching-probability GPS cell selection."""
+    import numpy as np
+    coords = adata.obsm.get("X_pca")
+    if coords is None:
+        coords = adata.obsm.get("X_diffmap")
+    if coords is None or "disease" not in adata.obs.columns:
+        return {}
+    labels = adata.obs["disease"].astype(str).values
+    normal_mask  = labels == "normal"
+    disease_mask = ~normal_mask
+    if not normal_mask.any() or not disease_mask.any():
+        return {}
+    return {
+        "normal_centroid":  coords[normal_mask].mean(axis=0).tolist(),
+        "disease_centroid": coords[disease_mask].mean(axis=0).tolist(),
+        "embedding_key":    "X_pca",
+        "n_normal":         int(normal_mask.sum()),
+        "n_disease":        int(disease_mask.sum()),
+    }
+
+
 def _is_cache_valid(
     h5ad_cache: Path,
     meta_path: Path,
@@ -281,6 +303,7 @@ def _save_latent_cache(
     meta_path: Path,
     source_paths: list[str],
     backend_name: str,
+    centroids: dict | None = None,
 ) -> None:
     """Write processed AnnData + metadata to cache files.  Failures are silent."""
     try:
@@ -292,10 +315,11 @@ def _save_latent_cache(
                 sp: Path(sp).stat().st_mtime
                 for sp in source_paths if Path(sp).exists()
             },
-            "backend": backend_name,
-            "n_cells": adata.n_obs,
-            "n_genes": adata.n_vars,
-            "created_at": time.time(),
+            "backend":     backend_name,
+            "n_cells":     adata.n_obs,
+            "n_genes":     adata.n_vars,
+            "created_at":  time.time(),
+            "centroids":   centroids or {},
         }
         meta_path.write_text(json.dumps(meta, indent=2))
     except Exception:
@@ -480,7 +504,7 @@ def build_disease_latent_space(
     Build a latent embedding from disease-matched sc-RNA h5ad files.
 
     Args:
-        disease:          Short disease key, e.g. "IBD", "CAD".
+        disease:          Short disease key, e.g. "CAD", "AMD".
         dataset_paths:    Paths to h5ad files.  Ignored when _adata_override is set.
         cell_type_filter: If provided, restrict to these cell_type values before embedding.
         use_scvi:         Request ScVI backend (Phase 2, GPU).
@@ -544,8 +568,8 @@ def build_disease_latent_space(
                         "cache_file":       str(h5ad_cache),
                     },
                     "integration_warnings": warnings_list,
-                    "backend":             selected_backend.name,
-                    "disease":             disease,
+                    "backend":  selected_backend.name,
+                    "disease":  disease,
                 }
             except Exception as cache_exc:
                 warnings_list.append(f"[cache] load failed ({cache_exc}), recomputing")
@@ -620,14 +644,17 @@ def build_disease_latent_space(
     if pseudotime is not None:
         pseudotime = np.asarray(pseudotime, dtype=float)
 
+    # --- Compute cluster centroids for BP-based GPS cell selection -----------
+    _centroids = _compute_cluster_centroids(adata)
+
     provenance = {
-        "disease":          disease,
-        "backend":          selected_backend.name,
-        "n_cells":          adata.n_obs,
-        "n_genes":          adata.n_vars,
-        "cell_type_filter": cell_type_filter,
-        "dataset_paths":    dataset_paths if _adata_override is None else ["_adata_override"],
-        "from_cache":       False,
+        "disease":           disease,
+        "backend":           selected_backend.name,
+        "n_cells":           adata.n_obs,
+        "n_genes":           adata.n_vars,
+        "cell_type_filter":  cell_type_filter,
+        "dataset_paths":     dataset_paths if _adata_override is None else ["_adata_override"],
+        "from_cache":        False,
     }
 
     # --- Save cache (skip when _adata_override or use_cache=False) -----------
@@ -635,7 +662,10 @@ def build_disease_latent_space(
         h5ad_cache, meta_cache = _cache_paths(
             disease, dataset_paths, selected_backend.name, cell_type_filter
         )
-        _save_latent_cache(adata, h5ad_cache, meta_cache, dataset_paths, selected_backend.name)
+        _save_latent_cache(
+            adata, h5ad_cache, meta_cache, dataset_paths, selected_backend.name,
+            centroids=_centroids,
+        )
         provenance["cache_file"] = str(h5ad_cache)
 
     return {

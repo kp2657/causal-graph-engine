@@ -2,54 +2,57 @@
 
 ## Overview
 
-The **Gene Perturbation Signature (GPS)** screen identifies compounds that reverse the disease transcriptional state. It implements the **connectivity map** approach (Lamb et al. 2006 Science; Chen et al. 2017) using the Bin-Chen Lab GPS tool.
+The **Gene Perturbation Signature (GPS)** screen identifies compounds that reverse the disease transcriptional state or mimic the knockdown of high-confidence causal targets. It implements the **connectivity map** approach (Lamb et al. 2006 Science; Xing et al. 2026 Cell) using the Bin-Chen Lab GPS Docker tool against the Enamine HTS library (~2M compounds).
 
-The key output is a ranked list of compounds whose transcriptional signatures are anti-correlated with the disease expression signature — i.e., compounds that push cell state from "disease" back toward "healthy."
+GPS runs as the **Tier 4 chemistry step** — after genetic target prioritisation — and returns three complementary screen types:
 
----
-
-## Biological rationale
-
-Disease states are characterised by a shift in transcriptional programs. If a compound produces a gene expression signature that is the mirror image of the disease signature, it may therapeutically reverse that state. This is distinct from target-based drug discovery — it is phenotypic, searching for reversal of the entire disease program rather than a single protein.
-
-GPS is used as a **Tier 4** step in the pipeline — after genetic target prioritisation — to identify candidate compounds that simultaneously address the disease state.
+| Screen type | Input signature | Question |
+|---|---|---|
+| Disease-state reversal | Whole-disease DEG (disease vs. normal cells) | What compounds reverse the AMD/CAD transcriptional state? |
+| Program reversal | Top NMF program gene loadings | What compounds specifically suppress the complement/lipid program? |
+| KO emulation | Perturb-seq KO signature (negated) | What compounds mimic loss-of-function of CFH / PCSK9? |
 
 ---
 
 ## Disease-State Signature Construction
 
-The disease-state signature is built from a **comparison of disease vs. healthy cell transcriptomes** in CELLxGENE h5ad files.
+The disease-state signature is built from a **comparison of disease vs. healthy cell transcriptomes** with a three-tier fallback chain:
 
-### Step 1: Load disease and normal cells from h5ad
+### Priority 1: CELLxGENE h5ad pseudo-bulk DEG
 
 ```python
-# Example: AMD RPE cells
 disease_cells = adata[adata.obs["disease"] == "age-related macular degeneration"]
 normal_cells  = adata[adata.obs["disease"] == "normal"]
+log2fc = log2(mean(disease) + 1) - log2(mean(normal) + 1)
 ```
 
-Cell types used are disease-specific:
+Branching-probability (BP) cell selection is applied when a latent cache exists: disease cells are selected by highest BP (most transitioning), normal cells by lowest BP (most stable). This sharpens the DEG signal at the disease decision boundary.
+
+Cell types by disease:
 | Disease | Cell type | h5ad source |
 |---|---|---|
 | AMD | RPE (retinal pigment epithelium) | CELLxGENE AMD collection |
-| CAD | SMC (smooth muscle) + hepatocyte | CELLxGENE CAD + liver |
-| IBD | Intestinal epithelial + macrophage | CELLxGENE gut collection |
+| CAD | Cardiac endothelial → SMC → hepatocyte | CELLxGENE CAD + liver |
 
-### Step 2: Compute differential expression
+### Priority 2: `tau_disease_log2fc` from target records
 
-Log2 fold-change per gene: `log2FC(disease/normal)` computed as mean log-normalized expression difference.
+Per-target log2FC values computed during the pipeline run (from CELLxGENE DEG). Used when h5ad is not cached locally.
 
-### Step 3: Signature trimming (elbow trim)
+### Priority 3: OTA γ proxy (last resort)
 
-The GPS tool accepts signatures of **700–1000 genes** (empirically calibrated in Session 59). Larger signatures include noise; smaller signatures lack coverage.
+Normalized OTA γ values (`γ / max_γ`) stand in for log2FC when no h5ad or DEG data is available. This provides ~50–200 GPS-compatible genes for AMD/CAD.
 
-An elbow-trim selects the top genes by absolute log2FC magnitude:
-- Minimum: 700 genes
-- Maximum: 1000 genes
+**OTA proxy trimming:** genes are sorted by |γ| descending and trimmed at the point where cumulative |γ| weight reaches 90% of total. Low-γ genes are pure permutation cost — they increase `n_permutations = n_sig_genes` without proportional RGES signal benefit (GPS RGES is rank-weighted). Bounds: min 50 genes, max 1000.
 
-```python
-sig_genes = sorted(genes, key=lambda g: abs(log2fc[g]), reverse=True)[:max_genes]
-```
+### Signature trimming (h5ad path)
+
+The h5ad DEG path applies **elbow trimming** (kneedle algorithm) to keep 700–1000 genes:
+- Sort genes by |log2FC| descending (scree curve)
+- Normalise rank and |log2FC| to [0, 1]
+- Find gene maximally distant from the diagonal (maximum curvature = elbow)
+- Clamp to [700, 1000]
+
+The minimum of 700 ensures ≥700 permutations for a calibrated null distribution (`n_permutations = n_sig_genes` inside GPS). Empirically: 183-gene signature → 183 perms → 0 hits; 1000-gene signature → well-calibrated Z_RGES.
 
 ---
 
@@ -59,149 +62,176 @@ The BGRD is a permutation-based null distribution for RGES scores. It answers: "
 
 ### Construction
 
-For a signature of size N, the BGRD uses **N permutations** (one per gene). Each permutation randomises which genes are "up" vs. "down" in the signature, then re-scores all compounds in the L1000 library. The resulting distribution of RGES scores forms the null.
+For a signature of size N, the BGRD uses **N permutations** (capped 700–1000). Each permutation randomises gene ordering in the signature, re-scoring all compounds. The resulting RGES distribution forms the null under which Z_RGES is calibrated.
 
-**BGRD path structure:**
-```
-data/gps_bgrd/BGRD__{disease}__{cell_type}__{n_genes}genes.pkl
-```
+**BGRD path:** `data/gps_bgrd/BGRD__{label}.pkl`
+
+Labels are deterministic: `{disease_key}_disease_state`, `{disease_key}_prog_{sha1[:8]}`, `{gene}_emulation`.
 
 ### BGRD lifecycle
 
-1. **First run**: BGRD is computed from scratch. This takes 2–6 hours depending on signature size.
-2. **Subsequent runs**: BGRD is loaded from disk if the signature has not changed.
-3. **Stale BGRD**: If the disease h5ad is updated, the BGRD must be deleted and recomputed:
+1. **First run (no cache):** BGRD is computed from scratch. 0.5–6h depending on signature size. Timeout: 6h.
+2. **Subsequent runs (cache hit):** BGRD loaded from disk. GPS runs reversal scoring only. Timeout: 2h.
+3. **Stale BGRD:** Delete and recompute if the disease h5ad is updated or the signature composition changes materially:
    ```bash
-   rm data/gps_bgrd/BGRD__AMD__*.pkl
+   rm data/gps_bgrd/BGRD__amd_*.pkl   # AMD
+   rm data/gps_bgrd/BGRD__coronary*.pkl  # CAD
    ```
-4. **Timeout**: GPS with no BGRD uses a 6-hour timeout; with BGRD, 2-hour timeout.
+4. **New program or KO target:** First run computes BGRD for that label; all subsequent runs reuse it.
 
 ---
 
 ## RGES Scoring
 
-The **Reversed Gene Expression Score (RGES)** measures the anti-correlation between the disease signature and a compound's L1000 perturbation profile.
+The **Reversed Gene Expression Score (RGES)** measures anti-correlation between the disease signature and a compound's expression perturbation profile.
 
 ```
-RGES = -Σ_{g ∈ up-genes} rank(g in compound_sig) / N_up
-     + Σ_{g ∈ down-genes} rank(g in compound_sig) / N_dn
+Z_RGES = (RGES − mean_BGRD) / std_BGRD
 ```
 
-A strongly negative RGES means the compound upregulates genes that are down in disease and downregulates genes that are up in disease — i.e., the compound reverses the disease state.
-
-### Z_RGES — normalised score
-
-RGES is z-scored against the BGRD:
-
-```
-Z_RGES = (RGES - mean_BGRD) / std_BGRD
-```
-
-A compound is called a **disease-state reverser** when:
-
-```
-Z_RGES ≤ -threshold    (default threshold = 2.0)
-```
-
-### Dynamic Z_RGES threshold (v0.2.0+)
-
-The threshold is calibrated dynamically based on the BGRD standard deviation and compound library size:
-- Default Z = 2.0 (≈5% false-discovery rate under N(0,1) null)
-- Raised to Z = 2.5 when < 100 compounds tested (small library → higher FPR)
-- Lowered to Z = 1.5 when exploring a novel disease with sparse GWAS anchors
-
-This replaces the previous hard cutoff of `top_n=20` (Session 60 fix).
+A compound is called a **reverser** when `|Z_RGES| > z_threshold` (default 2.0 → two-tailed p < 0.05 ≈ FDR 5% under N(0,1) null). Falls back to top-N by raw RGES if fewer than 3 compounds pass the threshold.
 
 ---
 
 ## Program-Level GPS Screens
 
-In addition to disease-state reversal, GPS is run against individual transcriptional programs:
+Program reversal screens use the **NMF gene loading vector** as the GPS input signature, signed by causal direction:
 
-```
-Z_RGES per compound per program = program-specific reversal score
-```
+- **Risk program** (net OTA contribution > 0): positive loadings passed → reversers inhibit the program
+- **Protective program** (net contribution < 0): loadings negated → reversers reinforce it
 
-This identifies compounds that specifically reverse the complement program, the lipid metabolism program, etc. — allowing mechanism-specific drug repurposing.
+Up to 5 programs are screened (set by `top_n_programs=5`), filtered to programs with weight ≥ 10% of the top program's weight.
 
-Up to 5 programs are screened per run (set by `top_n_programs=5`).
+**Signature sources (priority order):**
+1. NMF gene loadings from cNMF h5ad analysis (transcriptomic, ideal for GPS RGES)
+2. OTA contribution fractions + MSigDB Hallmark gene expansion (fallback when cNMF has < 5 GPS-compatible genes)
+
+**Jaccard deduplication:** before queuing a program, its GPS-compatible gene set is checked against all already-queued programs. If Jaccard similarity ≥ 0.70, the program is skipped — near-identical gene sets produce near-identical BGRD distributions and RGES hit lists, wasting a Docker run.
 
 ---
 
-## Output fields
+## KO Emulation Screens
+
+For the top-3 Tier2 genetic anchors with `ota_gamma > 0.1`, GPS finds compounds that **mimic knockdown** of that target:
+
+1. Fetch Perturb-seq KO signature for the gene from `mcp_servers/perturbseq_server.py`
+2. Negate the signature: `reversers of (−KO) = mimics of KO`
+3. Run GPS → compounds that mimic therapeutic loss-of-function
+
+Gate: `dominant_tier.startswith("Tier2") AND abs(ota_gamma) > 0.1`. Sorted by |γ| descending so the highest-confidence anchors are always screened if the cap bites.
+
+For AMD: expects CFH, C3, VEGFA (or nearest Tier2 anchors).
+For CAD: expects PCSK9, HMGCR, LPA (or nearest Tier2 anchors).
+
+---
+
+## Parallel Execution
+
+All GPS Docker containers are CPU-bound subprocesses — parallelism is safe with `ThreadPoolExecutor`.
+
+**Execution order:**
+1. Disease-state screen — **synchronous** (first; result gates program screens)
+2. Program screens — **concurrent** (`ThreadPoolExecutor(max_workers=3)`)
+3. KO emulation screens — **concurrent** (`ThreadPoolExecutor(max_workers=3)`, runs before disease screen)
+4. ChEMBL annotation — **sequential** (after all Docker screens; fork-safety on macOS)
+
+**Early-exit cascade:** if the disease-state screen runs but returns 0 hits, all program screens are skipped immediately. Root causes to check: (1) BGRD not cached, (2) signature < 700 GPS-compatible genes, (3) GPS Docker image stale.
+
+**Wall-time improvement:**
+- Previous (sequential): `1 + 5 + 3 = 9 screens × single_screen_time`
+- Current (parallel): `1 + ceil(5/3) + ceil(3/3) ≈ 1 + 2 + 1 = 4 rounds × single_screen_time`
+
+---
+
+## Cross-Screen Compound Overlap
+
+`find_overlapping_compounds` identifies compounds appearing in ≥2 screens. These are the highest-confidence hits: they reverse the whole-disease state AND specifically suppress a causal program AND/OR mimic a KO of a validated target.
+
+Overlap compounds are surfaced as `gps_priority_compounds` in the pipeline output and their putative targets are passed to the discovery refinement agent for latent axis analysis.
+
+---
+
+## Target-Cluster-Centric Analysis
+
+`_target_cluster_analysis` in `discovery_refinement_agent` cross-references GPS putative targets (from ChEMBL Tanimoto annotation) against cNMF + MSigDB program gene sets. Programs where GPS hit targets overlap ≥5% of the program gene set (and ≥2 genes) surface as `latent_therapeutic_axes`.
+
+This reveals programs not explicitly screened by GPS but whose genes appear in compound target annotations — latent therapeutic axes discoverable only through chemical convergence.
+
+---
+
+## Output Fields
 
 ```json
 {
-  "compound_id": "CID:12345",
-  "compound_name": "rapamycin",
-  "z_rges": -3.2,
-  "rges": -0.41,
-  "rank": 1,
-  "annotation": {
-    "mechanism_of_action": "mTOR inhibitor",
-    "putative_targets": "MTOR",
-    "phase": 4
+  "gps_disease_reversers": [
+    {
+      "compound_id": "CID:12345",
+      "rges": -0.41,
+      "z_rges": -3.2,
+      "rank": 1,
+      "screen_type": "disease_state_reversal",
+      "annotation": {
+        "compound_name": "rapamycin",
+        "mechanism_of_action": "mTOR inhibitor",
+        "putative_targets": ["MTOR"],
+        "max_phase": 4
+      }
+    }
+  ],
+  "gps_program_reversers": {
+    "complement_program": [ ... ],
+    "angiogenesis_program": [ ... ]
   },
-  "program_reversals": {
-    "complement_activation": -2.8,
-    "RPE_oxidative_stress": -1.9
-  }
-}
-```
-
----
-
-## Docker requirement
-
-GPS runs inside the Bin-Chen Lab Docker image:
-
-```bash
-docker pull binchenlab/gpsimage
-```
-
-If Docker is not running, the GPS screen is **skipped**. This is logged in `pipeline_warnings` in the output JSON:
-
-```json
-{
-  "pipeline_warnings": [
-    "GPS screen SKIPPED — Docker daemon not reachable. Run: docker pull binchenlab/gpsimage"
+  "gps_emulation_candidates": [
+    {
+      "compound_id": "CID:67890",
+      "target": "CFH",
+      "emulation_tier": "Tier2_genetic_anchor",
+      "emulation_gamma": 0.561
+    }
+  ],
+  "gps_priority_compounds": [
+    {
+      "compound_id": "CID:12345",
+      "n_screens": 3,
+      "screens": ["disease_state_reversal", "program_reversal:complement_program", "target_emulation:CFH"],
+      "avg_rges": -0.38
+    }
+  ],
+  "gps_programs_screened": [
+    {"program_id": "complement_program", "direction": "risk", "net_weight": 0.42, "n_sig_genes": 87, "sig_source": "nmf_loadings"}
   ]
 }
 ```
 
-The rest of the pipeline (genetic target ranking) proceeds without GPS results.
-
 ---
 
-## Running GPS manually
+## Docker Setup
 
 ```bash
-# Build disease-state signature and run GPS screen
-conda run -n causal-graph python -m pipelines.gps_disease_screen \
-    --disease "age-related macular degeneration" \
-    --cell-type "retinal pigment epithelial cell" \
-    --n-genes 850
+docker pull binchengroup/gpsimage:latest
+```
 
-# Recompute BGRD from scratch
-rm data/gps_bgrd/BGRD__AMD__*.pkl
-conda run -n causal-graph python -m pipelines.gps_screen \
-    --disease AMD --recompute-bgrd
+If Docker is unavailable, all GPS screens are skipped. The genetic target ranking still completes. GPS status is reported in `pipeline_warnings`:
+
+```json
+{"pipeline_warnings": ["GPS disease screen skipped: Docker / GPS image unavailable"]}
 ```
 
 ---
 
 ## References
 
+- Xing et al. (2026) Cell — GPS4Drugs: RGES, Z_RGES normalisation, GPS 2198-gene landmark set
 - Lamb et al. (2006) Science 313:1929 — Connectivity Map (CMap)
 - Chen et al. (2017) Briefings in Bioinformatics — GPS method
-- Bray et al. (2023) — L1000 CMap compound library
 - GPS Docker: github.com/Bin-Chen-Lab/GPS
 
 ---
 
-## Known limitations
+## Known Limitations
 
-1. **L1000 coverage**: Only ~1,000 landmark genes are measured in L1000, limiting sensitivity for rare disease programs with non-L1000 drivers.
-2. **Cell-line mismatch**: Most L1000 compound profiles are from cancer cell lines (MCF7, PC3, A549). AMD RPE biology may not be well captured.
-3. **BGRD permutation count = signature size**: This is conservative (fewer permutations than a full bootstrap) and may underestimate FDR for small signatures.
-4. **No dose–response modelling**: RGES scoring is binary (treated vs. untreated) — the optimal dose is not identified.
+1. **GPS 2198 landmark set**: GPS uses a 2198-gene landmark set (not L1000). Programs with structural or cell-type-identity genes may have insufficient overlap → OTA proxy fallback.
+2. **Cell-line mismatch**: Most compound profiles in the GPS library are from cancer cell lines. AMD RPE and CAD endothelial biology may not be fully captured.
+3. **BGRD permutation count = signature size**: Conservative; may underestimate FDR for signatures near the 700-gene minimum.
+4. **KO emulation requires Perturb-seq coverage**: Genes absent from the Replogle 2022 RPE1/K562 screens produce empty signatures → KO emulation silently returns [].

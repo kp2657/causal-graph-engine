@@ -9,14 +9,20 @@ Single reference for environment variables, orchestrator behaviour, file layout,
 | Variable | Used by | When unset / empty |
 |----------|---------|---------------------|
 | `GRAPH_DB_PATH` | `graph/db.py`, `graph_db_server` | Defaults to `./data/graph.kuzu` (creates or uses that file). |
-| `OPENGWAS_JWT` | `gwas_genetics_server` OpenGWAS tools | OpenGWAS endpoints return empty or auth-error payloads; pipeline continues with GWAS Catalog / OT only. Expires 2026-05-06. |
+| `OPENGWAS_JWT` | `gwas_genetics_server` OpenGWAS tools | OpenGWAS endpoints return empty or auth-error payloads; pipeline continues with GWAS Catalog / OT only. Expires 14 days after issue; renew regularly. |
 | `OPEN_TARGETS_ASSOC_DISABLED` | `open_targets_server`, `pi_orchestrator_v2._collect_gene_list`, `target_prioritization_agent` | When `1`/`true`: skips heavy `associatedTargets` GraphQL; seeds genes from OT **L2G** instead. |
+| `SKIP_MR` | `statistical_geneticist.run` | When `1`/`true`: skips the Mendelian randomisation step entirely. Use when IEU JWT is absent and MR instruments would be empty anyway. |
 | `GPS_REPO_PATH` | `mcp_servers/gps_server.py` only | Optional local GPS4Drug subprocess path. **Not** used by Tier 4 chemistry; that uses `pipelines/gps_disease_screen.py` via Docker. |
 | `CROSSREF_MAILTO` | Polite Crossref User-Agent | Optional; improves rate limits. |
 | `ANTHROPIC_API_KEY` | SDK / `AGENT_MODE=sdk` | Required only for Claude-dispatched agents. |
 | `AGENT_MODE` | `agent_runner` | `local` (default): no API. `sdk`: CSO / discovery agents may call Claude. **`pi_orchestrator_v2` ignores AgentRunner** — it always calls agents as plain functions. |
 | `MINIMAL_TIER4` | `target_prioritization_agent` | When `1`/`true`: skips non-essential Tier 4 metrics (tau/bimodality, upstream benchmark, program driver classification). |
-| `PERTURB_SEQ_DIR`, `VIRAL_REF_DIR`, `CHIP_CALLS_DIR` | Respective data loaders | Missing dirs → fewer Tier 2 signals; agents emit warnings or fall back to virtual tiers. |
+| `TIER2_NONVIRTUAL_ONLY` | `perturbation_genomics_agent` | When `1`/`true`: drops genes with no direct Perturb-seq β (virtual-only candidates) after Tier 2. Useful for debugging mechanistic quality without virtual-tier noise. |
+| `TIER2_MAX_GENES` | `perturbation_genomics_agent` | Integer cap on Tier 2 gene list after filtering. Default: no cap. Set to e.g. `200` to accelerate debugging runs. |
+| `PERTURBSEQ_DATA_DIR` | `mcp_servers/burden_perturb_server.py` | Override path to Replogle h5ad files used by the burden server. Default: `./data/replogle2022`. |
+| `STATIC_DATA_DIR` | `pipelines/static_lookups.py`, `scripts/fetch_static_data.py` | Override path to static lookup tables (pLI, OMIM, drug targets). Default: `./data/static/`. |
+| `CLUE_API_KEY` | `mcp_servers/viral_somatic_server.py` | Optional CLUE Connectivity Map API key. Free tier available; without it, CLUE perturbational signatures are skipped. |
+| `VIRAL_REF_DIR`, `CHIP_CALLS_DIR` | Respective data loaders | Missing dirs → fewer Tier 2 signals; agents emit warnings or fall back to virtual tiers. |
 | `NCBI_API_KEY` | Literature / PubMed tools | Optional; raises PubMed rate limit from 3 to 10 req/s. |
 
 Copy `.env.example` to `.env` and fill values. Never commit `.env`.
@@ -146,7 +152,7 @@ Do not define local threshold constants; import from this module. Key thresholds
 
 ---
 
-## Validated run results (v0.2.0, 2026-04-20)
+## Validated run results (v0.2.2, 2026-04-24)
 
 ### AMD (age-related macular degeneration)
 - Targets ranked: 145
@@ -155,10 +161,12 @@ Do not define local threshold constants; import from this module. Key thresholds
 - GPS disease-state reversers: 100
 
 ### CAD (coronary artery disease)
-- Targets ranked: 386 (5 essential genes sunk to bottom)
-- Known gene recovery: 13/17 (76%)
-- LIPC: rank 1; SORT1: rank 4; HMGCR: rank 46; PCSK9: rank ~154; LPA: rank ~117
+- Targets ranked: 2144 (Tier 3 + 4 complete, GPS program reversers pending re-run)
+- PCSK9/HMGCR recovered; LIPC rank 1 (eQTL-MR driven)
 - GPS disease-state reversers: 100
+
+### SLE / DED
+- Pending first run (CZI Perturb-seq downloads in progress; see STATE.md)
 
 ---
 

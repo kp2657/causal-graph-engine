@@ -88,12 +88,47 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
             "warnings": warnings,
         }
 
-    # Step 6 — per-gene GPS emulation removed.
-    # GPS is designed for disease-state reversal (phenotypic, target-agnostic),
-    # not per-gene KO emulation. Per-gene mode requires Perturb-seq KO signatures
-    # that are unavailable for most genes, and answers a different question.
-    # Disease-state and program-level GPS screening is done in Step 7.
+    # Step 6 — GPS KO emulation for top-3 Tier 2 genetic anchors.
+    # Gated on dominant_tier.startswith("Tier2") and ota_gamma > 0.1 — only
+    # high-confidence causal genes with Perturb-seq KO signature coverage are screened.
+    # Answers: "does any compound pharmacologically mimic loss-of-function of this target?"
     gps_emulation_candidates: list[dict] = []
+    try:
+        from pipelines.gps_screen import _docker_available, screen_target_for_emulators
+        if _docker_available():
+            from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
+            tier2_anchors = sorted(
+                [
+                    t for t in targets
+                    if (t.get("dominant_tier") or "").startswith("Tier2")
+                    and abs(t.get("ota_gamma") or 0.0) > 0.1
+                ],
+                key=lambda t: abs(t.get("ota_gamma") or 0.0),
+                reverse=True,
+            )[:3]
+
+            def _emulate(tgt):
+                gene = tgt.get("target_gene", "")
+                if not gene:
+                    return []
+                hits = screen_target_for_emulators(
+                    gene=gene,
+                    disease_query=disease_query,
+                    ota_gamma=tgt.get("ota_gamma"),
+                    top_n=20,
+                )
+                for h in hits:
+                    h["target"]          = gene
+                    h["emulation_tier"]  = tgt.get("dominant_tier")
+                    h["emulation_gamma"] = tgt.get("ota_gamma")
+                return hits
+
+            with ThreadPoolExecutor(max_workers=len(tier2_anchors) or 1) as pool:
+                futures = {pool.submit(_emulate, t): t for t in tier2_anchors}
+                for f in _as_completed(futures):
+                    gps_emulation_candidates.extend(f.result())
+    except Exception as exc:
+        warnings.append(f"GPS KO emulation failed: {exc}")
 
     # -------------------------------------------------------------------------
     # Step 7 — GPS disease-state and NMF-program reversal screens.
@@ -110,6 +145,7 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
     gps_programs_screened:  list[dict] = []
     try:
         from pipelines.gps_disease_screen import run_gps_disease_screens
+        _whitelist = disease_query.get("_gps_target_whitelist") or None
         disease_screen_result = run_gps_disease_screens(
             targets=targets,
             disease_query=disease_query,
@@ -119,6 +155,7 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
             ),
             top_n_programs=5,
             top_n_compounds=20,
+            target_gene_whitelist=_whitelist,
         )
         gps_disease_reversers = disease_screen_result.get("disease_reversers", [])
         gps_program_reversers = disease_screen_result.get("program_reversers", {})

@@ -5,22 +5,17 @@ Compute disease-specific program activity weights w_P ∈ [0, 1].
 
 The OTA formula Σ_P (β_gene→P × γ_P→disease) gives pleiotropic transcriptional
 regulators inflated γ because they have large β across all programs, some of which
-coincidentally carry GWAS signal. For example, JAZF1 (a T2D transcriptional
-coregulator) achieves ota_gamma=1.35 in AMD purely because it perturbs many RPE1
-programs broadly — not because those programs are AMD-specific.
+coincidentally carry GWAS signal.
 
-Fix: weight each program's contribution by how AMD-specific its activity is in
+Fix: weight each program's contribution by how disease-specific its activity is in
 patient tissue:
 
     γ_refined = Σ_P (β_gene→P × γ_P→disease × w_P)
 
-where w_P = how much more active program P is in AMD cells vs. healthy controls.
+where w_P = how much more active program P is in disease cells vs. healthy controls.
 
-A gene whose β is spread uniformly across generic (non-AMD-specific) programs gets
-low w_P weights and collapses to a small refined γ.
-
-A gene whose β is concentrated in AMD-upregulated programs (complement activation,
-ECM remodeling, RPE stress) retains a large refined γ.
+A gene whose β is spread uniformly across generic programs gets low w_P weights.
+A gene whose β is concentrated in disease-upregulated programs retains a large γ.
 
 Important: this does NOT modify ota_gamma (backward compat). The result is surfaced
 as ota_gamma_specificity_weighted alongside the raw ota_gamma.
@@ -30,8 +25,8 @@ Public API
     compute_program_disease_weights(adata, programs, disease_col, disease_label)
         -> dict[str, float]   {program_id → w_P ∈ [0, 1]}
 
-    compute_beta_amd_concentration(beta_estimates, program_weights)
-        -> float   ∈ [0, 1]  fraction of β-mass in AMD-specific programs
+    compute_beta_program_concentration(beta_estimates, program_weights)
+        -> float   ∈ [0, 1]  fraction of β-mass in disease-specific programs
 """
 from __future__ import annotations
 
@@ -39,26 +34,13 @@ import math
 from typing import Any
 
 
-# Minimum cells required in each group (AMD/healthy) to compute a reliable LFC.
+# Minimum cells required in each group (disease/healthy) to compute a reliable LFC.
 _MIN_CELLS_PER_GROUP = 10
 
-# AMD-specific log2FC threshold above which w_P = 1.0 (saturates at 2-fold).
+# Log2FC threshold above which w_P = 1.0 (saturates at 2-fold).
 _MAX_LOG2FC = 2.0
 
 # CELLxGENE MONDO-specific disease labels per disease key.
-_AMD_DISEASE_LABELS = {
-    "age-related macular degeneration",
-    "age related macular degeneration",
-    "macular degeneration",
-    "age related macular degeneration 7",
-    "age-related macular degeneration 7",
-    "age related macular degeneration 1",
-    "age-related macular degeneration 1",
-    "neovascular age-related macular degeneration",
-    "geographic atrophy",
-    "basal laminar drusen",
-    "drusen",
-}
 _CAD_DISEASE_LABELS = {
     "coronary artery disease",
     "coronary heart disease",
@@ -69,17 +51,23 @@ _CAD_DISEASE_LABELS = {
     "acute myocardial infarction",
     "chronic ischemic heart disease",
 }
-_IBD_DISEASE_LABELS = {
-    "inflammatory bowel disease",
-    "crohn's disease",
-    "crohns disease",
-    "ulcerative colitis",
-    "colitis",
+_SLE_DISEASE_LABELS = {
+    "systemic lupus erythematosus",
+    "lupus erythematosus",
+    "lupus nephritis",
+    "neuropsychiatric lupus",
+}
+_DED_DISEASE_LABELS = {
+    "dry eye syndrome",
+    "dry eye disease",
+    "keratoconjunctivitis sicca",
+    "aqueous-deficient dry eye",
+    "evaporative dry eye",
 }
 _DISEASE_LABEL_MAP: dict[str, set[str]] = {
-    "AMD": _AMD_DISEASE_LABELS,
     "CAD": _CAD_DISEASE_LABELS,
-    "IBD": _IBD_DISEASE_LABELS,
+    "SLE": _SLE_DISEASE_LABELS,
+    "DED": _DED_DISEASE_LABELS,
 }
 _HEALTHY_LABELS = {"normal", "healthy", "control", "none"}
 
@@ -92,20 +80,20 @@ def compute_program_disease_weights(
     disease_key: str | None = None,
 ) -> dict[str, float]:
     """
-    Compute AMD-specificity weight w_P for each program.
+    Compute disease-specificity weight w_P for each program.
 
     For each program P with a gene_set (or gene_loadings), compute:
       activity(cell, P) = mean( log-normalised expression of top genes in P )
       LFC_P = log2( mean_AMD(activity_P) + ε ) - log2( mean_healthy(activity_P) + ε )
       w_P   = clamp( LFC_P / MAX_LOG2FC, 0, 1 )
 
-    Programs with ≥2-fold upregulation in AMD cells → w_P = 1.0.
+    Programs with ≥2-fold upregulation in disease cells → w_P = 1.0.
     Programs unchanged or downregulated             → w_P = 0.0.
 
     Args:
         adata:          AnnData with obs[disease_col] and log-normalised X.
-                        Typically the AMD h5ad from CELLxGENE (RPE + Müller cells,
-                        both AMD patients and healthy controls).
+                        
+                        both disease patients and healthy controls).
         programs:       List of program dicts with keys:
                           "program_id": str
                           "gene_set":   list[str]  (or)
@@ -136,32 +124,30 @@ def compute_program_disease_weights(
         elif disease_key and disease_key.upper() in _DISEASE_LABEL_MAP:
             disease_mask = disease_vals.isin(_DISEASE_LABEL_MAP[disease_key.upper()])
         else:
-            # Fallback: use AMD labels for backward compatibility
-            disease_mask = disease_vals.isin(_AMD_DISEASE_LABELS)
-        amd_mask = disease_mask  # local alias kept for legacy references below
+            # No disease key — treat all non-healthy cells as disease
+            disease_mask = ~disease_vals.isin(_HEALTHY_LABELS)
+        disease_idx_mask = disease_mask
 
         healthy_mask = disease_vals.isin(_HEALTHY_LABELS)
 
         # Batch effect mitigation: prefer healthy cells from the same dataset(s) as disease
-        # cells. Cross-dataset comparison (e.g. 162 AMD cells from 1 study vs 29k normal from
-        # many studies) inflates fold-changes for generic housekeeping genes due to technical
-        # depth/batch differences — not disease biology.
+        # cells to avoid depth/batch LFC inflation.
         _BATCH_COLS = ("dataset_id", "batch", "study_id", "assay_ontology_term_id")
         _batch_col = next((c for c in _BATCH_COLS if c in obs.columns), None)
         if _batch_col is not None:
-            _amd_datasets = set(obs[_batch_col][amd_mask].unique())
-            _matched_healthy = healthy_mask & obs[_batch_col].isin(_amd_datasets)
+            _disease_datasets = set(obs[_batch_col][disease_idx_mask].unique())
+            _matched_healthy = healthy_mask & obs[_batch_col].isin(_disease_datasets)
             if int(_matched_healthy.sum()) >= _MIN_CELLS_PER_GROUP:
                 healthy_mask = _matched_healthy  # use dataset-matched subset
 
-        n_amd     = int(amd_mask.sum())
+        n_disease = int(disease_idx_mask.sum())
         n_healthy = int(healthy_mask.sum())
 
-        if n_amd < _MIN_CELLS_PER_GROUP or n_healthy < _MIN_CELLS_PER_GROUP:
+        if n_disease < _MIN_CELLS_PER_GROUP or n_healthy < _MIN_CELLS_PER_GROUP:
             # Not enough contrast — uniform weights (no downweighting)
             return {p["program_id"]: 1.0 for p in programs if p.get("program_id")}
 
-        amd_idx     = np.where(amd_mask.values)[0]
+        disease_idx = np.where(disease_idx_mask.values)[0]
         healthy_idx = np.where(healthy_mask.values)[0]
 
         # Build gene name → column index lookup (var may use Ensembl IDs or symbols)
@@ -210,13 +196,12 @@ def compute_program_disease_weights(
             else:
                 prog_X = X[:, col_idxs].mean(axis=1)     # shape: (n_cells,)
 
-            mean_amd     = float(prog_X[amd_idx].mean())
+            mean_disease = float(prog_X[disease_idx].mean())
             mean_healthy = float(prog_X[healthy_idx].mean())
 
-            # mean_amd / mean_healthy are in log1p(CP10K) space.
-            # LFC in log2 = (mean_AMD - mean_healthy) / ln(2)
-            # (standard pseudobulk LFC on log-normalised data)
-            lfc = (mean_amd - mean_healthy) / math.log(2)
+            # mean_disease / mean_healthy are in log1p(CP10K) space.
+            # LFC in log2 = (mean_disease - mean_healthy) / ln(2)
+            lfc = (mean_disease - mean_healthy) / math.log(2)
 
             # w_P ∈ [0, 1]: clamp positive LFC to [0, MAX_LOG2FC], then normalise
             w = max(0.0, min(lfc, _MAX_LOG2FC)) / _MAX_LOG2FC
@@ -243,7 +228,7 @@ def compute_pathway_coherence_score(
     A gene like JAZF1 whose β is spread across generic programs gets a low score.
 
     Two components:
-      specificity_alignment  = beta_amd_concentration (already computed)
+      specificity_alignment  = beta_program_concentration (already computed)
       label_coherence        = fraction of β-mass in programs with disease label
 
     Args:
@@ -324,14 +309,14 @@ def compute_pathway_coherence_score(
     }
 
 
-def compute_beta_amd_concentration(
+def compute_beta_program_concentration(
     beta_estimates: dict[str, Any],
     program_weights: dict[str, float],
 ) -> float:
     """
     Fraction of a gene's total β-mass that falls in AMD-specific programs.
 
-    beta_amd_concentration ∈ [0, 1]:
+    beta_program_concentration ∈ [0, 1]:
       - 0.0: all β-mass in generic (non-AMD) programs
       - 1.0: all β-mass in AMD-upregulated programs
 

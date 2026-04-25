@@ -36,6 +36,8 @@ except ImportError:
         return fn if fn is not None else (lambda f: f)
     mcp = None
 
+from pipelines.api_cache import api_cached
+
 CHEMBL_API  = "https://www.ebi.ac.uk/chembl/api/data"
 PUBCHEM_API = "https://pubchem.ncbi.nlm.nih.gov/rest/pug"
 
@@ -61,6 +63,7 @@ def _gene_symbol_from_chembl_target(target: dict) -> str | None:
 
 
 @_tool
+@api_cached(ttl_days=90)
 def resolve_chembl_target_label_to_hgnc(label: str) -> dict:
     """
     Map a ChEMBL ``target_pref_name`` (or short free-text label) to a gene symbol.
@@ -205,6 +208,7 @@ def resolve_gps_putative_target_labels_to_hgnc(
 # ---------------------------------------------------------------------------
 
 @_tool
+@api_cached(ttl_days=30)
 def search_chembl_compound(name: str) -> dict:
     """
     Search ChEMBL for a compound by name.
@@ -251,6 +255,7 @@ def search_chembl_compound(name: str) -> dict:
 
 
 @_tool
+@api_cached(ttl_days=30)
 def get_chembl_target_activities(target_gene: str, max_results: int = 20) -> dict:
     """
     Return bioactivity data for compounds targeting a gene from ChEMBL.

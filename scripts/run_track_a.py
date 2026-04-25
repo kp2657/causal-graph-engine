@@ -5,7 +5,7 @@ Track A validation: run state-space pipeline on real sc-RNA h5ad data.
 Run after CELLxGENE downloads complete.
 
 Usage:
-    conda run -n causal-graph python scripts/run_track_a.py IBD
+    conda run -n causal-graph python scripts/run_track_a.py AMD
     conda run -n causal-graph python scripts/run_track_a.py CAD
 """
 from __future__ import annotations
@@ -77,5 +77,5 @@ def run_track_a(disease: str) -> None:
 
 
 if __name__ == "__main__":
-    disease = sys.argv[1] if len(sys.argv) > 1 else "IBD"
+    disease = sys.argv[1] if len(sys.argv) > 1 else "coronary artery disease"
     run_track_a(disease)

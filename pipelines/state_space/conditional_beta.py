@@ -41,8 +41,6 @@ def estimate_conditional_beta(
     eqtl_data: dict[str, Any] | None = None,
     coloc_h4: float | None = None,
     program_loading: float | None = None,
-    lincs_signature: dict[str, Any] | None = None,
-    program_gene_set: set[str] | None = None,
     pooled_perturbseq_data: dict[str, Any] | None = None,
 ) -> ConditionalBeta:
     """
@@ -60,9 +58,6 @@ def estimate_conditional_beta(
         eqtl_data:              GTEx eQTL result for this gene/tissue.
         coloc_h4:               COLOC H4 for eQTL ∩ GWAS.
         program_loading:        NMF loading for gene in this program (scales eQTL-MR beta).
-        lincs_signature:        LINCS L1000 differential expression for gene KD:
-                                {gene_symbol → log2fc or {"log2fc": float}}.
-        program_gene_set:       Set of gene symbols defining the program (for LINCS overlap).
         pooled_perturbseq_data: Pooled (cross-cell-type) Perturb-seq; used as fallback.
 
     Returns:
@@ -71,7 +66,6 @@ def estimate_conditional_beta(
     from pipelines.ota_beta_estimation import (
         estimate_beta_tier1,
         estimate_beta_tier2,
-        estimate_beta_tier3,
     )
 
     # Tier 1 — cell-type-matched Perturb-seq
@@ -104,22 +98,6 @@ def estimate_conditional_beta(
             context_verified=False,
             evidence_tier=t2.get("evidence_tier", "Tier2_TrajectoryInferred"),
             data_source=t2.get("data_source", "GTEx_eQTL_MR"),
-        )
-
-    # Tier 3 — LINCS L1000
-    t3 = estimate_beta_tier3(gene, program_id, lincs_signature, program_gene_set)
-    if t3 is not None and math.isfinite(t3.get("beta", float("nan"))):
-        return ConditionalBeta(
-            gene=gene,
-            program_id=program_id,
-            cell_type=cell_type,
-            disease=disease,
-            beta=float(t3["beta"]),
-            beta_se=t3.get("beta_se"),
-            pooled_fallback=False,
-            context_verified=False,
-            evidence_tier=t3.get("evidence_tier", "Tier3_TrajectoryProxy"),
-            data_source=t3.get("data_source", "LINCS_L1000"),
         )
 
     # Pooled fallback — cross-cell-type data
@@ -164,8 +142,6 @@ def estimate_conditional_betas_for_program(
     eqtl_data_by_gene: dict[str, dict] | None = None,
     coloc_h4_by_gene: dict[str, float] | None = None,
     program_loadings: dict[str, float] | None = None,
-    lincs_signatures_by_gene: dict[str, dict] | None = None,
-    program_gene_set: set[str] | None = None,
     pooled_perturbseq_data: dict[str, Any] | None = None,
 ) -> list[ConditionalBeta]:
     """
@@ -180,8 +156,6 @@ def estimate_conditional_betas_for_program(
         eqtl_data_by_gene:   {gene: GTEx eQTL result dict}.
         coloc_h4_by_gene:    {gene: COLOC H4 float}.
         program_loadings:    {gene: nmf_loading} — passed to eQTL-MR scaling.
-        lincs_signatures_by_gene: {gene: LINCS L1000 signature dict}.
-        program_gene_set:    Gene set for the program (for LINCS overlap scoring).
         pooled_perturbseq_data: Pooled fallback data.
 
     Returns:
@@ -198,8 +172,6 @@ def estimate_conditional_betas_for_program(
             eqtl_data=(eqtl_data_by_gene or {}).get(gene),
             coloc_h4=(coloc_h4_by_gene or {}).get(gene),
             program_loading=(program_loadings or {}).get(gene),
-            lincs_signature=(lincs_signatures_by_gene or {}).get(gene),
-            program_gene_set=program_gene_set,
             pooled_perturbseq_data=pooled_perturbseq_data,
         )
         results.append(cb)

@@ -39,11 +39,11 @@ def _make_full_pipeline_result(
     var = pd.DataFrame(index=[f"GENE{i:03d}" for i in range(n_genes)])
     adata = anndata.AnnData(X=X, obs=obs, var=var)
 
-    latent = build_disease_latent_space("IBD", [], _adata_override=adata)
+    latent = build_disease_latent_space("AMD", [], _adata_override=adata)
     if latent.get("error"):
         return None, None
 
-    states = define_cell_states(latent, "IBD")
+    states = define_cell_states(latent, "AMD")
     return latent, states
 
 
@@ -101,7 +101,7 @@ class TestAssignBasins:
         from models.evidence import CellState
         from pipelines.state_space.transition_graph import _assign_basins
         states = [
-            CellState(state_id="s0", disease="IBD", cell_type="mac",
+            CellState(state_id="s0", disease="AMD", cell_type="rpe",
                       resolution="intermediate", n_cells=50,
                       pathological_score=0.85, stability_score=0.7),
         ]
@@ -112,7 +112,7 @@ class TestAssignBasins:
         from models.evidence import CellState
         from pipelines.state_space.transition_graph import _assign_basins
         states = [
-            CellState(state_id="s1", disease="IBD", cell_type="mac",
+            CellState(state_id="s1", disease="AMD", cell_type="rpe",
                       resolution="intermediate", n_cells=50,
                       pathological_score=0.10, stability_score=0.8),
         ]
@@ -124,7 +124,7 @@ class TestAssignBasins:
         from pipelines.state_space.transition_graph import _assign_basins
         from pipelines.state_space.schemas import ESCAPE_STABILITY_THRESHOLD
         states = [
-            CellState(state_id="s2", disease="IBD", cell_type="mac",
+            CellState(state_id="s2", disease="AMD", cell_type="rpe",
                       resolution="intermediate", n_cells=20,
                       pathological_score=0.75,
                       stability_score=ESCAPE_STABILITY_THRESHOLD - 0.05),
@@ -136,7 +136,7 @@ class TestAssignBasins:
         from models.evidence import CellState
         from pipelines.state_space.transition_graph import _assign_basins
         states = [
-            CellState(state_id="s3", disease="IBD", cell_type="mac",
+            CellState(state_id="s3", disease="AMD", cell_type="rpe",
                       resolution="intermediate", n_cells=30,
                       pathological_score=None),
         ]
@@ -156,7 +156,7 @@ class TestInferStateTransitionGraph:
 
     def test_output_has_required_keys(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         required = [
             "transitions", "transition_matrix", "state_labels",
             "basin_assignments", "healthy_basin_ids", "pathologic_basin_ids",
@@ -169,34 +169,34 @@ class TestInferStateTransitionGraph:
     def test_transitions_are_state_transition_objects(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
         from models.evidence import StateTransition
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         for t in result["transitions"]:
             assert isinstance(t, StateTransition)
 
     def test_transitions_carry_pseudotime_provenance(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
         from pipelines.state_space.schemas import PROV_PSEUDOTIME_INFERRED
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         for t in result["transitions"]:
             assert PROV_PSEUDOTIME_INFERRED in t.direction_evidence
 
     def test_basin_assignments_covers_all_states(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         basin_ids  = set(result["basin_assignments"].keys())
         state_ids  = set(result["state_labels"])
         assert basin_ids == state_ids
 
     def test_healthy_and_pathologic_non_overlapping(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         healthy  = set(result["healthy_basin_ids"])
         patholog = set(result["pathologic_basin_ids"])
         assert len(healthy & patholog) == 0
 
     def test_transition_matrix_square(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         T = result["transition_matrix"]
         n = len(result["state_labels"])
         assert T.shape == (n, n)
@@ -204,7 +204,7 @@ class TestInferStateTransitionGraph:
     def test_confidence_summary_has_provenance(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
         from pipelines.state_space.schemas import PROV_PSEUDOTIME_INFERRED
-        result = infer_state_transition_graph(self.latent, self.states, "IBD")
+        result = infer_state_transition_graph(self.latent, self.states, "AMD")
         cs = result["confidence_summary"]
         assert cs["provenance"] == PROV_PSEUDOTIME_INFERRED
 
@@ -212,14 +212,14 @@ class TestInferStateTransitionGraph:
         from pipelines.state_space.transition_graph import infer_state_transition_graph
         with pytest.raises(NotImplementedError):
             infer_state_transition_graph(
-                self.latent, self.states, "IBD", mode="velocity"
+                self.latent, self.states, "AMD", mode="velocity"
             )
 
     def test_error_latent_raises(self):
         from pipelines.state_space.transition_graph import infer_state_transition_graph
         with pytest.raises(ValueError, match="error"):
             infer_state_transition_graph(
-                {"error": "missing h5ad", "adata": None}, {}, "IBD"
+                {"error": "missing h5ad", "adata": None}, {}, "AMD"
             )
 
 
@@ -231,7 +231,7 @@ class TestGetBasinSummary:
         latent, states = _make_full_pipeline_result(seed=7)
         if latent is None:
             pytest.skip("latent build failed")
-        result = infer_state_transition_graph(latent, states, "IBD")
+        result = infer_state_transition_graph(latent, states, "AMD")
         summary = get_basin_summary(result)
         assert "n_states" in summary
         assert "n_transitions" in summary

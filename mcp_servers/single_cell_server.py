@@ -587,39 +587,44 @@ def _resolve_gtex_gencode_id(gene_symbol: str) -> str | None:
         return _resolve_gtex_gencode_id_live(gene_symbol)
 
 
+def _query_gtex_v10_median_expression_live(gene_symbol: str) -> list[float] | None:
+    gencode_id = _resolve_gtex_gencode_id(gene_symbol)
+    if not gencode_id:
+        return None
+    resp = httpx.get(
+        f"{GTEX_V10_API}/expression/medianGeneExpression",
+        params={"gencodeId": gencode_id, "datasetId": "gtex_v8"},
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    records = data.get("data", data if isinstance(data, list) else [])
+    tpm_values = [
+        float(r.get("median", r.get("medianTpm", 0.0)))
+        for r in records
+        if r.get("median") is not None or r.get("medianTpm") is not None
+    ]
+    return tpm_values if tpm_values else None
+
+
 def _query_gtex_v10_median_expression(gene_symbol: str) -> list[float] | None:
     """
     Query GTEx v10 REST API for median gene expression across all tissues.
-
-    Endpoint: GET /expression/medianGeneExpression
-    Returns per-tissue median TPM values (54+ tissues in v10).
-
-    Returns sorted list of median TPM values, or None on failure.
+    Results are persisted in the SQLite API cache (TTL 365 days) — GTEx v8
+    expression values are static.
     """
     try:
-        gencode_id = _resolve_gtex_gencode_id(gene_symbol)
-        if not gencode_id:
-            return None
-        resp = httpx.get(
-            f"{GTEX_V10_API}/expression/medianGeneExpression",
-            params={
-                "gencodeId": gencode_id,
-                "datasetId": "gtex_v8",
-            },
-            timeout=15.0,
+        from pipelines.api_cache import get_cache
+        return get_cache().get_or_set(
+            "_query_gtex_v10_median_expression", (gene_symbol.upper(),), {},
+            lambda: _query_gtex_v10_median_expression_live(gene_symbol),
+            ttl_days=365,
         )
-        resp.raise_for_status()
-        data = resp.json()
-        # Response: {"data": [{"tissueSiteDetailId": str, "median": float, ...}, ...]}
-        records = data.get("data", data if isinstance(data, list) else [])
-        tpm_values = [
-            float(r.get("median", r.get("medianTpm", 0.0)))
-            for r in records
-            if r.get("median") is not None or r.get("medianTpm") is not None
-        ]
-        return tpm_values if tpm_values else None
     except Exception:
-        return None
+        try:
+            return _query_gtex_v10_median_expression_live(gene_symbol)
+        except Exception:
+            return None
 
 
 _TISSUE_WEIGHT_CACHE: dict[tuple, float] = {}  # in-process cache (TTL: process lifetime)

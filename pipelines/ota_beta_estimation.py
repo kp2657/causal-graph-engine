@@ -80,23 +80,17 @@ from config.scoring_thresholds import COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX
 # ---------------------------------------------------------------------------
 
 _CELL_TYPE_MATCHED_DATASETS: dict[str, set[str]] = {
-    # AMD: RPE1 is retinal pigment epithelium — correct tissue match
-    # Include all known dataset IDs and cell_line strings that refer to RPE1 data
-    "AMD":  {"replogle_2022_rpe1", "RPE1", "rpe1", "RPE1_essential"},
     # CAD: Schnitzler HCASMC/HAEC and Natsume HAEC are vascular cell matches
-    # Include dataset IDs, GEO accessions, and cell_line strings
     "CAD":  {"schnitzler_cad_vascular", "natsume_2023_haec",
              "HCASMC", "HAEC", "HCASMC_HAEC",
              "Schnitzler_GSE210681", "GSE210681"},
-    # IBD: THP-1 monocyte and BMDC are gut-immune matches; K562 is also myeloid → accept
-    "IBD":  {"papalexi_2021_thp1", "dixit_2016_bmdc", "replogle_2022_k562", "K562", "k562"},
-    # RA: monocyte/immune match; K562 acceptable as myeloid proxy
-    "RA":   {"papalexi_2021_thp1", "frangieh_2021_a375", "replogle_2022_k562", "K562", "k562"},
-    # SLE: immune context; K562 acceptable as myeloid proxy
-    "SLE":  {"papalexi_2021_thp1", "frangieh_2021_a375", "replogle_2022_k562", "K562", "k562"},
-    # AD: iPSC neurons first; RPE1 and K562 are mismatched
-    "AD":   {"ursu_2022_ipsc_neuron"},
-    # T2D: no liver/pancreas match available; K562 accepted as best proxy for now
+    # RA: CZI CD4+ T is now the primary match (Th1/Th17); K562 fallback
+    "RA":   {"czi_2025_cd4t_perturb", "replogle_2022_k562", "K562", "k562"},
+    # SLE: CZI CD4+ T primary human cells is best match; K562 fallback
+    "SLE":  {"czi_2025_cd4t_perturb", "papalexi_2021_thp1", "replogle_2022_k562", "K562", "k562"},
+    # DED: shares CZI CD4+ T source with SLE (Th17/Th1 inflammatory mechanism)
+    "DED":  {"czi_2025_cd4t_perturb", "replogle_2022_k562", "K562", "k562"},
+    # T2D: no pancreas match available; K562 accepted as best proxy for now
     "T2D":  {"replogle_2022_k562", "K562", "k562"},
 }
 
@@ -110,10 +104,10 @@ def _is_cell_type_matched(cell_type: str, disease: str | None) -> bool:
         return True   # no context → don't penalise
     disease_upper = disease.upper().replace("-", "").replace(" ", "_")
     # Normalise common disease aliases
-    _alias = {"CORONARY_ARTERY_DISEASE": "CAD", "AGE_RELATED_MACULAR_DEGENERATION": "AMD",
-               "MACULAR_DEGENERATION": "AMD", "INFLAMMATORY_BOWEL_DISEASE": "IBD",
+    _alias = {"CORONARY_ARTERY_DISEASE": "CAD",
                "RHEUMATOID_ARTHRITIS": "RA", "SYSTEMIC_LUPUS_ERYTHEMATOSUS": "SLE",
-               "ALZHEIMERS": "AD", "ALZHEIMERS_DISEASE": "AD", "TYPE_2_DIABETES": "T2D"}
+               "DRY_EYE_DISEASE": "DED", "DRY_EYE_SYNDROME": "DED",
+               "TYPE_2_DIABETES": "T2D"}
     disease_key = _alias.get(disease_upper, disease_upper)
     matched = _CELL_TYPE_MATCHED_DATASETS.get(disease_key)
     if matched is None:
@@ -330,31 +324,13 @@ def estimate_beta_tier2_ot_instrument(
             "note":          "OT eQTL credible set × program loading (MR)",
         }
 
-    # Fall back to GWAS credible set instrument
-    best_gwas = next(
-        (i for i in ot_instruments["instruments"] if i["instrument_type"] == "gwas_credset"),
-        None,
-    )
-    if best_gwas:
-        gwas_beta = best_gwas["beta"]
-        se        = best_gwas.get("se")
-        # Project GWAS variant effect onto program loading
-        beta = gwas_beta * loading
-        return {
-            "beta":          beta,
-            "beta_se":       (se * abs(loading)) if se else None,
-            "ci_lower":      None,
-            "ci_upper":      None,
-            "beta_sigma":    (abs(se * loading) if se else abs(beta) * 0.35),
-            "evidence_tier": "Tier2_Convergent",
-            "data_source":   f"OT_GWAS_credset_{best_gwas.get('study_id', 'unknown')}",
-            "instrument_type": "gwas_projected",
-            "note":          (
-                "GWAS credible-set beta × program loading. "
-                "Direction inferred from genetic association, not direct perturbation."
-            ),
-        }
-
+    # GWAS credible-set β is NOT used as a program-level proxy.
+    # β_{gene→program} requires a direct measurement (eQTL colocalising with the
+    # program, or perturb-seq KO).  Projecting a GWAS variant β onto program
+    # loadings conflates genetic association with causal program effect and
+    # produces a flat uniform beta across all programs that cancels in the OTA
+    # sum when program gammas have mixed signs.  Return None so the gene is
+    # scored via the OT-L2G genetic anchor path rather than a spurious β×γ sum.
     return None
 
 
@@ -864,76 +840,6 @@ def estimate_beta_tier2_eqtl_direction(
     }
 
 
-# ---------------------------------------------------------------------------
-# Tier 3: LINCS L1000 genetic perturbation
-# ---------------------------------------------------------------------------
-
-def estimate_beta_tier3(
-    gene: str,
-    program: str,
-    lincs_signature: dict | None = None,
-    program_gene_set: set[str] | None = None,
-    cell_line: str | None = None,
-) -> dict | None:
-    """
-    Tier 3 β: LINCS L1000 genetic perturbation signature.
-
-    LINCS L1000 measures transcriptional response to shRNA knockdown or ORF
-    overexpression across ~9 cancer cell lines.  This is direct perturbation
-    data (not co-expression) but in a cell line that may not match the
-    disease-relevant cell type.
-
-    β_{gene→P} = overlap score between gene X knockdown signature and
-                 program P gene set (Jaccard or weighted mean log2FC).
-
-    Args:
-        gene:             Gene symbol
-        program:          Program name
-        lincs_signature:  L1000 differential expression dict:
-                          {gene_symbol → {log2fc, z_score}} for gene X KD
-        program_gene_set: Set of gene symbols defining program P
-        cell_line:        LINCS cell line used (A375, HT29, MCF7, etc.)
-    """
-    if lincs_signature is None or program_gene_set is None:
-        return None
-
-    # Compute weighted overlap: mean log2fc of program genes in KD signature.
-    # Handles both {gene: float} (iLINCS flat) and {gene: {"log2fc": float}} shapes.
-    def _extract_log2fc(v: object) -> float:
-        if isinstance(v, dict):
-            return float(v.get("log2fc") or v.get("Value") or 0.0)
-        return float(v)
-
-    program_hits = {
-        g: _extract_log2fc(lincs_signature[g])
-        for g in program_gene_set
-        if g in lincs_signature
-    }
-    if not program_hits:
-        return None
-
-    # Sign-preserving mean effect of KD on program genes
-    beta = sum(program_hits.values()) / len(program_gene_set)
-    coverage = len(program_hits) / len(program_gene_set)
-
-    if coverage < 0.05:  # < 5% of program genes measured — too sparse
-        return None
-
-    line_str = cell_line or "unknown_cell_line"
-    return {
-        "beta":          beta,
-        "beta_se":       None,
-        "ci_lower":      None,
-        "ci_upper":      None,
-        "beta_sigma":    abs(beta) * 0.35,
-        "evidence_tier": "Tier3_Provisional",
-        "data_source":   f"LINCS_L1000_{line_str}_shRNA",
-        "coverage":      round(coverage, 3),
-        "note":          (
-            f"Direct perturbation (shRNA KD) in {line_str}; "
-            "cell line may not match disease-relevant cell type"
-        ),
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -1184,7 +1090,6 @@ def estimate_beta(
     eqtl_data: dict | None = None,
     coloc_h4: float | None = None,
     program_loading: float | None = None,
-    lincs_signature: dict | None = None,
     program_gene_set: set[str] | None = None,
     geneformer_result: dict | None = None,
     known_tier12_betas: dict[str, float] | None = None,
@@ -1215,20 +1120,18 @@ def estimate_beta(
       2. Tier2L   — Latent Hijack (Cross-disease mechanistic transfer)
       2. Tier2.5  — eQTL direction-only (eQTL present but COLOC H4 < 0.8; sigma=0.50)
       2. Tier2rb  — Rare variant burden direction (UKB WES collapsing; sigma=0.60)
-      3. Tier3    — LINCS L1000 perturbation (direct but cell-line mismatched)
-      4. Virtual-A — Geneformer in silico (trained on perturbation data)
+      3. Virtual-A — Geneformer in silico (trained on perturbation data)
       4. Virtual-A upgraded — foundation model cosine-similarity transfer
       5. Virtual-B — pathway membership (annotation proxy, no causal basis)
 
     Co-expression, GRN weights, and pathway-annotation-derived synthetic betas
     are intentionally absent from this chain — they do not provide causal evidence.
     """
-    # Tier 1 — demote to Tier3 if cell type is not disease-relevant
+    # Tier 1 — Perturb-seq KO (cell-type mismatch noted in evidence_tier, not demoted)
     _matched = _is_cell_type_matched(cell_type, disease)
     beta = estimate_beta_tier1(gene, program, perturbseq_data, cell_type=cell_type, cell_type_matched=_matched)
     if beta is not None:
-        _tier_used = 1 if _matched else 3
-        return {**beta, "gene": gene, "program": program, "tier_used": _tier_used}
+        return {**beta, "gene": gene, "program": program, "tier_used": 1}
 
     # Tier 2a — GTEx eQTL-MR
     beta = estimate_beta_tier2(gene, program, eqtl_data, coloc_h4, program_loading)
@@ -1265,11 +1168,6 @@ def estimate_beta(
     if beta is not None:
         return {**beta, "gene": gene, "program": program, "tier_used": 2}
 
-    # Tier 3
-    beta = estimate_beta_tier3(gene, program, lincs_signature, program_gene_set, cell_line)
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 3}
-
     # Virtual-A: Geneformer
     beta = estimate_beta_geneformer(gene, program, geneformer_result)
     if beta is not None:
@@ -1298,7 +1196,6 @@ def build_beta_matrix(
     eqtl_data: dict[str, dict] | None = None,
     coloc_data: dict[str, float] | None = None,
     program_loadings: dict[str, dict[str, float]] | None = None,
-    lincs_data: dict[str, dict] | None = None,
     program_gene_sets: dict[str, set[str]] | None = None,
     geneformer_data: dict[str, dict] | None = None,
     pathway_membership: dict[str, set[str]] | None = None,
@@ -1318,7 +1215,6 @@ def build_beta_matrix(
         eqtl_data:         GTEx eQTL data keyed by gene → {nes, se, tissue}
         coloc_data:        COLOC H4 posteriors keyed by gene
         program_loadings:  NMF/cNMF loadings keyed by program → gene → weight
-        lincs_data:        L1000 KD signatures keyed by gene → {gene_symbol → {log2fc}}
         program_gene_sets: Gene set definitions keyed by program → set[gene]
         geneformer_data:   Geneformer outputs keyed by gene → program → {delta_activity}
         pathway_membership: Pathway membership keyed by program → set[gene]
@@ -1334,7 +1230,7 @@ def build_beta_matrix(
         cell_type = ctx.get("cell_line") or (ctx.get("cell_types") or ["unknown"])[0]
 
     matrix: dict[str, dict[str, float | None]] = {}
-    tier_summary: dict[int, int] = {1: 0, 2: 0, 3: 0, 4: 0}
+    tier_summary: dict[int, int] = {1: 0, 2: 0, 4: 0}
 
     for gene in genes:
         matrix[gene] = {}
@@ -1342,7 +1238,6 @@ def build_beta_matrix(
             loading = (program_loadings or {}).get(program, {}).get(gene)
             pg_set  = (program_gene_sets or {}).get(program)
             pm      = gene in (pathway_membership or {}).get(program, set())
-            lincs_sig = (lincs_data or {}).get(gene)
 
             gf_result = None
             if geneformer_data and gene in geneformer_data:
@@ -1355,7 +1250,6 @@ def build_beta_matrix(
                 eqtl_data=(eqtl_data or {}).get(gene),
                 coloc_h4=(coloc_data or {}).get(gene),
                 program_loading=loading,
-                lincs_signature=lincs_sig,
                 program_gene_set=pg_set,
                 geneformer_result=gf_result,
                 pathway_member=pm if pm else None,
@@ -1408,7 +1302,6 @@ def build_beta_matrix(
     note = (
         f"β tiers — T1(cell-matched Perturb-seq)={tier_summary[1]}, "
         f"T2(eQTL-MR)={tier_summary[2]}, "
-        f"T3(LINCS L1000)={tier_summary[3]}, "
         f"Virtual={tier_summary[4]}"
     )
 

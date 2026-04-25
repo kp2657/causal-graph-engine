@@ -6,9 +6,12 @@ to populate the ProgramBetaMatrix for all genes in the target list.
 """
 from __future__ import annotations
 
+import logging
 import os
 import sys
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -21,8 +24,6 @@ BETA_EXPECTATIONS: dict[tuple[str, str], str] = {
     ("HLA-DRA","MHC_class_II_presentation"):     "negative",
 }
 
-from models.disease_registry import get_disease_key as _get_disease_key
-
 # Tier rank for best-tier tracking (lower = better)
 _TIER_RANK: dict[str, int] = {
     "Tier1_Interventional":   1,
@@ -33,7 +34,6 @@ _TIER_RANK: dict[str, int] = {
     "Tier2p_pQTL_MR":         2,
     "Tier2_eQTL_direction":   2,
     "Tier2rb_RareBurden":     2,
-    "Tier2pt_ProteinChannel":  2,
     "Tier3_Provisional":      3,
     "provisional_virtual":    4,
 }
@@ -55,19 +55,47 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         get_program_gene_loadings,
     )
     from mcp_servers.gwas_genetics_server import query_gtex_eqtl
-    from mcp_servers.open_targets_server import get_ot_genetic_instruments
+    from mcp_servers.open_targets_server import (
+        get_ot_genetic_instruments,
+        get_ot_genetic_instruments_bulk,
+    )
     from mcp_servers.perturbseq_server import get_perturbseq_signature
     from pipelines.ota_beta_estimation import estimate_beta
-    from pipelines.cnmf_programs import get_programs_for_disease
+    from pipelines.cnmf_programs import get_programs_for_disease, run_cnmf_pipeline
     from graph.schema import DISEASE_CELL_TYPE_MAP
 
+    # h5ad paths for NMF auto-trigger (keyed by perturb_seq_source)
+    _base = Path(__file__).parent.parent.parent
+    _CNMF_H5AD_MAP: dict[str, str] = {
+        "Replogle2022_RPE1":       str(_base / "data/perturbseq/replogle_2022_rpe1/rpe1_normalized_bulk_01.h5ad"),
+        # Schnitzler cardiac endothelial (HAEC) Perturb-seq; MI vs non-MI disease axis
+        "schnitzler_cad_vascular": str(_base / "data/cellxgene/CAD/CAD_cardiac_endothelial_cell.h5ad"),
+    }
+
     # Use discovery-aware program source: cNMF on disk → MSigDB Hallmark → hardcoded
-    disease_key_for_programs = _get_disease_key(
-        disease_query.get("disease_name", "").lower()
-    ) or ""
+    disease_key_for_programs = disease_query.get("disease_key") or ""
     programs_info = get_programs_for_disease(disease_key_for_programs) if disease_key_for_programs \
         else get_programs_for_disease("")
     raw_programs = programs_info.get("programs", [])
+
+    # Auto-trigger NMF when cache is missing
+    if not raw_programs and disease_key_for_programs:
+        cell_type = programs_info.get("cell_type", "")
+        h5ad_path = _CNMF_H5AD_MAP.get(cell_type, "")
+        if h5ad_path and Path(h5ad_path).exists():
+            logger.info("No program cache for %s; running cNMF on %s (cell_type=%s)",
+                        disease_key_for_programs, Path(h5ad_path).name, cell_type)
+            nmf_result = run_cnmf_pipeline(
+                h5ad_path=h5ad_path,
+                cell_type=cell_type,
+                output_dir=str(_base / "data/cnmf_programs"),
+            )
+            raw_programs = nmf_result.get("programs", [])
+            programs_info = nmf_result
+        else:
+            logger.warning("No NMF cache and no h5ad for cell_type=%r; continuing with empty program set",
+                           cell_type)
+
     # raw_programs is a list of strings (program names) from the registry
     program_ids = [
         p if isinstance(p, str) else (p.get("program_id") or p.get("name", ""))
@@ -98,8 +126,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # ------------------------------------------------------------------
     # Determine disease-relevant GTEx tissue from DISEASE_CELL_TYPE_MAP
     # ------------------------------------------------------------------
-    disease_name = disease_query.get("disease_name", "").lower()
-    disease_key = _get_disease_key(disease_name) or ""
+    disease_key = disease_query.get("disease_key") or ""
     ctx = DISEASE_CELL_TYPE_MAP.get(disease_key, {})
 
     # Two-tier gene split: GWAS genes get full API stack; Perturb-seq
@@ -112,7 +139,6 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # Disease-specific rationale is in DISEASE_CELL_TYPE_MAP (schema.py).
     # Example: AMD → ["Liver", "Whole_Blood"] catches CFH/C3/CFD (liver-synthesised complement).
     gtex_tissues_secondary: list[str] = ctx.get("gtex_tissues_secondary", [])
-    lincs_cell_line = ctx.get("lincs_cell_line")
     efo_id: str   = disease_query.get("efo_id", "")
 
     # Phase Z7: Motif and Library for Latent Hijack
@@ -193,6 +219,24 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             )
     except Exception as exc:
         warnings.append(f"Replogle h5ad pre-load skipped: {exc}")
+
+    # ------------------------------------------------------------------
+    # Bulk-prefetch Open Targets genetic instruments for every GWAS gene
+    # up-front.  One bulk call primes the SQLite cache under the exact
+    # keys that the per-gene `get_ot_genetic_instruments(gene, efo_id)`
+    # calls inside the pre-screen and main loop below will look up — so
+    # the loops execute against a warm cache with zero extra network
+    # round-trips.  Saves ~2-3 HTTPS calls per GWAS gene (hundreds per
+    # run for AMD/CAD).  Silent-skip on any failure; falls back to the
+    # per-gene path.
+    # ------------------------------------------------------------------
+    if efo_id:
+        _bulk_target_genes = list(gwas_gene_set) if gwas_gene_set else list(gene_list)
+        if _bulk_target_genes:
+            try:
+                get_ot_genetic_instruments_bulk(_bulk_target_genes, efo_id)
+            except Exception as _bulk_exc:
+                warnings.append(f"OT bulk prefetch failed (falling back to per-gene): {_bulk_exc}")
 
     def _has_nonvirtual_evidence(gene: str) -> bool:
         """
@@ -315,25 +359,6 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     except Exception as _exc_sec:
                         pass  # non-fatal — try next secondary tissue
 
-            # eQTL Catalogue fallback: immune datasets (IBD/RA/SLE relevance)
-            # Only attempted when GTEx returned no eQTLs and disease is immune-relevant.
-            if eqtl_data_for_gene is None:
-                _IMMUNE_DISEASE_KEYS = frozenset({"IBD", "RA", "SLE", "MS", "T1D"})
-                if disease_key in _IMMUNE_DISEASE_KEYS:
-                    try:
-                        from mcp_servers.gwas_genetics_server import query_eqtl_catalogue
-                        catalogue_result = query_eqtl_catalogue(gene)
-                        best_beta = catalogue_result.get("best_beta")
-                        if best_beta is not None:
-                            eqtl_data_for_gene = {
-                                "nes":    float(best_beta),
-                                "se":     catalogue_result.get("best_se"),
-                                "tissue": catalogue_result.get("best_dataset", "immune_catalogue"),
-                                "source": "eQTL_Catalogue",
-                            }
-                    except Exception as exc:
-                        warnings.append(f"{gene}: eQTL Catalogue fallback failed: {exc}")
-
         # --------------------------------------------------------------
         # Pre-fetch OT genetic instruments (Tier 2b): GWAS credible sets
         # and eQTL catalogue betas from Open Targets.
@@ -407,20 +432,6 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 warnings.append(f"{gene}: UKB WES burden pre-fetch failed: {exc}")
 
         # --------------------------------------------------------------
-        # Pre-fetch Perturb-seq CRISPR signature for this gene (Tier 3).
-        # Uses disease-context-matched cell line from perturbseq registry.
-        # One call per gene; reused across all programs.
-        # --------------------------------------------------------------
-        lincs_signature_for_gene: dict | None = None
-        try:
-            ps_result = get_perturbseq_signature(gene, disease_context=disease_key or None)
-            sig = ps_result.get("signature")
-            if sig:
-                lincs_signature_for_gene = sig
-        except Exception as exc:
-            warnings.append(f"{gene}: Perturb-seq pre-fetch failed: {exc}")
-
-        # --------------------------------------------------------------
         # Main β estimation via 4-tier fallback (Tier1 → Tier2 → ... )
         # estimate_beta now receives eqtl_data and program_loading so
         # Tier 2 (eQTL-MR) activates when Tier 1 data is absent.
@@ -450,9 +461,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     sc_eqtl_data=sc_eqtl_data_for_gene,
                     pqtl_data=pqtl_data_for_gene,
                     burden_data=burden_data_for_gene,
-                    lincs_signature=lincs_signature_for_gene,
                     program_gene_set=program_gene_sets.get(pid),
-                    cell_line=lincs_cell_line,
                     cell_type=loaded_perturb_cell_type,
                     disease=disease_key,
                     program_loading=loading,
@@ -503,39 +512,6 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                         tier = "Tier1_Interventional"
             except Exception as exc:
                 warnings.append(f"{gene}: Perturb-seq lookup failed: {exc}")
-
-        # --------------------------------------------------------------
-        # Protein channel: additive virtual arc for protein-level mechanisms.
-        # Runs after the main fallback loop so it never blocks Tier1/2 evidence —
-        # it adds a "__protein_channel__" slot to beta_matrix that carry their
-        # own embedded program_gamma (used by compute_ota_gamma as fallback).
-        # This captures genes like CFH/C3/PCSK9 whose mechanism is post-
-        # translational (complement, secreted proteins, enzyme activity)
-        # and are absent from Perturb-seq transcriptional programs.
-        # --------------------------------------------------------------
-        try:
-            from pipelines.ota_beta_estimation import estimate_beta_tier2pt
-            _gene_ot_score: float = float(disease_query.get("ot_genetic_scores", {}).get(gene, 0.0))
-            _pt = estimate_beta_tier2pt(
-                gene=gene,
-                program="__protein_channel__",
-                ot_instruments=ot_instruments_for_gene,
-                pqtl_data=pqtl_data_for_gene,
-                ot_score=_gene_ot_score,
-            )
-            if _pt is not None:
-                gene_betas["__protein_channel__"] = {
-                    "beta":          _pt["beta"],
-                    "evidence_tier": _pt["evidence_tier"],
-                    "beta_sigma":    _pt.get("beta_sigma"),
-                    "program_gamma": _pt.get("program_gamma"),
-                }
-                # Upgrade tier tracking if Tier2pt fires and gene was virtual
-                if _TIER_RANK.get(_pt["evidence_tier"], 99) < best_tier_rank:
-                    best_tier_rank = _TIER_RANK[_pt["evidence_tier"]]
-                    tier = _pt["evidence_tier"]
-        except Exception as exc:
-            warnings.append(f"{gene}: protein channel failed: {exc}")
 
         beta_matrix[gene] = gene_betas
         evidence_tier_per_gene[gene] = tier
@@ -614,12 +590,26 @@ def _maybe_run_state_space(disease_key: str, warnings: list[str]) -> dict:
         ctx = DISEASE_CELLXGENE_MAP.get(disease_key, {})
         if not ctx:
             return {"available": False, "reason": f"disease_key '{disease_key}' not in DISEASE_CELLXGENE_MAP"}
-        priority_cell = ctx["priority_cell"]
-        h5ad_path = str(
-            _CACHE_ROOT / disease_key / f"{disease_key}_{priority_cell.replace(' ', '_')}.h5ad"
-        )
         from pathlib import Path
-        if not Path(h5ad_path).exists():
+        # Try priority_cell h5ad first; fall back to any other cell type that has a cached file.
+        # This handles the transition from old SMC-priority to new endothelial-priority for CAD
+        # while the endothelial h5ad is not yet downloaded.
+        priority_cell = ctx["priority_cell"]
+        _candidates = [priority_cell] + [c for c in ctx.get("cell_types", []) if c != priority_cell]
+        h5ad_path: str | None = None
+        for _ct in _candidates:
+            _p = _CACHE_ROOT / disease_key / f"{disease_key}_{_ct.replace(' ', '_')}.h5ad"
+            if _p.exists():
+                h5ad_path = str(_p)
+                if _ct != priority_cell:
+                    import warnings as _w
+                    _w.warn(
+                        f"[state_space] {disease_key} priority h5ad ({priority_cell}) not cached; "
+                        f"using fallback: {_ct}. Download correct cell type for full cell-context alignment.",
+                        UserWarning, stacklevel=2,
+                    )
+                break
+        if h5ad_path is None:
             return {"available": False, "reason": f"h5ad not cached for {disease_key} — run download_disease_scrna first"}
     except Exception as exc:
         return {"available": False, "reason": "cache check failed", "error": str(exc)}

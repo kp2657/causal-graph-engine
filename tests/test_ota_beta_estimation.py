@@ -23,7 +23,6 @@ from pipelines.ota_beta_estimation import (
     estimate_beta_tier2_pqtl,
     estimate_beta_tier2_eqtl_direction,
     estimate_beta_tier2_rare_burden,
-    estimate_beta_tier3,
     estimate_beta_virtual,
 )
 
@@ -147,10 +146,21 @@ class TestTier2b:
             GENE, PROGRAM, ot_instruments={"instruments": []}
         ) is None
 
-    def test_returns_dict_with_instruments(self):
+    def test_gwas_credset_returns_none(self):
+        # GWAS credset fallback removed: projecting GWAS β onto program loadings
+        # produces flat uniform beta that cancels in OTA sum with mixed-sign gammas.
         ot = {
             "instruments": [{"beta": 0.15, "se": 0.03, "pvalue": 1e-7,
                               "rsid": "rs999", "instrument_type": "gwas_credset"}]
+        }
+        result = estimate_beta_tier2_ot_instrument(GENE, PROGRAM, ot_instruments=ot)
+        assert result is None
+
+    def test_eqtl_instrument_still_returns_dict(self):
+        ot = {
+            "instruments": [{"beta": 0.22, "se": 0.04, "pvalue": 1e-8,
+                              "rsid": "rs123", "instrument_type": "eqtl",
+                              "tissue": "Liver"}]
         }
         result = estimate_beta_tier2_ot_instrument(GENE, PROGRAM, ot_instruments=ot)
         assert result is not None
@@ -230,24 +240,6 @@ class TestTier2rb:
         )
         if result is not None:
             assert "burden" in result["evidence_tier"].lower() or "Tier2" in result["evidence_tier"]
-
-
-# ---------------------------------------------------------------------------
-# Tier 3 — LINCS/Perturb-seq (matched by program gene set)
-# ---------------------------------------------------------------------------
-
-class TestTier3:
-    def test_returns_none_when_absent(self):
-        assert estimate_beta_tier3(GENE, PROGRAM, lincs_signature=None) is None
-
-    def test_returns_none_below_coverage_threshold(self):
-        """Signature with no overlap with program genes → None."""
-        sparse_sig = {"UNRELATED_GENE_A": -0.5, "UNRELATED_GENE_B": 0.3}
-        prog_genes = {"CFH", "C3", "CFB", "CFD", "C5", "C9", "CLU"}
-        result = estimate_beta_tier3(
-            GENE, PROGRAM, lincs_signature=sparse_sig, program_gene_set=prog_genes
-        )
-        assert result is None
 
 
 # ---------------------------------------------------------------------------

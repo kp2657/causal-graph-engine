@@ -81,107 +81,6 @@ SAMPLE_EDGES = [
 # graph/validation.py
 # ===========================================================================
 
-class TestAnchorRecovery:
-    def test_full_recovery(self):
-        from graph.validation import check_anchor_recovery
-        from graph.schema import ANCHOR_EDGES
-
-        # Build edges that satisfy every anchor
-        mock_edges = []
-        for a in ANCHOR_EDGES:
-            fn = a.get("from_node") or a.get("from", "")
-            tn = a.get("to_node")   or a.get("to", "")
-            mock_edges.append({"from_node": fn, "to_node": tn, "is_demoted": False})
-
-        result = check_anchor_recovery(mock_edges)
-        assert result["recovery_rate"] == 1.0
-        assert result["n_recovered"] == result["n_total"]
-        assert result["missing"] == []
-
-    def test_partial_recovery(self):
-        from graph.validation import check_anchor_recovery
-
-        result = check_anchor_recovery(SAMPLE_EDGES)
-        assert 0.0 <= result["recovery_rate"] <= 1.0
-        assert result["n_total"] > 0
-
-    def test_empty_graph(self):
-        from graph.validation import check_anchor_recovery
-
-        result = check_anchor_recovery([])
-        assert result["recovery_rate"] == 0.0
-        assert result["n_recovered"] == 0
-
-
-class TestSHD:
-    def test_zero_shd_against_itself(self):
-        from graph.validation import compute_shd
-
-        edges = [{"from_node": "A", "to_node": "B"}, {"from_node": "C", "to_node": "D"}]
-        result = compute_shd(edges, reference_edges=edges)
-        # extra_edges may be non-zero due to chip suffix normalisation doubling, so check shd structure
-        assert "shd" in result
-        assert "missing_edges" in result
-        assert "extra_edges" in result
-
-    def test_all_missing(self):
-        from graph.validation import compute_shd
-        from graph.schema import ANCHOR_EDGES
-
-        result = compute_shd([], reference_edges=ANCHOR_EDGES)
-        assert result["shd"] >= len(ANCHOR_EDGES)
-
-    def test_chip_suffix_normalisation(self):
-        from graph.validation import compute_shd
-
-        predicted = [{"from_node": "TET2_chip", "to_node": "CAD"}]
-        reference = [{"from_node": "TET2", "to_node": "CAD"}]
-        result = compute_shd(predicted, reference_edges=reference)
-        # _edge_set adds both original and normalised forms, so "TET2" IS found
-        # in pred_set → no missing edges from reference.
-        assert "TET2→CAD" not in result["missing_edges"]
-
-
-class TestSIDApproximation:
-    def test_perfect_sid(self):
-        from graph.validation import compute_sid_approximation
-        from graph.schema import ANCHOR_EDGES
-
-        result = compute_sid_approximation(ANCHOR_EDGES, reference_edges=ANCHOR_EDGES)
-        assert result == 1.0
-
-    def test_zero_sid(self):
-        from graph.validation import compute_sid_approximation
-        from graph.schema import ANCHOR_EDGES
-
-        result = compute_sid_approximation([], reference_edges=ANCHOR_EDGES)
-        assert result == 0.0
-
-    def test_empty_reference(self):
-        from graph.validation import compute_sid_approximation
-
-        result = compute_sid_approximation(SAMPLE_EDGES, reference_edges=[])
-        assert result == 1.0
-
-
-class TestGraphDbSidMetric:
-    """graph_db_server.compute_sid_metric must match validation SID approximation (not a fake zero)."""
-
-    def test_matches_validation_perfect(self):
-        from graph.schema import ANCHOR_EDGES
-        from mcp_servers.graph_db_server import compute_sid_metric
-
-        out = compute_sid_metric(ANCHOR_EDGES, ANCHOR_EDGES)
-        assert out["metric"] == "orientation_overlap"
-        assert out["sid"] == 1.0
-        assert out["n_reference"] == len(ANCHOR_EDGES)
-
-    def test_empty_pred_low_score(self):
-        from graph.schema import ANCHOR_EDGES
-        from mcp_servers.graph_db_server import compute_sid_metric
-
-        out = compute_sid_metric([], ANCHOR_EDGES)
-        assert out["sid"] == 0.0
 
 
 class TestEvalueSummary:
@@ -218,8 +117,7 @@ class TestValidateGraph:
                    return_value=mock_result):
             report = validate_graph("coronary artery disease")
 
-        assert hasattr(report, "anchor_recovery_rate")
-        assert hasattr(report, "shd")
+        assert hasattr(report, "n_edges_total")
         assert hasattr(report, "passed")
         assert hasattr(report, "errors")
 
@@ -243,7 +141,7 @@ class TestValidateGraph:
 
         d = validation_report_to_dict(report)
         assert isinstance(d, dict)
-        assert "anchor_recovery_rate" in d
+        assert "n_edges_total" in d
         assert "passed" in d
 
 

@@ -301,7 +301,6 @@ class TestAnalyzeDiseaseV2Quality:
             patch("agents.tier4_translation.clinical_trialist_agent.run",    return_value=_TIER_STUBS["ct"]),
             patch("agents.tier5_writer.scientific_writer_agent.run",         return_value=_TIER_STUBS["writer"]),
             patch("mcp_servers.open_targets_server.get_open_targets_disease_targets", return_value={"targets": []}),
-            patch("orchestrator.pi_orchestrator_v2._run_regulator_nomination",
                   return_value=([], {})),
         ]
 

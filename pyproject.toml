@@ -1,6 +1,20 @@
 [project]
 name = "causal-graph-engine"
-version = "0.2.0"
+version = "0.2.2"
+description = "Multiagent genomics pipeline for causal drug target discovery using the Ota et al. causal-effect decomposition (γ = Σ β×γ)."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [{name = "Kenneth Pham"}]
+keywords = ["genomics", "drug discovery", "causal inference", "GWAS", "CRISPR", "Perturb-seq", "single-cell"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+]
 requires-python = ">=3.11"
 
 dependencies = [

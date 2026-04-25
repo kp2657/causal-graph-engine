@@ -40,11 +40,14 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import sys
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 
@@ -86,6 +89,12 @@ _DATASET_H5AD_REGISTRY: dict[str, dict] = {
     },
 }
 
+# Datasets whose betas come from pre-computed signatures (not h5ad matrices).
+# Maps dataset_id → path to signatures.json.gz relative to _PERTURBSEQ_DIR.
+_DATASET_SIGNATURES_REGISTRY: dict[str, Path] = {
+    "Schnitzler_GSE210681": _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular" / "signatures.json.gz",
+}
+
 # Keep module-level path for backward compat (old callers that don't pass dataset_id)
 _H5AD_PATH = _ROOT / "data" / "replogle_2022_k562_essential.h5ad"
 
@@ -95,21 +104,68 @@ def _get_h5ad_path(dataset_id: str) -> Path:
     reg = _DATASET_H5AD_REGISTRY.get(dataset_id)
     if reg:
         return _PERTURBSEQ_DIR / dataset_id / reg["filename"]
-    # Fallback: legacy K562 path
+    # Fallback: legacy K562 path — but only for h5ad-backed datasets.
+    # Signatures-backed datasets (e.g. Schnitzler) should never fall through here.
     return _H5AD_PATH
 
 
-def _get_cache_path(dataset_id: str, program_gene_sets: dict[str, list[str]]) -> Path:
+def _load_from_signatures(
+    signatures_path: Path,
+    program_gene_sets: dict[str, list[str]],
+) -> dict[str, dict]:
     """
-    Compute a cache path keyed by dataset_id and a hash of program gene sets.
-    The hash is over (sorted program names, total gene count) so that adding
-    new programs or changing gene membership invalidates the cache.
+    Compute beta projections from a pre-computed signatures.json.gz file.
+
+    Signatures format: {pert_gene: {output_gene: mean_log2fc}}
+    Uses the same uniform-loading projection as _project_onto_programs:
+        β_{gene→prog} = Σ_g (log2fc[g] × 1/√n)  for g in program gene set
+
+    Returns same format as load_replogle_betas:
+        {perturbed_gene: {"programs": {program_name: {beta, se, ci_lower, ci_upper}}}}
     """
-    # Hash: sorted program names + gene counts (fast, stable)
-    hash_input = "|".join(
-        f"{k}:{len(v)}" for k, v in sorted(program_gene_sets.items())
-    )
-    programs_hash = hashlib.md5(hash_input.encode()).hexdigest()[:12]
+    import gzip as _gz
+
+    with _gz.open(str(signatures_path), "rt") as fh:
+        signatures: dict[str, dict[str, float]] = json.load(fh)
+
+    result: dict[str, dict] = {}
+    for pert_gene, fc_map in signatures.items():
+        prog_betas: dict[str, dict] = {}
+        for prog_name, gene_list in program_gene_sets.items():
+            overlap = [g for g in gene_list if g in fc_map]
+            if not overlap:
+                continue
+            n = len(overlap)
+            loading = 1.0 / math.sqrt(n)
+            beta_val = sum(fc_map[g] * loading for g in overlap)
+            prog_betas[prog_name] = {
+                "beta":     round(beta_val, 6),
+                "se":       0.0,
+                "ci_lower": round(beta_val, 6),
+                "ci_upper": round(beta_val, 6),
+            }
+        if prog_betas:
+            result[pert_gene] = {"programs": prog_betas}
+
+    return result
+
+
+def _get_cache_path(
+    dataset_id: str,
+    program_gene_sets: dict[str, list[str]],
+    h5ad_path: "Path | None" = None,
+) -> Path:
+    """
+    Compute a cache path keyed by dataset_id, actual program gene content, and
+    h5ad source path. Changing any gene in any program OR switching the source
+    h5ad will produce a new hash and force recomputation.
+    """
+    parts = []
+    for k, v in sorted(program_gene_sets.items()):
+        parts.append(f"{k}:{','.join(sorted(v))}")
+    if h5ad_path is not None:
+        parts.append(f"h5ad:{Path(h5ad_path).resolve()}")
+    programs_hash = hashlib.md5("|".join(parts).encode()).hexdigest()[:12]
     cache_dir = _PERTURBSEQ_DIR / dataset_id
     cache_dir.mkdir(parents=True, exist_ok=True)
     return cache_dir / f"beta_cache_{programs_hash}.json"
@@ -137,13 +193,13 @@ def _download_h5ad(dataset_id: str) -> Path:
     # return AWS WAF challenge pages (HTTP 202 + empty body) to non-browser clients.
     url = f"https://ndownloader.figshare.com/files/{file_id}"
     size_gb = reg["size_gb"]
-    print(f"[replogle_parser] Downloading {dataset_id} h5ad ({size_gb:.2f} GB) from figshare ...")
-    print(f"[replogle_parser]   URL: {url}")
-    print(f"[replogle_parser]   Destination: {dest}")
+    logger.info("Downloading %s h5ad (%.2f GB) from figshare ...", dataset_id, size_gb)
+    logger.info("  URL: %s", url)
+    logger.info("  Destination: %s", dest)
 
     try:
         urllib.request.urlretrieve(url, str(dest))
-        print(f"[replogle_parser] Download complete: {dest}")
+        logger.info("Download complete: %s", dest)
     except Exception as exc:
         if dest.exists():
             dest.unlink()
@@ -409,12 +465,35 @@ def load_replogle_betas(
     Raises:
         FileNotFoundError: if h5ad file not present and auto_download=False.
     """
+    # --- Signatures-backed datasets (e.g. Schnitzler) skip h5ad entirely ---
+    sig_path = _DATASET_SIGNATURES_REGISTRY.get(dataset_id or "")
+    if sig_path is not None:
+        if cache_path is None:
+            cache_path = _get_cache_path(dataset_id, program_gene_sets, sig_path)
+        if not force_recompute and cache_path.exists():
+            with open(cache_path) as f:
+                data = json.load(f)
+            logger.info("Cache hit (signatures): %s (%d genes)", cache_path, len(data))
+            return data
+        if not sig_path.exists():
+            raise FileNotFoundError(
+                f"Signatures file not found: {sig_path}. "
+                f"Run: python -m mcp_servers.perturbseq_server preprocess {dataset_id} <log2fc_path>"
+            )
+        logger.info("Loading signatures: %s", sig_path)
+        betas = _load_from_signatures(sig_path, program_gene_sets)
+        logger.info("β computed for %d perturbed genes (signatures)", len(betas))
+        with open(cache_path, "w") as f:
+            json.dump(betas, f)
+        logger.info("Cache written: %s", cache_path)
+        return betas
+
     # Resolve paths
     if h5ad_path is None:
         h5ad_path = _get_h5ad_path(dataset_id) if dataset_id else _H5AD_PATH
     if cache_path is None:
         if dataset_id:
-            cache_path = _get_cache_path(dataset_id, program_gene_sets)
+            cache_path = _get_cache_path(dataset_id, program_gene_sets, h5ad_path)
         else:
             # Legacy: single flat cache (no program-set invalidation)
             cache_path = _ROOT / "data" / "replogle_cache.json"
@@ -423,7 +502,7 @@ def load_replogle_betas(
     if not force_recompute and cache_path.exists():
         with open(cache_path) as f:
             data = json.load(f)
-        print(f"[replogle_parser] Cache hit: {cache_path} ({len(data)} genes)")
+        logger.info("Cache hit: %s (%d genes)", cache_path, len(data))
         return data
 
     # --- Ensure h5ad is present ---
@@ -449,22 +528,22 @@ def load_replogle_betas(
                 )
 
     # --- Load and compute ---
-    print(f"[replogle_parser] Loading h5ad: {h5ad_path}")
+    logger.info("Loading h5ad: %s", h5ad_path)
     X, obs_names, var_names, obs_meta = _load_h5ad_matrix(h5ad_path)
-    print(f"[replogle_parser] Matrix: {X.shape} ({len(obs_names)} obs × {len(var_names)} genes)")
+    logger.info("Matrix: %s (%d obs × %d genes)", X.shape, len(obs_names), len(var_names))
 
-    print("[replogle_parser] Computing log2FC vs non-targeting controls ...")
+    logger.info("Computing log2FC vs non-targeting controls ...")
     log2fc, se_matrix, pert_genes, _ctrl_mean = _compute_log2fc(X, obs_names, obs_meta)
-    print(f"[replogle_parser] {len(pert_genes)} perturbation genes with ≥{_MIN_CELLS} cells")
+    logger.info("%d perturbation genes with ≥%d cells", len(pert_genes), _MIN_CELLS)
 
-    print(f"[replogle_parser] Projecting onto {len(program_gene_sets)} programs ...")
+    logger.info("Projecting onto %d programs ...", len(program_gene_sets))
     betas = _project_onto_programs(log2fc, se_matrix, pert_genes, var_names, program_gene_sets)
-    print(f"[replogle_parser] β computed for {len(betas)} perturbed genes")
+    logger.info("β computed for %d perturbed genes", len(betas))
 
     # --- Write cache ---
     with open(cache_path, "w") as f:
         json.dump(betas, f)
-    print(f"[replogle_parser] Cache written: {cache_path}")
+    logger.info("Cache written: %s", cache_path)
 
     return betas
 
@@ -479,17 +558,17 @@ def invalidate_cache(dataset_id: str | None = None, cache_path: Path | None = No
     if cache_path is not None:
         if cache_path.exists():
             cache_path.unlink()
-            print(f"[replogle_parser] Cache invalidated: {cache_path}")
+            logger.info("Cache invalidated: %s", cache_path)
     elif dataset_id is not None:
         cache_dir = _PERTURBSEQ_DIR / dataset_id
         removed = 0
         for f in cache_dir.glob("beta_cache_*.json"):
             f.unlink()
             removed += 1
-        print(f"[replogle_parser] Invalidated {removed} cache file(s) for {dataset_id}")
+        logger.info("Invalidated %d cache file(s) for %s", removed, dataset_id)
     else:
         # Legacy: remove old flat cache
         legacy = _ROOT / "data" / "replogle_cache.json"
         if legacy.exists():
             legacy.unlink()
-            print(f"[replogle_parser] Legacy cache invalidated: {legacy}")
+            logger.info("Legacy cache invalidated: %s", legacy)

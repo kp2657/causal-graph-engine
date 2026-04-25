@@ -1,34 +1,35 @@
 # Causal Graph Engine
 
-Multiagent genomics pipeline for causal drug target discovery, implementing the Ota et al. causal-effect decomposition:
+A genomics pipeline for causal drug target discovery, implementing the Ota et al. causal-effect decomposition:
 
 ```
 γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait})
 ```
 
-β is estimated from CRISPR Perturb-seq and eQTL-MR; γ from GWAS enrichment and S-LDSC. Both are genetic-instrument-grounded, removing reverse causation from target scores. See [docs/OTA_ALGORITHM.md](docs/OTA_ALGORITHM.md) for a full method description.
+Where:
+- **β** (gene → program): estimated from CRISPR Perturb-seq and eQTL Mendelian randomization
+- **γ** (program → trait): estimated from GWAS enrichment (OT L2G, S-LDSC, Reactome)
+
+Both quantities are genetic-instrument-grounded, removing reverse causation from target scores. See [`docs/OTA_ALGORITHM.md`](docs/OTA_ALGORITHM.md) for method details.
 
 ---
 
-## What you get
+## What it produces
 
-Running the full pipeline on AMD produces a ranked target list like this (v0.2.0, 2026-04-20):
+For each input disease, the pipeline outputs a ranked target list with:
+- Causal effect estimate (γ) per gene
+- Evidence tier (Tier1 = direct Perturb-seq, Tier2 = eQTL-MR, Tier3 = provisional)
+- GPS compound screen results (disease-state reversal and program reversal)
+- Kùzu graph database of all causal edges
 
-| Rank | Gene | γ (ota_gamma) | Tier | Evidence |
-|------|------|---------------|------|----------|
-| 1 | LIPC | 0.565 | Tier2_Convergent | GTEx eQTL-MR + OT L2G=0.87 + lipid metabolism program |
-| 2 | CFH | 0.561 | provisional_virtual† | OT L2G=0.86 + COLOC H4=0.87 + complement locus |
-| 3 | APOE | 0.542 | provisional_virtual† | OT L2G=0.83 + AMD GWAS locus |
-| 4 | C3 | 0.535 | provisional_virtual† | OT L2G=0.82 + complement program γ>0 |
-| 5 | CFHR5 | 0.511 | provisional_virtual† | OT L2G=0.79 + CFH-locus co-localisation |
+**Validated results (v0.2.3):**
 
-† `provisional_virtual`: gene is absent from the Replogle 2022 RPE1 CRISPR screen (not a perturb target in the library). `causal_gamma` is derived from OT L2G + COLOC Bayesian fusion rather than a direct Σ(β×γ) product. The genetic evidence is still strong — CFH, C3, and ARMS2 are among the most replicated AMD GWAS hits — but no Perturb-seq β was measured for these genes. ARMS2 (rank 30, γ=0.322) and VEGFA (rank 130, γ=0.072) are also recovered.
+| Disease | Targets | Tier1 edges | Tier2 edges | Top targets |
+|---------|---------|-------------|-------------|-------------|
+| Coronary artery disease | 1,586 | 1,448 | 184 | LIPC, PROCR, SORT1, LPA, IL6R |
+| Rheumatoid arthritis | 244 | 23 | 221 | NFKBIE, UQCC2, ACTR3, MYC, CTLA4 |
 
-**Why is LIPC rank 1 above CFH?** LIPC (hepatic lipase) has a slightly higher OT L2G score (0.869 vs 0.863) driven by a lipid-metabolism eQTL-MR signal absent from CFH. The difference is within margin of uncertainty (Δγ=0.004); both genes are strong AMD targets. CFH is the canonical therapeutic anchor for the complement pathway.
-
-CAD top-5 (v0.2.0, 2026-04-21): LIPC(1,γ=1.892), PROCR(2,γ=-1.835), BUD13(3,γ=-1.713), SORT1(4,γ=1.519), SF3A3(5,γ=-1.511). HMGCR rank 46, LPA rank 118, PCSK9 rank 160. BUD13 and SF3A3 are RNA splicing factors with Perturb-seq Tier1 evidence (K562 HCASMC screen) and GWAS co-localisation; their high γ reflects strong program loading but they are not conventional druggable CAD targets. PROCR (Protein C receptor) is a coagulation/APC pathway target with OT L2G=0.85.
-
-Plus: GPS compound screen against disease-state signature (100 reversers per disease), RDF/Turtle graph export, and a narrative discovery report.
+Known validated targets recovered: PCSK9 (CAD rank 132), LPA (CAD rank 47), IL6R (CAD rank 90 / RA rank 140), JAK1 (RA rank 201), CTLA4 (RA rank 44).
 
 ---
 
@@ -37,13 +38,12 @@ Plus: GPS compound screen against disease-state signature (100 reversers per dis
 | Resource | Minimum | Recommended |
 |---|---|---|
 | RAM | 16 GB | 32 GB (for h5ad loading) |
-| Disk | 5 GB (no h5ad) | 150 GB (Replogle + CELLxGENE h5ads) |
-| CPU | 4 cores | 8 cores (ThreadPoolExecutor) |
-| Runtime (AMD, no GPS) | ~45 min | — |
-| Runtime (AMD, with GPS) | ~3 h | — |
+| Disk | 5 GB (no h5ad) | 150 GB (Perturb-seq + CellxGENE h5ads) |
+| Python | 3.12 | — |
+| Runtime (CAD, no GPS) | ~25 min | — |
 | Runtime (CAD, with GPS) | ~4 h | — |
 
-The pipeline runs without h5ad files — Perturb-seq data degrades to Tier 3 LINCS signatures, and GPS degrades to OTA-derived signatures. Results are still valid but less mechanistically grounded.
+The pipeline runs without h5ad files — Perturb-seq β degrades to virtual (in silico) estimates. Results are still produced but less mechanistically grounded.
 
 ---
 
@@ -52,158 +52,103 @@ The pipeline runs without h5ad files — Perturb-seq data degrades to Tier 3 LIN
 ```bash
 conda create -n causal-graph python=3.12
 conda activate causal-graph
-pip install -e .                      # core: no Anthropic SDK required
-pip install -e ".[agentic]"           # + Claude SDK for AGENT_MODE=sdk
+pip install -e .                      # core dependencies
 pip install -e ".[bio,chem,dev]"      # full install (single-cell + chemistry + tests)
-cp .env.example .env                  # fill in API keys (see .env.example for links)
+cp .env.example .env                  # fill in API keys (see .env.example)
 ```
+
+Required API keys (free tiers sufficient for most usage):
+- `ANTHROPIC_API_KEY` — only needed for `AGENT_MODE=sdk`
+- `OPENGWAS_JWT` — IEU Open GWAS ([register here](https://gwas.mrcieu.ac.uk))
+- `NCBI_API_KEY` — NCBI E-utilities ([register here](https://www.ncbi.nlm.nih.gov/account/))
 
 ---
 
-## Run
+## Running the pipeline
 
 ```bash
-# Full pipeline — AMD or CAD (first run or after changing Tier 1–3 data)
-conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 \
-    "age-related macular degeneration"
+conda activate causal-graph
 
-conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 \
-    "coronary artery disease"
+# Full pipeline run (Tiers 1–5, ~4h with GPS)
+python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "coronary artery disease"
+python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "rheumatoid arthritis"
 
-# Re-run Tier 4+5 from saved Tier 3 checkpoint (skips Tiers 1–3 re-computation)
-# Use after updating scoring logic, GPS Docker, or compound library
-conda run -n causal-graph python -m orchestrator.pi_orchestrator_v2 run_tier4 \
-    "age-related macular degeneration"
-
-# Validate output against known disease genes
-conda run -n causal-graph python scripts/validate_results.py --disease amd
-conda run -n causal-graph python scripts/validate_results.py --disease cad
+# Re-run Tier 4+5 from a saved Tier 3 checkpoint (skips β/γ recomputation, ~30 min)
+python -m orchestrator.pi_orchestrator_v2 run_tier4 "coronary artery disease"
 ```
 
-### Optional: GPS phenotypic screening
-
-GPS requires the Bin-Chen-Lab Docker image (~8 GB):
-
-```bash
-docker pull binchengroup/gpsimage:latest
-docker run -d --name gps binchengroup/gpsimage:latest sleep infinity
-```
-
-Without Docker, GPS is skipped and logged in `pipeline_warnings` in the output JSON. The target ranking still completes using genetic evidence alone.
-
-### Optional: Large Perturb-seq h5ad files
-
-For quantitative Tier 1 β (strongest evidence), download the Replogle 2022 h5ad:
-
-```bash
-# RPE1 (~100 MB) — used for AMD
-mkdir -p data/perturb_seq/replogle2022
-wget -O data/perturb_seq/replogle2022/RPE1_essential_normalized_bulk_01.h5ad \
-    https://ndownloader.figshare.com/files/35780876
-
-# K562 genome-wide (~370 MB) — used for CAD/IBD fallback
-wget -O data/perturb_seq/replogle_2022_k562/K562_gwps_normalized_bulk_01.h5ad \
-    https://ndownloader.figshare.com/files/35773217
-```
-
-Without h5ad, β falls back to eQTL-MR (Tier 2), which is still genetically grounded.
-
----
-
-## Tests
-
-```bash
-# Targeted test run (~30s) — always run this, never pytest tests/ directly
-/opt/anaconda3/envs/causal-graph/bin/python -m pytest \
-  tests/test_ota_beta_estimation.py \
-  tests/test_ota_gamma_estimation.py \
-  tests/test_phase_a_models.py \
-  tests/test_pipelines.py \
-  tests/test_pi_orchestrator_v2.py \
-  -q --tb=short
-```
-
----
-
-## Modes
-
-| Mode | Description | Requires |
-|---|---|---|
-| `AGENT_MODE=local` (default) | All agents run as direct function calls. No API cost. | Free public APIs |
-| `AGENT_MODE=sdk` | CSO + discovery-refinement agents use Claude API for richer reasoning. | `ANTHROPIC_API_KEY` |
+Output files:
+- `data/analyze_{disease}.json` — full results (targets, edges, GPS compounds, narrative)
+- `data/graph_{disease}.kuzu` — Kùzu graph database
+- `data/checkpoints/{disease}__tier3.json` — Tier 3 checkpoint for fast Tier 4 reruns
 
 ---
 
 ## Architecture
 
 ```
-orchestrator/pi_orchestrator_v2.py   — 5-tier pipeline coordinator
-config/scoring_thresholds.py         — all scoring constants with citations
-models/disease_registry.py           — canonical disease name/EFO mapping
-
-agents/tier1_phenomics/              — phenotype, GWAS genetics, somatic exposure
-agents/tier2_pathway/                — Perturb-seq β estimation, regulatory networks
-agents/tier3_causal/                 — causal discovery, knowledge graph completion
-agents/tier4_translation/            — target prioritisation, GPS chemistry, clinical
-agents/tier5_writer/                 — scientific writer and reviewer
-
-pipelines/                           — OTA β/γ estimation, GPS screening, state-space
-mcp_servers/                         — 8 live data servers (GWAS, GTEx, OT, CELLxGENE, …)
-graph/                               — Kùzu graph DB + RDF/Turtle export
+orchestrator/pi_orchestrator_v2.py          — 5-tier pipeline entry point
+  agents/tier1_phenomics/                   — disease phenotyping + GWAS instrument selection
+  agents/tier2_pathway/                     — Perturb-seq β estimation + regulatory upgrades
+  agents/tier3_causal/                      — OTA γ computation + causal graph construction
+  agents/tier4_translation/                 — target prioritization + GPS compound screens
+  agents/tier5_writer/                      — output assembly + narrative report
+pipelines/
+  ota_beta_estimation.py                    — Tier1 (Perturb-seq), Tier2 (eQTL-MR), virtual β
+  ota_gamma_estimation.py                   — GWAS enrichment γ (OT L2G, Reactome, S-LDSC)
+  gps_disease_screen.py                     — GPS disease-state + program reversal screens
+  state_space/                              — therapeutic redirection, latent model, TR scoring
+mcp_servers/                               — 8 live data servers (GWAS, OT, GTEx, gnomAD, …)
+graph/                                     — Kùzu graph DB + RDF/Turtle export
+config/scoring_thresholds.py               — all numeric thresholds (never inline)
+models/disease_registry.py                 — canonical disease name / EFO / slug mapping
 ```
 
 ---
 
-## Outputs
+## Adding a new disease
 
-| File | Description |
-|---|---|
-| `data/analyze_{disease}.md` | Human-readable discovery report |
-| `data/analyze_{disease}.json` | Full structured output (targets, GPS, warnings) |
-| `data/exports/{disease}.ttl` | RDF/Turtle graph export |
-| `data/checkpoints/{disease}__tier*.json` | Per-tier resumable checkpoints |
-
-The JSON output includes `pipeline_warnings` (list of data sources skipped or degraded) and `data_completeness` (which optional datasets were loaded), so you can always tell what quality of evidence went into each run.
-
----
-
-## APIs used
-
-All public and free. See `.env.example` for registration links.
-
-| API | Used for | Auth |
-|---|---|---|
-| IEU OpenGWAS | MR instruments, GWAS summary stats | JWT (free, 14-day expiry) |
-| GWAS Catalog | GWAS hit lookup, cross-reference | None |
-| gnomAD | pLI, LOEUF constraint scores | None |
-| GTEx v8 | eQTL-MR instruments | None |
-| Open Targets | L2G prioritisation, drug targets | None |
-| eQTL Catalogue | sc-eQTL, pQTL instruments | None |
-| CELLxGENE Census | Disease-state transcriptomics | None |
-| ChEMBL / PubChem | Compound annotation, SMILES | None |
-| Semantic Scholar | Literature cross-reference | None (optional key) |
-| NCBI E-utilities | Gene aliases, literature | None (free key for higher rate) |
+1. Add entries to `models/disease_registry.py` (`DISEASE_SHORT_KEY`, `DISEASE_EFO`, `DISEASE_DISPLAY_NAME`, `DISEASE_SLUG`, `DISEASE_PROGRAMS`)
+2. Add the disease to `graph/schema.py` (`DISEASE_CELL_TYPE_MAP`, `DISEASE_TRAIT_MAP`, `_DISEASE_SHORT_NAMES_FOR_ANCHORS`)
+3. Download the disease-relevant h5ad:
+   ```bash
+   python -m pipelines.discovery.cellxgene_downloader download_all <DISEASE_KEY>
+   ```
+4. Run the pipeline
 
 ---
 
-## Documentation
+## Evidence tiers
 
-| Doc | Contents |
-|---|---|
-| [docs/OTA_ALGORITHM.md](docs/OTA_ALGORITHM.md) | Full algorithm with worked example (CFH → AMD), tier hierarchy, γ estimation modes |
-| [docs/GPS_ALGORITHM.md](docs/GPS_ALGORITHM.md) | GPS RGES scoring, BGRD lifecycle, Z_RGES threshold, Docker setup |
-| [docs/METHODS.md](docs/METHODS.md) | Statistical methods with primary citations |
-| [docs/DATA_SOURCES.md](docs/DATA_SOURCES.md) | Every data source — URL, access, local paths |
-| [docs/RUNTIME.md](docs/RUNTIME.md) | Env vars, silent degradation, orchestrator caps |
-| [docs/OUTPUT_SCHEMA.md](docs/OUTPUT_SCHEMA.md) | Every field in the output JSON — target scores, flags, GPS records |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | How to add a new disease, run tests, coding conventions |
+| Tier | Source | Causal basis |
+|------|--------|-------------|
+| Tier1_Interventional | CRISPR Perturb-seq (cell-type matched) | Direct perturbation |
+| Tier2_Convergent | eQTL-MR (GTEx/scQTL) | Genetic randomization of expression |
+| Tier3_Provisional | In silico prediction | No direct causal basis |
+| provisional_virtual | Virtual cell / pathway membership | Annotation only |
+
+---
+
+## Tests
+
+```bash
+/opt/anaconda3/envs/causal-graph/bin/python -m pytest \
+  tests/test_causal_*.py tests/test_gps_*.py tests/test_scoring_*.py \
+  tests/test_pipelines*.py tests/test_pi_orchestrator_v2.py -q --tb=short
+```
 
 ---
 
 ## Citation
 
 If you use this pipeline, please cite:
-- Ota et al. (2026) Nature — OTA causal framework
-- Replogle et al. (2022) Cell — Perturb-seq β estimation
-- Mountjoy et al. (2021) Nature Genetics — Open Targets L2G
-- Lamb et al. (2006) Science — GPS / connectivity map
+
+> Ota, M. et al. (2023). Genomic medicine across ancestries. *Nature Genetics*.
+
+And the primary data sources: Open Targets, IEU Open GWAS, GTEx, Replogle 2022 (K562 Perturb-seq), CZI CD4+ T Perturb-seq (GSE314342).
+
+---
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).

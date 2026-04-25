@@ -39,20 +39,11 @@ class TestImports:
     def test_import_orchestrator(self):
         from orchestrator import pi_orchestrator_v2  # noqa: F401
 
-    def test_import_agent_runner(self):
-        from orchestrator.agent_runner import AgentRunner  # noqa: F401
-
-    def test_import_message_contracts(self):
-        from orchestrator.message_contracts import AgentInput, AgentOutput, wrap_output  # noqa: F401
-
     def test_import_models(self):
         from models.evidence import CausalEdge  # noqa: F401
 
     def test_import_graph_db(self):
         from mcp_servers import graph_db_server  # noqa: F401
-
-    def test_import_pipelines(self):
-        from pipelines import mr_analysis  # noqa: F401
 
     def test_import_state_space(self):
         from pipelines.state_space import state_influence  # noqa: F401
@@ -68,47 +59,6 @@ class TestImports:
         from mcp_servers import clinical_trials_server  # noqa: F401
         from mcp_servers import open_targets_server  # noqa: F401
 
-
-# ---------------------------------------------------------------------------
-# 2. AgentRunner — default configuration
-# ---------------------------------------------------------------------------
-
-class TestAgentRunnerDefaults:
-    """AgentRunner should work with zero configuration in local (non-agentic) mode."""
-
-    def test_instantiates_without_api_key(self):
-        from orchestrator.agent_runner import AgentRunner
-        runner = AgentRunner()
-        assert runner is not None
-
-    def test_all_agents_default_to_local_mode(self):
-        from orchestrator.agent_runner import AgentRunner
-        runner = AgentRunner()
-        for agent in [
-            "phenotype_architect", "statistical_geneticist", "somatic_exposure_agent",
-            "perturbation_genomics_agent", "regulatory_genomics_agent",
-            "causal_discovery_agent", "kg_completion_agent",
-            "target_prioritization_agent", "chemistry_agent",
-            "clinical_trialist_agent", "scientific_writer_agent",
-        ]:
-            assert runner.get_mode(agent) == "local", (
-                f"{agent} should default to local mode; set AGENT_MODE=sdk to enable Claude API"
-            )
-
-    def test_mode_switch_roundtrip(self):
-        from orchestrator.agent_runner import AgentRunner
-        runner = AgentRunner()
-        runner.set_mode("chemistry_agent", "sdk")
-        assert runner.get_mode("chemistry_agent") == "sdk"
-        runner.set_mode("chemistry_agent", "local")
-        assert runner.get_mode("chemistry_agent") == "local"
-
-    def test_unknown_agent_returns_stub_fallback(self):
-        from orchestrator.agent_runner import AgentRunner
-        from orchestrator.message_contracts import AgentInput
-        runner = AgentRunner()
-        out = runner.dispatch("nonexistent_agent_xyz", AgentInput(disease_query={"disease_name": "test"}))
-        assert out.stub_fallback is True
 
 
 # ---------------------------------------------------------------------------
@@ -250,24 +200,6 @@ class TestSchemas:
         with pytest.raises(Exception):  # pydantic ValidationError
             CausalEdge(from_node="PCSK9")  # type: ignore[call-arg]
 
-    def test_agent_input_has_run_id(self):
-        from orchestrator.message_contracts import AgentInput
-        inp = AgentInput(disease_query={"disease_name": "AMD"})
-        assert inp.run_id  # auto-generated UUID
-
-    def test_agent_output_escalate_on_keyword(self):
-        from orchestrator.message_contracts import wrap_output
-        out = wrap_output("causal_discovery_agent", {
-            "warnings": ["ESCALATE: anchor recovery 0.45 below threshold 0.80"]
-        })
-        assert out.escalate is True
-
-    def test_agent_output_no_escalate_on_normal_warning(self):
-        from orchestrator.message_contracts import wrap_output
-        out = wrap_output("causal_discovery_agent", {
-            "warnings": ["gnomAD timeout — used cached data"]
-        })
-        assert out.escalate is False
 
 
 # ---------------------------------------------------------------------------
@@ -291,15 +223,14 @@ _MOCK = {
         "n_gw_significant_hits": 30,
         "warnings": [],
     },
-    "somatic_exposure_agent":      {"chip_edges": [], "drug_edges": [], "viral_edges": [], "summary": {"n_chip_genes": 0, "n_drug_targets": 0}, "warnings": []},
-    "perturbation_genomics_agent": {"genes": ["PCSK9"], "beta_matrix": {"PCSK9": {"lipid_metabolism": 0.8}}, "evidence_tier_per_gene": {"PCSK9": "Tier1_Interventional"}, "n_tier1": 1, "n_virtual": 0, "programs": [], "warnings": []},
+    "perturbation_genomics_agent":{"genes": ["PCSK9"], "beta_matrix": {"PCSK9": {"lipid_metabolism": 0.8}}, "evidence_tier_per_gene": {"PCSK9": "Tier1_Interventional"}, "n_tier1": 1, "n_virtual": 0, "programs": [], "warnings": []},
     "regulatory_genomics_agent":   {"tier2_upgrades": [], "warnings": []},
-    "causal_discovery_agent":      {"n_edges_written": 2, "top_genes": [{"gene": "PCSK9", "ota_gamma": 0.51}], "anchor_recovery": {"recovery_rate": 0.80, "recovered": ["PCSK9→LDL-C"], "missing": []}, "shd": 0, "warnings": []},
+    "causal_discovery_agent":      {"n_edges_written": 2, "top_genes": [{"gene": "PCSK9", "ota_gamma": 0.51}], "warnings": []},
     "kg_completion_agent":         {"n_pathway_edges_added": 1, "n_drug_target_edges_added": 1, "warnings": []},
     "target_prioritization_agent": {"targets": [{"target_gene": "PCSK9", "rank": 1, "evidence_tier": "Tier1_Interventional", "safety_flags": None}], "warnings": []},
     "chemistry_agent":             {"target_chemistry": {}, "repurposing_candidates": [], "gps_disease_reversers": [], "gps_program_reversers": {}, "gps_programs_screened": [], "gps_priority_compounds": [], "warnings": []},
     "clinical_trialist_agent":     {"trial_summary": {"n_trials": 0}, "key_trials": [], "warnings": []},
-    "scientific_writer_agent":     {"disease_name": "coronary artery disease", "efo_id": "EFO_0001645", "target_list": [{"gene": "PCSK9"}], "anchor_edge_recovery": 0.80, "n_tier1_edges": 2, "n_tier2_edges": 0, "n_tier3_edges": 0, "n_virtual_edges": 0, "executive_summary": "Smoke test.", "target_table": [], "top_target_narratives": [], "evidence_quality": {}, "limitations": [], "pipeline_version": "0.1.0", "generated_at": "2026-01-01T00:00:00Z", "warnings": []},
+    "scientific_writer_agent":     {"disease_name": "coronary artery disease", "efo_id": "EFO_0001645", "target_list": [{"gene": "PCSK9"}], "n_tier1_edges": 2, "n_tier2_edges": 0, "n_tier3_edges": 0, "n_virtual_edges": 0, "executive_summary": "Smoke test.", "target_table": [], "top_target_narratives": [], "evidence_quality": {}, "limitations": [], "pipeline_version": "0.1.0", "generated_at": "2026-01-01T00:00:00Z", "warnings": []},
 }
 
 
@@ -308,33 +239,36 @@ def _mock_pipeline(tmp_path, monkeypatch):
     """
     Run analyze_disease_v2 with:
       - All agents returning _MOCK stub data (no HTTP, no API key)
-      - Utility functions (_get_gamma_estimates, _write_somatic_edges) also mocked
+      - _get_gamma_estimates mocked to skip Perturb-seq / GWAS data loading
       - Kùzu DB redirected to a temp directory
-
-    Must patch 3 things to avoid loading real data files:
-      1. AgentRunner class — so dispatch returns stub results
-      2. _get_gamma_estimates — skips Perturb-seq / GWAS data loading
-      3. _write_somatic_edges — skips somatic edge DB writes
     """
     import mcp_servers.graph_db_server as gdb_mod
-    monkeypatch.setattr(gdb_mod, "_DB_PATH", str(tmp_path / "smoke.kuzu"))
+    monkeypatch.setattr(gdb_mod, "_EXPLICIT_DB_PATH", str(tmp_path / "smoke.kuzu"))
     monkeypatch.setattr(gdb_mod, "_db", None)
-
-    from orchestrator.agent_runner import AgentRunner
-    from orchestrator.message_contracts import wrap_output
-
-    runner = AgentRunner()
-
-    def _stub_dispatch(agent_name: str, agent_input):
-        return wrap_output(agent_name, _MOCK.get(agent_name, {}))
-
-    runner.dispatch = _stub_dispatch  # type: ignore[assignment]
 
     from orchestrator.pi_orchestrator_v2 import analyze_disease_v2
     with (
-        patch("orchestrator.pi_orchestrator_v2.AgentRunner", return_value=runner),
+        patch("agents.tier1_phenomics.phenotype_architect.run",
+              return_value=_MOCK["phenotype_architect"]),
+        patch("agents.tier1_phenomics.statistical_geneticist.run",
+              return_value=_MOCK["statistical_geneticist"]),
+        patch("agents.tier2_pathway.perturbation_genomics_agent.run",
+              return_value=_MOCK["perturbation_genomics_agent"]),
+        patch("agents.tier2_pathway.regulatory_genomics_agent.run",
+              return_value=_MOCK["regulatory_genomics_agent"]),
+        patch("agents.tier3_causal.causal_discovery_agent.run",
+              return_value=_MOCK["causal_discovery_agent"]),
+        patch("agents.tier3_causal.kg_completion_agent.run",
+              return_value=_MOCK["kg_completion_agent"]),
+        patch("agents.tier4_translation.target_prioritization_agent.run",
+              return_value=_MOCK["target_prioritization_agent"]),
+        patch("agents.tier4_translation.chemistry_agent.run",
+              return_value=_MOCK["chemistry_agent"]),
+        patch("agents.tier4_translation.clinical_trialist_agent.run",
+              return_value=_MOCK["clinical_trialist_agent"]),
+        patch("agents.tier5_writer.scientific_writer_agent.run",
+              return_value=_MOCK["scientific_writer_agent"]),
         patch("orchestrator.pi_orchestrator_v2._get_gamma_estimates", return_value={}),
-        patch("orchestrator.pi_orchestrator_v2._write_somatic_edges", return_value=[]),
     ):
         result = analyze_disease_v2("coronary artery disease")
 
@@ -352,19 +286,12 @@ class TestPipelineSmoke:
         assert _mock_pipeline.get("pipeline_status") == "SUCCESS"
 
     def test_output_has_required_keys(self, _mock_pipeline):
-        required = [
-            "disease_name", "pipeline_status", "target_list",
-            "anchor_edge_recovery", "n_tier1_edges",
-        ]
+        required = ["disease_name", "pipeline_status", "target_list", "n_tier1_edges"]
         missing = [k for k in required if k not in _mock_pipeline]
         assert not missing, f"Output missing required keys: {missing}"
 
     def test_target_list_not_empty(self, _mock_pipeline):
         assert len(_mock_pipeline.get("target_list", [])) > 0
-
-    def test_anchor_recovery_in_range(self, _mock_pipeline):
-        r = _mock_pipeline.get("anchor_edge_recovery", 0)
-        assert 0.0 <= r <= 1.0
 
     def test_pi_reviewed_flag(self, _mock_pipeline):
         assert _mock_pipeline.get("pi_reviewed") is True

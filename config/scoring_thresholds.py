@@ -9,30 +9,20 @@ Sources:
   [MR-WI]   Staley & Burgess (2017) Genet Epidemiol 41:774 — F-statistic weak-instrument threshold
   [COLOC]   Giambartolomei et al. (2014) PLoS Genet — COLOC H4 posterior threshold
   [L2G]     Mountjoy et al. (2021) Nat Genet — Open Targets Locus2Gene score
-  [LDSC]    Finucane et al. (2015) Nat Genet — S-LDSC heritability enrichment
   [GPS]     Lamb et al. (2006) Science; Chen et al. (2017) — connectivity map RGES
 """
 from __future__ import annotations
 
 # ---------------------------------------------------------------------------
-# Mendelian Randomisation
+# GWAS thresholds
 # ---------------------------------------------------------------------------
 
-MR_F_STATISTIC_MIN: float = 10.0
-# Minimum F-statistic for instrument validity in MR.
-# Source: [MR-WI] — widely adopted weak-instrument criterion.
-
 MR_P_VALUE_MAX: float = 5e-8
-# Genome-wide significance threshold for GWAS instrument selection.
+# Genome-wide significance threshold for GWAS hit inclusion.
 
-MR_P_VALUE_MAX_EQTL: float = 1e-4
-# Maximum p-value for eQTL instrument inclusion.
-# Relaxed from GWAS threshold because cis-eQTLs are directional hypotheses.
-
-MR_PQTL_P_VALUE_MAX: float = 0.05
-# Maximum p-value for pQTL instrument.
-# Relaxed from GWAS threshold: pQTLs often have moderate effect sizes;
-# calibrated empirically against UKB-PPP CFH recovery (AMD Run 8, 2026-03).
+MR_PQTL_P_VALUE_MAX: float = 5e-5
+# Significance threshold for pQTL association in beta estimation.
+# Looser than GWAS threshold to allow instrument discovery for protein biomarkers.
 
 # ---------------------------------------------------------------------------
 # Colocalization (COLOC)
@@ -102,14 +92,46 @@ GAMMA_HYPERGEOMETRIC_NORMALISER: float = 5.0
 # Design note: chosen so that a genome-wide-significant enrichment (p≈1e-8) → gamma≈0.6,
 # leaving headroom for the Bayesian fused estimate.
 
-GAMMA_LDSC_WEIGHT_CAP: float = 10.0
-# Maximum weight assigned to the LDSC Z-score component in gamma fusion.
-# Prevents pathologically strong enrichment signals from dominating the OT prior.
-# Source: [LDSC] — S-LDSC tau statistics can reach very large Z-scores for small gene sets.
 
-GAMMA_OT_PRIOR_WEIGHT: float = 0.20
-# Prior weight for the Open Targets L2G component in Bayesian gamma fusion.
-# Represents weak genetic association evidence independent of LDSC.
+# ---------------------------------------------------------------------------
+# Causal discovery
+# ---------------------------------------------------------------------------
+
+OTA_GAMMA_EDGE_MIN: float = 0.01
+# Minimum |ota_gamma| for writing a gene→trait edge to the Kùzu graph.
+# Edges below this are noise-level and bloat the graph without adding signal.
+
+CAUSAL_STRESS_MEAN_THRESHOLD: float = 1.2
+# Mean |beta| across programs above which a gene is flagged as a global stress responder.
+# Genes with uniformly large betas across all programs likely reflect transcriptional
+# shutdown rather than a program-specific causal effect.
+
+CAUSAL_STRESS_CV_FLOOR: float = 0.35
+# Coefficient of variation below this (betas are uniformly large) triggers stress flag.
+# High mean + low CV = indiscriminate perturbation response.
+
+CAUSAL_STRESS_DISCOUNT: float = 0.25
+# Multiplicative discount applied to ota_gamma when stress pattern is detected.
+# Retains the gene in the ranking but substantially penalises its score.
+
+PARETO_ELBOW_GAP_THRESHOLD: float = 0.20
+# Minimum relative drop between consecutive |γ| values to call the Pareto elbow.
+# A 20% drop signals the transition from high-signal to noise-floor candidates.
+# Source: empirical calibration on AMD Run 22 and CAD Run 3.
+
+# ---------------------------------------------------------------------------
+# pLI / safety penalties (target prioritisation)
+# ---------------------------------------------------------------------------
+
+PLI_ESSENTIAL_THRESHOLD: float = 0.9
+# pLI above this marks a gene as constrained (loss-of-function intolerant).
+# Such genes are de-weighted as drug targets due to on-target toxicity risk.
+# Source: gnomAD pLI score; threshold follows Karczewski et al. (2020) Nature.
+
+PLI_SAFETY_PENALTY: float = 0.3
+# Multiplicative t_mod penalty applied to OT L2G gamma when pLI > PLI_ESSENTIAL_THRESHOLD.
+# Reduces but does not zero out constrained genes — genetic evidence still counted.
+
 
 # ---------------------------------------------------------------------------
 # Phase F unified target scoring
@@ -152,19 +174,41 @@ SCORE_RISK_DISCOUNT_MIN: float = 0.10
 # GPS compound screening
 # ---------------------------------------------------------------------------
 
+GPS_MIN_DISEASE_SIG_GENES: int = 50
+# Minimum genes required in the disease-state differential signature for GPS screen.
+# Below this: signature is too sparse to produce reliable RGES scores.
+
+GPS_MIN_PROGRAM_SIG_GENES: int = 5
+# Minimum genes required in an NMF program signature for GPS program-reversal screen.
+
+GPS_MAX_PARALLEL: int = 3
+# Maximum concurrent GPS Docker calls.
+# Bounded by Docker memory: each call loads ~2 GB of LINCS data.
+
+GPS_JACCARD_SKIP_THRESHOLD: float = 0.70
+# Skip GPS screening for a gene if its signature Jaccard similarity to an already-run
+# signature exceeds this threshold — avoids redundant Docker calls.
+
+GPS_PROGRAM_WEIGHT_FRACTION: float = 0.10
+# Fraction of top-weighted genes taken from each NMF program to build the program
+# reversal signature (e.g., 0.10 = top 10% of program-loading genes).
+
 GPS_TIMEOUT_WITH_BGRD: int = 7200
 # GPS Docker timeout (seconds) when BGRD is pre-cached (permutation-free run).
 
 GPS_TIMEOUT_NO_BGRD: int = 21600
 # GPS Docker timeout (seconds) when BGRD must be computed from scratch.
 
-GPS_Z_RGES_DEFAULT: float = 2.0
-# Default RGES Z-score threshold for calling a compound a disease-state reverser.
-# Corresponds to ~5% FDR under N(0,1) null; validated empirically (Session 60).
+GPS_Z_RGES_DEFAULT: float = 3.5
+# Z_RGES threshold for calling a compound a disease-state reverser (3.5σ from permuted null).
+# Raised from 2.0: CAD screen has 2,997 compounds at Z < -2.0 but smooth distribution with
+# no natural break; 3.5σ (862 CAD compounds) represents genuine reversal signal.
+# The threshold governs the z-scored path; GPS_MAX_HITS is only the non-z-scored fallback cap.
 # Source: [GPS] — connectivity-map approach; Z-threshold selection is application-specific.
 
-GPS_MAX_HITS: int = 100
-# Maximum compounds returned from a GPS screen.
+GPS_MAX_HITS: int = 500
+# Safety cap for the non-z-scored GPS fallback path (top_n by |RGES|).
+# Not applied when GPS output contains Z_RGES column — threshold governs in that case.
 
 GPS_BGRD_MIN_GENES: int = 700
 # Minimum signature genes required for BGRD elbow-trim (Session 59 calibration).

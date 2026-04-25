@@ -154,8 +154,67 @@ def _preprocess(adata: Any) -> Any | None:
         return None
 
 
+def _select_k_elbow(X: "np.ndarray", k_min: int = 4, k_max: int = 20, n_iter: int = 50) -> int:
+    """Select NMF k by reconstruction-error second-derivative elbow."""
+    import numpy as np
+    from sklearn.decomposition import NMF
+
+    k_vals = list(range(k_min, min(k_max + 1, X.shape[0], X.shape[1] + 1)))
+    if len(k_vals) < 3:
+        return k_vals[0] if k_vals else k_min
+
+    errors = []
+    for k in k_vals:
+        m = NMF(n_components=k, init="nndsvda", max_iter=n_iter, random_state=42)
+        m.fit(X)
+        errors.append(float(m.reconstruction_err_))
+
+    err = np.array(errors)
+    diff2 = np.diff(np.diff(err))
+    knee_idx = int(np.argmax(diff2)) + 1
+    knee_idx = max(0, min(knee_idx, len(k_vals) - 1))
+    k_chosen = int(k_vals[knee_idx])
+    print(f"[cnmf_runner] k elbow: searched {k_min}–{k_max}, selected k={k_chosen}", flush=True)
+    return k_chosen
+
+
+def _empiric_program_size(loading_vec: "np.ndarray", min_genes: int = 20, max_genes: int = 500) -> int:
+    """
+    Find the natural cut-off in a program's loading distribution.
+
+    NMF loadings are heavy-tailed: a core set of genes have substantial weight,
+    then there is a sharp drop to near-zero noise genes. We find that drop via
+    the second-derivative elbow on the sorted (descending) cumulative-loading
+    curve, then return the index as the empiric gene-set size.
+
+    Bounds: [min_genes, max_genes] — never smaller than needed for GPS screens,
+    never so large that noise genes dominate downstream enrichment tests.
+    """
+    import numpy as np
+
+    pos = loading_vec[loading_vec > 0]
+    if len(pos) <= min_genes:
+        return min(len(pos), max_genes)
+
+    sorted_loads = np.sort(pos)[::-1]
+    cumsum = np.cumsum(sorted_loads)
+    cumsum_norm = cumsum / cumsum[-1]   # 0→1 cumulative fraction of total loading
+
+    n = len(cumsum_norm)
+    if n < 3:
+        return min(n, max_genes)
+
+    # Second derivative of the cumulative curve — elbow = where marginal gain drops fastest
+    diff2 = np.diff(np.diff(cumsum_norm))
+    # We want the *negative* elbow (curve bends downward = diminishing returns)
+    knee_idx = int(np.argmin(diff2)) + 2   # +2 to account for two diffs
+    knee_idx = max(min_genes, min(knee_idx, max_genes, n))
+
+    return int(knee_idx)
+
+
 def _run_sklearn_nmf(adata: Any, disease: str, k: int, n_top: int) -> dict:
-    """NMF via sklearn — single run (no stability selection)."""
+    """NMF via sklearn with empirical k and empirical per-program gene-set size."""
     import numpy as np
     try:
         from sklearn.decomposition import NMF
@@ -170,41 +229,60 @@ def _run_sklearn_nmf(adata: Any, disease: str, k: int, n_top: int) -> dict:
     if hasattr(X, "toarray"):
         X = X.toarray()
     X = X.astype(float)
-    # Clip negatives (can appear after log1p if X had negative values pre-log)
     X = np.clip(X, 0, None)
 
-    gene_names = list(adata.var_names)
+    raw_var_names = list(adata.var_names)
+    # Resolve Ensembl IDs → HGNC symbols at write time so the cache stores symbols.
+    # Downstream beta/gamma matching uses symbols; storing Ensembl IDs causes 0 overlap.
+    try:
+        from pipelines.static_lookups import get_lookups as _get_lk
+        _lk = _get_lk()
+        gene_names = [
+            (_lk.get_symbol_from_ensembl(g) or g) if g.startswith("ENSG") else g
+            for g in raw_var_names
+        ]
+    except Exception:
+        gene_names = raw_var_names
 
-    model = NMF(n_components=k, init="nndsvda", max_iter=500, random_state=42)
+    # Empirical k selection — elbow on reconstruction error curve
+    k_empiric = _select_k_elbow(X, k_min=4, k_max=k, n_iter=50)
+
+    model = NMF(n_components=k_empiric, init="nndsvda", max_iter=500, random_state=42)
     W = model.fit_transform(X)   # cells × programs
     H = model.components_         # programs × genes
 
     programs = []
-    for i in range(k):
+    for i in range(k_empiric):
         loading_vec = H[i]
-        top_idx = np.argsort(loading_vec)[::-1][:n_top]
+        # Empiric cut-off: elbow on cumulative loading curve, bounded [20, 500]
+        n_genes = _empiric_program_size(loading_vec, min_genes=20, max_genes=500)
+        top_idx = np.argsort(loading_vec)[::-1][:n_genes]
         top_genes = [gene_names[j] for j in top_idx if loading_vec[j] > 0]
         gene_loadings = {
             gene_names[j]: float(loading_vec[j])
             for j in top_idx if loading_vec[j] > 0
         }
+        print(f"[cnmf_runner] program P{i+1:02d}: empiric size={n_genes} "
+              f"(top gene: {top_genes[0] if top_genes else 'none'})", flush=True)
         programs.append({
             "program_id":    f"{disease.upper()}_NMF_P{i+1:02d}",
-            "gene_set":      top_genes[:n_top],
+            "gene_set":      top_genes,
             "top_genes":     top_genes[:20],
             "gene_loadings": gene_loadings,
+            "n_genes":       len(top_genes),
             "cell_type":     getattr(adata, "_discovery_cell_type", "unknown"),
             "source":        "sklearn_NMF",
         })
 
     return {
         "programs":   programs,
-        "n_programs": k,
+        "n_programs": k_empiric,
+        "k":          k_empiric,
         "disease":    disease,
         "source":     "sklearn_NMF",
         "n_cells":    adata.n_obs,
         "n_genes":    adata.n_vars,
-        "note":       "Single-run NMF. Install cnmf for consensus NMF with stability selection.",
+        "note":       f"sklearn NMF, empiric k={k_empiric}, empiric gene-set size per program.",
     }
 
 

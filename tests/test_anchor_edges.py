@@ -240,23 +240,7 @@ def test_dnmt3a_cad_anchor(tmp_db):
 
 
 # ---------------------------------------------------------------------------
-# Test 7: anchor edge recovery check via MCP tool logic
-# ---------------------------------------------------------------------------
-
-def test_anchor_edge_recovery():
-    """Unit-test the anchor recovery logic directly (no DB needed)."""
-    from mcp_servers.graph_db_server import run_anchor_edge_validation
-    from graph.schema import ANCHOR_EDGES
-
-    # Provide all anchor edges as "predicted"
-    predicted = [{"from_node": a["from"], "to_node": a["to"]} for a in ANCHOR_EDGES]
-    result = run_anchor_edge_validation(predicted)
-    assert result["recovery_rate"] == 1.0
-    assert result["missing"] == []
-
-
-# ---------------------------------------------------------------------------
-# Test 8: E-value tool returns sensible output
+# Test 7: E-value tool returns sensible output
 # ---------------------------------------------------------------------------
 
 def test_evalue_tool_low():
@@ -275,33 +259,104 @@ def test_evalue_tool_high():
     assert result["e_value"] >= 2.0
 
 
+
+
 # ---------------------------------------------------------------------------
-# Test 9: anchor list consistency — REQUIRED_ANCHORS_BY_DISEASE ⊆ ANCHOR_EDGES
-# Regression guard: prevents the REQUIRED_ANCHORS vs ANCHOR_EDGES split that
-# caused anchor_recovery=0% (2026-03-23). Any edge in a per-disease required
-# list must also appear in the global ANCHOR_EDGES benchmark.
+# Program gamma edge tests
 # ---------------------------------------------------------------------------
 
-def test_required_anchors_are_subset_of_anchor_edges():
-    """Every disease-specific required anchor must exist in global ANCHOR_EDGES."""
-    from graph.schema import ANCHOR_EDGES, REQUIRED_ANCHORS_BY_DISEASE
+def test_ingest_program_gamma_edges_writes_nodes_and_edges(tmp_path):
+    """CellularProgram nodes and DrivesTrait edges are written from gamma_estimates."""
+    db_path = str(tmp_path / "prog_test.kuzu")
+    db = GraphDB(db_path)
 
-    global_set = {(a["from"], a["to"]) for a in ANCHOR_EDGES}
+    gamma_estimates = {
+        "CAD_NMF_P01": {
+            "CAD": {
+                "gamma":         0.42,
+                "gamma_se":      0.08,
+                "evidence_tier": "Tier2_Convergent",
+                "data_source":   "OT_L2G_enrichment",
+            },
+        },
+        "CAD_NMF_P02": {
+            "CAD": {
+                "gamma":         0.15,
+                "gamma_se":      0.05,
+                "evidence_tier": "Tier3_Provisional",
+                "data_source":   "gwas_ot_overlap_3_genes",
+            },
+            "LDL-C": {
+                "gamma":         0.27,
+                "gamma_se":      None,
+                "evidence_tier": "Tier3_Provisional",
+                "data_source":   "h5ad_deg_overlap",
+            },
+        },
+    }
 
-    for disease, anchors in REQUIRED_ANCHORS_BY_DISEASE.items():
-        for from_node, to_node in anchors:
-            # Strip _chip suffix for CHIP genes (anchors use "TET2_chip" but
-            # ANCHOR_EDGES also stores "TET2_chip" directly — both match)
-            assert (from_node, to_node) in global_set, (
-                f"REQUIRED_ANCHORS_BY_DISEASE[{disease!r}] contains "
-                f"({from_node!r}, {to_node!r}) which is NOT in ANCHOR_EDGES. "
-                "Add it to ANCHOR_EDGES or correct the disease-specific list."
-            )
+    from graph.ingestion import ingest_program_gamma_edges
+    result = ingest_program_gamma_edges(
+        db, gamma_estimates,
+        disease_name="coronary artery disease",
+        efo_id="EFO_0001645",
+        cell_type="cardiac_endothelial_cell",
+    )
+    db.close()
+
+    assert result["written"] == 3          # P01→CAD, P02→CAD, P02→LDL-C
+    assert result["rejected"] == 0
+    assert result["errors"] == []
+
+
+def test_ingest_program_gamma_edges_skips_none_gamma(tmp_path):
+    """Entries with gamma=None are not written."""
+    db_path = str(tmp_path / "prog_none.kuzu")
+    db = GraphDB(db_path)
+
+    gamma_estimates = {
+        "CAD_NMF_P03": {
+            "CAD":   {"gamma": None, "evidence_tier": "Tier3_Provisional", "data_source": "x"},
+            "LDL-C": {"gamma": 0.11, "gamma_se": 0.04, "evidence_tier": "Tier3_Provisional", "data_source": "x"},
+        },
+    }
+
+    from graph.ingestion import ingest_program_gamma_edges
+    result = ingest_program_gamma_edges(db, gamma_estimates, disease_name="coronary artery disease")
+    db.close()
+
+    assert result["written"] == 1          # only LDL-C edge written
+    assert result["rejected"] == 0
+
+
+def test_write_program_gamma_edges_server_wrapper(tmp_path, monkeypatch):
+    """graph_db_server.write_program_gamma_edges delegates to ingest correctly."""
+    import mcp_servers.graph_db_server as _srv
+
+    db_path = str(tmp_path / "srv_prog.kuzu")
+    db = GraphDB(db_path)
+    monkeypatch.setattr(_srv, "_get_db_for_key", lambda _key: db)
+
+    gamma_estimates = {
+        "SLE_NMF_P01": {
+            "SLE": {"gamma": 0.33, "gamma_se": 0.07, "evidence_tier": "Tier2_Convergent",
+                    "data_source": "OT_L2G_enrichment"},
+        },
+    }
+
+    result = _srv.write_program_gamma_edges(
+        gamma_estimates, disease="systemic lupus erythematosus",
+        efo_id="EFO_0002690", cell_type="CD4_T_cell",
+    )
+    db.close()
+
+    assert result["written"] == 1
+    assert result["rejected"] == 0
 
 
 def test_disease_trait_map_has_required_diseases():
     """DISEASE_TRAIT_MAP covers the diseases we currently run pipelines for."""
     from graph.schema import DISEASE_TRAIT_MAP
-    for disease in ("CAD", "RA", "SLE"):
+    for disease in ("CAD", "RA"):
         assert disease in DISEASE_TRAIT_MAP, f"{disease} missing from DISEASE_TRAIT_MAP"
         assert len(DISEASE_TRAIT_MAP[disease]) > 0, f"{disease} has empty trait list"
