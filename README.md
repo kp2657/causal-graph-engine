@@ -45,6 +45,8 @@ Known validated targets recovered: PCSK9 (CAD rank 132), LPA (CAD rank 47), IL6R
 
 The pipeline runs without h5ad files — Perturb-seq β degrades to virtual (in silico) estimates. Results are still produced but less mechanistically grounded.
 
+GPS compound screening requires Docker (`docker pull binchengroup/gpsimage:latest`). Without Docker the GPS step is skipped gracefully and runtime drops to ~25 min.
+
 ---
 
 ## Setup
