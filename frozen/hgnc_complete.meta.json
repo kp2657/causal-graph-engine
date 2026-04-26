@@ -1,0 +1,7 @@
+{
+  "source": "HGNC (Human Genome Nomenclature Committee)",
+  "url": "https://storage.googleapis.com/public-download-files/hgnc/tsv/tsv/hgnc_complete_set.txt",
+  "download_date": "2026-04-26",
+  "n_records": 44982,
+  "note": "Frozen to ensure stable gene alias resolution. HGNC updates weekly; alias drift changes which genes receive gnomAD pLI penalties and GWAS locus matches in Tier 3."
+}

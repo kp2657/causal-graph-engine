@@ -59,8 +59,33 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.evidence import CausalEdge, ProgramBetaMatrix, EvidenceTier
+from models.evidence import ProgramBetaMatrix
 from config.scoring_thresholds import COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX
+
+
+def _se_from_pval(beta: float, pval: float, min_z: float = 2.0) -> float:
+    """
+    Back-calculate SE from a p-value and effect size via normal approximation.
+
+        SE = |beta| / z,   z = Φ⁻¹(1 − p/2)
+
+    min_z floor (default 2.0 = p≈0.046) prevents infinite SE when p≈1.
+    Used when a source returns a p-value but not a standard error.
+    """
+    import math as _m
+    pval = max(pval, 1e-300)
+    pval = min(pval, 1.0 - 1e-15)
+    try:
+        from scipy.special import erfinv as _erfinv
+        z = _m.sqrt(2.0) * float(_erfinv(1.0 - pval))
+    except ImportError:
+        # Approximation: z ≈ −Φ⁻¹(p/2) via rational approximation (Abramowitz & Stegun)
+        t = _m.sqrt(-2.0 * _m.log(pval / 2.0))
+        c = (2.515517, 0.802853, 0.010328)
+        d = (1.432788, 0.189269, 0.001308)
+        z = t - (c[0] + c[1]*t + c[2]*t*t) / (1 + d[0]*t + d[1]*t*t + d[2]*t*t*t)
+    z = max(z, min_z)
+    return abs(beta) / z
 
 
 # ---------------------------------------------------------------------------
@@ -209,6 +234,7 @@ def estimate_beta_tier2(
     program: str,
     eqtl_data: dict | None = None,
     coloc_h4: float | None = None,
+    coloc_h3: float | None = None,
     program_loading: float | None = None,
 ) -> dict | None:
     """
@@ -239,6 +265,24 @@ def estimate_beta_tier2(
         # estimate_beta_tier2_eqtl_direction() as a weaker fallback.
         return None
 
+    # SMR + HEIDI pleiotropic instrument check
+    if eqtl_data and coloc_h3 is not None and coloc_h4 is not None:
+        from pipelines.smr_heidi import heidi_proxy_from_coloc, smr_heidi_filter
+        _heidi = heidi_proxy_from_coloc(coloc_h3, coloc_h4)
+        if eqtl_data.get("beta_gwas") is not None and eqtl_data.get("se_gwas") is not None:
+            from pipelines.smr_heidi import compute_smr_beta
+            _smr = compute_smr_beta(
+                beta_gwas=eqtl_data["beta_gwas"],
+                se_gwas=eqtl_data["se_gwas"],
+                beta_eqtl=float(eqtl_data["nes"]),
+                se_eqtl=float(eqtl_data["se"]),
+            )
+            _filt = smr_heidi_filter(_smr.get("beta_smr"), _smr.get("se_smr"), _heidi["heidi_flag"])
+        else:
+            _filt = smr_heidi_filter(None, None, _heidi["heidi_flag"])
+        if not _filt["keep"]:
+            return None
+
     nes = eqtl_data.get("nes")
     if nes is None:
         return None
@@ -257,7 +301,7 @@ def estimate_beta_tier2(
         "ci_upper":      None,
         "beta_sigma":    (
             abs((eqtl_data.get("se") or 0.0) * (loading if loading is not None else 1.0))
-            or abs(beta) * 0.25
+            or _se_from_pval(beta, float(eqtl_data.get("pval_nominal") or 0.05))
         ),
         "evidence_tier": "Tier2_Convergent",
         "data_source":   f"GTEx_{tissue}_eQTL_MR{coloc_str}",
@@ -317,7 +361,10 @@ def estimate_beta_tier2_ot_instrument(
             "beta_se":       (se * abs(loading)) if se else None,
             "ci_lower":      None,
             "ci_upper":      None,
-            "beta_sigma":    (abs(se * loading) if se else abs(beta) * 0.25),
+            "beta_sigma":    (
+                abs(se * loading) if se
+                else _se_from_pval(beta, float(best_eqtl.get("pvalue") or best_eqtl.get("p_value") or 0.05))
+            ),
             "evidence_tier": "Tier2_Convergent",
             "data_source":   f"OT_eQTL_catalogue_{ot_instruments.get('ensembl_id', gene)}",
             "instrument_type": "eqtl",
@@ -404,7 +451,10 @@ def estimate_beta_tier2_sc_eqtl(
         tier_label = "Tier2c_scEQTL_direction"
     else:
         beta = beta_eqtl * loading
-        sigma = abs((top.get("se") or 0.0) * loading) or abs(beta) * 0.25
+        sigma = (
+            abs((top.get("se") or 0.0) * loading)
+            or _se_from_pval(beta, pvalue)
+        )
         tier_label = "Tier2c_scEQTL"
 
     coloc_str = f"_COLOC_H4={coloc_h4:.2f}" if coloc_h4 is not None else ""
@@ -489,7 +539,7 @@ def estimate_beta_tier2_pqtl(
     loading = program_loading if program_loading is not None else 1.0
     beta    = beta_pqtl * loading
     se_pqtl = top.get("se")
-    sigma   = abs((se_pqtl or 0.0) * loading) or abs(beta) * 0.30
+    sigma   = abs((se_pqtl or 0.0) * loading) or _se_from_pval(beta, pvalue)
 
     study   = top.get("study_label") or pqtl_data.get("data_source", "pQTL_unknown")
     rsid    = top.get("rsid") or top.get("variant_id", "")
@@ -507,169 +557,6 @@ def estimate_beta_tier2_pqtl(
         "note":          (
             f"pQTL-MR via {study}: protein-level instrument (NES={beta_pqtl:.3f}) × loading. "
             "Appropriate for coding variants where cis-eQTL is absent (e.g. CFH Y402H, LPA)."
-        ),
-    }
-
-
-# ---------------------------------------------------------------------------
-# Tier 2s: Synthetic pathway program (Reactome enrichment-derived)
-# For orphan genes absent from Perturb-seq screens.
-# Position: after Tier2rb (rare burden), before Tier3 (LINCS).
-# σ = 0.45 (weaker than eQTL but stronger than LINCS/Virtual).
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Tier 2pt: Protein Channel — direct gene→disease arc for protein-level mechanisms
-#
-# Captures genes whose GWAS causal variant changes protein function/level rather
-# than mRNA.  Examples: CFH Y402H (complement), PCSK9 coding (lipid), LPA (CAD).
-# These genes have n_programs≈0 in Perturb-seq because the mechanism is
-# post-translational; eQTL tiers miss them for the same reason.
-#
-# Rather than routing through a transcriptional program, Tier2pt embeds its own
-# program_gamma derived from (GWAS effect size × mechanism confidence).
-# compute_ota_gamma uses program_gamma as fallback when gamma_estimates has no
-# entry for the program — so the contribution is β × γ_protein directly.
-# ---------------------------------------------------------------------------
-
-def estimate_beta_tier2pt(
-    gene: str,
-    program: str,
-    ot_instruments: dict | None = None,
-    pqtl_data: dict | None = None,
-    ot_score: float = 0.0,
-) -> dict | None:
-    """
-    Tier 2pt β: direct protein-channel arc for protein-level disease mechanisms.
-
-    Activates when:
-      - gene has a GWAS credset instrument with p ≤ 1e-5
-      - pQTL evidence OR OT L2G score ≥ 0.3 supports protein-level mechanism
-      - Mechanism confidence threshold ≥ 0.15
-
-    γ formula:
-      gwas_strength    = clamp(-log10(gwas_p) / 15, 0, 1)
-      mechanism_conf   = pqtl_conf × 0.8 + ot_score × 0.4   (if pQTL present)
-                       = ot_score × 0.5                       (pQTL absent)
-      program_gamma    = gwas_strength × mechanism_conf       (capped at 0.85)
-
-    β = pQTL effect | GWAS beta | OT score  (in priority order, signed)
-
-    The program_gamma is stored in the return dict so compute_ota_gamma can use
-    it directly (gamma_estimates has no entry for this virtual program slot).
-
-    Args:
-        gene:         Gene symbol
-        program:      Current Perturb-seq program (annotation only; not used for scoring)
-        ot_instruments: Output of get_ot_genetic_instruments() — contains GWAS credsets
-        pqtl_data:    pQTL data dict {top_pqtl: {beta, se, pvalue}} or flat {beta, pvalue}
-        ot_score:     OT L2G score (causal gene probability at GWAS locus)
-
-    Returns:
-        β dict with evidence_tier="Tier2pt_ProteinChannel" and embedded program_gamma,
-        or None if gene lacks sufficient protein-level evidence.
-    """
-    if not ot_instruments:
-        return None
-
-    instruments = ot_instruments.get("instruments", [])
-    gwas_insts = [
-        i for i in instruments
-        if i.get("study_type") == "gwas" or i.get("instrument_type") == "gwas_credset"
-    ]
-    # Best GWAS credset by p-value
-    if gwas_insts:
-        best_gwas = min(gwas_insts, key=lambda x: float(x.get("p_value", 1.0) or 1.0))
-        gwas_pvalue = float(best_gwas.get("p_value", 1.0) or 1.0)
-        gwas_beta_raw = best_gwas.get("beta")
-        if gwas_pvalue > 1e-5:
-            return None  # no genome-wide-level signal
-        gwas_strength = min(-math.log10(gwas_pvalue) / 15.0, 1.0)
-    elif float(ot_score) >= 0.5:
-        # No credible set instruments but high L2G confidence.
-        # L2G ≥ 0.5 is only assigned to genes at GWAS-significant loci, so a
-        # genome-wide significant signal exists — use 5e-8 as a conservative floor.
-        # This rescues complement genes (CFH L2G=0.86) whose loci are too complex
-        # for clean credible-set attribution (CFH/CFHR1-5 deletion polymorphism).
-        gwas_pvalue  = 5e-8
-        gwas_beta_raw = None
-        gwas_strength = min(-math.log10(gwas_pvalue) / 15.0, 1.0)  # ≈ 0.503
-    else:
-        return None  # no genome-wide signal
-
-    # pQTL evidence
-    pqtl_conf = 0.0
-    pqtl_pvalue: float | None = None
-    pqtl_beta_val: float | None = None
-    if pqtl_data is not None:
-        top = pqtl_data.get("top_pqtl") or pqtl_data
-        if isinstance(top, dict):
-            raw_p = top.get("pvalue") or top.get("p_value")
-            raw_b = top.get("beta")
-            if raw_p is not None:
-                try:
-                    pqtl_pvalue = float(raw_p)
-                    if math.isfinite(pqtl_pvalue) and pqtl_pvalue < MR_PQTL_P_VALUE_MAX:
-                        pqtl_conf = max(0.0, 1.0 - pqtl_pvalue / MR_PQTL_P_VALUE_MAX)
-                except (TypeError, ValueError):
-                    pass
-            if raw_b is not None:
-                try:
-                    pqtl_beta_val = float(raw_b)
-                    if not math.isfinite(pqtl_beta_val):
-                        pqtl_beta_val = None
-                except (TypeError, ValueError):
-                    pass
-
-    causal_prob = float(ot_score) if ot_score and ot_score > 0 else 0.4
-
-    if pqtl_conf > 0:
-        mechanism_conf = min(pqtl_conf * 0.8 + causal_prob * 0.4, 1.0)
-    else:
-        mechanism_conf = causal_prob * 0.5
-
-    if mechanism_conf < 0.15:
-        return None
-
-    program_gamma = round(min(gwas_strength * mechanism_conf, 0.85), 4)
-
-    # Beta: priority pQTL beta → GWAS beta → OT score
-    if pqtl_beta_val is not None:
-        beta_val = max(-1.0, min(1.0, pqtl_beta_val))
-        sigma = 0.35
-    elif gwas_beta_raw is not None and abs(float(gwas_beta_raw)) >= 0.05:
-        # Use GWAS beta only when it's on an interpretable effect scale (≥0.05).
-        # OT credset betas are per-allele log-odds (~0.018 for AMD/CFH) which are
-        # not comparable to pQTL effect sizes — using them directly as β in the OTA
-        # formula produces ~50× underestimated gamma. Fall through to OT L2G proxy
-        # when the allelic beta is too small to be useful.
-        try:
-            beta_val = max(-1.0, min(1.0, float(gwas_beta_raw)))
-        except (TypeError, ValueError):
-            beta_val = float(causal_prob)
-        sigma = 0.40
-    else:
-        beta_val = float(causal_prob)
-        sigma = 0.45
-
-    parts = [f"GWAS_p={gwas_pvalue:.1e}"]
-    if pqtl_pvalue is not None and pqtl_pvalue < MR_PQTL_P_VALUE_MAX:
-        parts.append(f"pQTL_p={pqtl_pvalue:.3f}")
-    parts.append(f"L2G={causal_prob:.2f}")
-
-    return {
-        "beta":          beta_val,
-        "beta_se":       None,
-        "ci_lower":      None,
-        "ci_upper":      None,
-        "beta_sigma":    sigma,
-        "evidence_tier": "Tier2pt_ProteinChannel",
-        "program_gamma": program_gamma,
-        "data_source":   f"ProteinChannel:{','.join(parts)}",
-        "note": (
-            f"Protein channel γ={program_gamma:.3f} "
-            f"(gwas_str={gwas_strength:.2f}, mech_conf={mechanism_conf:.2f}"
-            + (f", pQTL_conf={pqtl_conf:.2f}" if pqtl_conf > 0 else "") + ")"
         ),
     }
 
@@ -741,10 +628,10 @@ def estimate_beta_tier2_rare_burden(
 
     loading = program_loading if program_loading is not None else 1.0
 
-    # β direction: LoF burden positive → gene normally protective → activation helps
-    # We use sign(burden_beta) as the direction signal
-    # magnitude = |loading| (we don't trust the burden beta magnitude for program effects)
-    beta = math.copysign(abs(loading), burden_beta)
+    if program_loading is not None and abs(float(program_loading)) > 0:
+        beta = math.copysign(abs(float(program_loading)), burden_beta)
+    else:
+        beta = burden_beta
 
     loeuf_str = f"_LOEUF={loeuf:.3f}" if loeuf is not None else ""
     study = burden_data.get("burden_study") or "UKB_WES"
@@ -754,15 +641,15 @@ def estimate_beta_tier2_rare_burden(
         "beta_se":       burden_data.get("burden_se"),
         "ci_lower":      None,
         "ci_upper":      None,
-        "beta_sigma":    0.60,  # large: direction from burden, magnitude from loading only
+        "beta_sigma":    0.60,  # direction from burden test, magnitude from loading (noisy)
         "evidence_tier": "Tier2rb_RareBurden",
         "data_source":   f"{study}_rare_burden{loeuf_str}",
         "burden_p":      burden_p,
         "loeuf":         loeuf,
-        "mr_method":     "rare_burden_direction_x_loading",
+        "mr_method":     "rare_burden_sign_x_loading",
         "note":          (
-            f"Rare variant burden (p={burden_p:.2e}): LoF/damaging direction × loading. "
-            "Direction-only; magnitude uncertain (sigma=0.60). "
+            f"Rare variant burden (p={burden_p:.2e}): sign from burden test, magnitude from loading. "
+            "Direction reliable; magnitude uncertain; beta_sigma=0.60 reflects this. "
             f"Interpretation: {burden_data.get('interpretation', '')[:100]}"
         ),
     }
@@ -816,9 +703,9 @@ def estimate_beta_tier2_eqtl_direction(
         return None
 
     loading = program_loading if program_loading is not None else 1.0
-    # Direction from eQTL sign, magnitude from |loading| (not scaled by NES magnitude
-    # because NES calibration is uncertain without confirmed COLOC)
+
     beta = math.copysign(abs(loading), float(nes))
+    beta_sigma = 0.50
 
     tissue = eqtl_data.get("tissue", "unknown_tissue")
     coloc_str = f"H4={coloc_h4:.2f}" if coloc_h4 is not None else "H4=absent"
@@ -828,134 +715,18 @@ def estimate_beta_tier2_eqtl_direction(
         "beta_se":       None,
         "ci_lower":      None,
         "ci_upper":      None,
-        "beta_sigma":    0.50,  # large: direction known, magnitude uncertain (COLOC weak)
+        "beta_sigma":    beta_sigma,
         "evidence_tier": "Tier2_eQTL_direction",
         "data_source":   f"GTEx_{tissue}_eQTL_direction_only_{coloc_str}",
         "coloc_h4":      coloc_h4,
-        "mr_method":     "eQTL_sign_x_loading",
+        "mr_method":     "eQTL_NES_x_sqrt_coloc_credibility_x_loading",
         "note":          (
             f"eQTL exists ({tissue}, NES={float(nes):.3f}) but COLOC {coloc_str} — "
-            "direction preserved, magnitude set to |loading| with beta_sigma=0.50."
+            f"β = sign(NES)×|loading|; beta_sigma={beta_sigma:.2f}."
         ),
     }
 
 
-
-
-# ---------------------------------------------------------------------------
-# Tier 4 / Virtual: In silico prediction
-# Two sub-sources — both labelled provisional_virtual
-# ---------------------------------------------------------------------------
-
-def estimate_beta_geneformer(
-    gene: str,
-    program: str,
-    geneformer_result: dict | None = None,
-) -> dict | None:
-    """
-    Virtual β sub-source A: Geneformer / GEARS in silico perturbation.
-
-    Models trained on real Perturb-seq data (Replogle K562 + Norman K562)
-    that extrapolate to unseen genes or cell types.  Superior to co-expression
-    because the model learned from actual perturbation distributions, but still
-    extrapolation — not experimental.
-
-    STUB — wire to Geneformer API or local model when available.
-    """
-    if geneformer_result is None:
-        return None
-    beta = geneformer_result.get("delta_program_activity")
-    if beta is None:
-        return None
-    return {
-        "beta":          beta,
-        "beta_se":       geneformer_result.get("se"),
-        "ci_lower":      None,
-        "ci_upper":      None,
-        "beta_sigma":    geneformer_result.get("se") or abs(beta) * 0.50,
-        "evidence_tier": "provisional_virtual",
-        "data_source":   "Geneformer_virtual_perturbation",
-        "note":          "In silico prediction from Geneformer; not experimental — label provisional_virtual",
-    }
-
-
-def estimate_beta_foundation_model(
-    gene: str,
-    program: str,
-    known_tier12_betas: dict[str, float] | None = None,
-    program_gene_symbols: list[str] | None = None,
-) -> dict | None:
-    """
-    Virtual-A (upgraded): Expression-similarity transfer from known Tier1/2 genes.
-
-    Approximates what scGPT / Geneformer v2 / Universal Cell Embeddings do:
-    find nearest neighbors in expression embedding space, then transfer their
-    perturbation responses.  Here we use GTEx v10 median TPM profiles as the
-    embedding (54 tissues × gene → cosine similarity).
-
-    This gives a proper uncertainty-weighted prior for genes with no direct
-    Perturb-seq coverage, rather than binary pathway membership (0/1).
-
-    β_prior = Σ_i cos_sim(gene, known_i) × β_known_i / Σ cos_sim
-    σ_prior = max(0.5 × |β_prior|, 0.30)   [calibrated: min 0.30]
-
-    Args:
-        gene:                 Target gene to estimate β for
-        program:              Program name
-        known_tier12_betas:   {gene_symbol: beta_value} for genes in the same
-                              program that already have Tier1 or Tier2 evidence
-        program_gene_symbols: All gene symbols defining program (for context)
-    """
-    if not known_tier12_betas:
-        return None
-
-    from mcp_servers.single_cell_server import _query_gtex_v10_median_expression
-
-    # Fetch embedding for target gene
-    target_tpm = _query_gtex_v10_median_expression(gene)
-    if not target_tpm or len(target_tpm) < 3:
-        return None
-
-    target_norm = _l2_norm(target_tpm)
-    if target_norm == 0:
-        return None
-
-    # Weighted transfer from known Tier1/2 genes
-    weighted_sum = 0.0
-    weight_total = 0.0
-    for known_gene, known_beta in known_tier12_betas.items():
-        if known_gene == gene:
-            continue
-        known_tpm = _query_gtex_v10_median_expression(known_gene)
-        if not known_tpm or len(known_tpm) < 3:
-            continue
-        # Cosine similarity in GTEx expression space
-        cos_sim = _cosine_sim(target_tpm, known_tpm, target_norm)
-        if cos_sim <= 0:
-            continue
-        weighted_sum  += cos_sim * known_beta
-        weight_total  += cos_sim
-
-    if weight_total == 0:
-        return None
-
-    beta_prior = weighted_sum / weight_total
-    sigma      = max(0.50 * abs(beta_prior), 0.30)
-
-    return {
-        "beta":          beta_prior,
-        "beta_se":       None,
-        "ci_lower":      None,
-        "ci_upper":      None,
-        "beta_sigma":    sigma,
-        "evidence_tier": "provisional_virtual",
-        "data_source":   f"foundation_model_GTEx_transfer_{len(known_tier12_betas)}_donors",
-        "note":          (
-            "Cosine-similarity transfer from known Tier1/2 genes in GTEx v10 "
-            "expression space. Approximates scGPT/UCE nearest-neighbor transfer. "
-            "Labelled provisional_virtual; represents uncertainty-weighted prior."
-        ),
-    }
 
 
 def _l2_norm(v: list[float]) -> float:
@@ -1091,8 +862,6 @@ def estimate_beta(
     coloc_h4: float | None = None,
     program_loading: float | None = None,
     program_gene_set: set[str] | None = None,
-    geneformer_result: dict | None = None,
-    known_tier12_betas: dict[str, float] | None = None,
     pathway_member: bool | None = None,
     cell_type: str = "K562",
     cell_line: str | None = None,
@@ -1120,9 +889,6 @@ def estimate_beta(
       2. Tier2L   — Latent Hijack (Cross-disease mechanistic transfer)
       2. Tier2.5  — eQTL direction-only (eQTL present but COLOC H4 < 0.8; sigma=0.50)
       2. Tier2rb  — Rare variant burden direction (UKB WES collapsing; sigma=0.60)
-      3. Virtual-A — Geneformer in silico (trained on perturbation data)
-      4. Virtual-A upgraded — foundation model cosine-similarity transfer
-      5. Virtual-B — pathway membership (annotation proxy, no causal basis)
 
     Co-expression, GRN weights, and pathway-annotation-derived synthetic betas
     are intentionally absent from this chain — they do not provide causal evidence.
@@ -1134,7 +900,7 @@ def estimate_beta(
         return {**beta, "gene": gene, "program": program, "tier_used": 1}
 
     # Tier 2a — GTEx eQTL-MR
-    beta = estimate_beta_tier2(gene, program, eqtl_data, coloc_h4, program_loading)
+    beta = estimate_beta_tier2(gene, program, eqtl_data=eqtl_data, coloc_h4=coloc_h4, program_loading=program_loading)
     if beta is not None:
         return {**beta, "gene": gene, "program": program, "tier_used": 2}
 
@@ -1168,21 +934,9 @@ def estimate_beta(
     if beta is not None:
         return {**beta, "gene": gene, "program": program, "tier_used": 2}
 
-    # Virtual-A: Geneformer
-    beta = estimate_beta_geneformer(gene, program, geneformer_result)
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 4}
-
-    # Virtual-A upgraded: foundation model cosine-similarity transfer
-    beta = estimate_beta_foundation_model(gene, program, known_tier12_betas, program_gene_set and list(program_gene_set))
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 4}
-
-    # Virtual-B: pathway membership proxy
-    return {
-        **estimate_beta_virtual(gene, program, pathway_member),
-        "gene": gene, "program": program, "tier_used": 4,
-    }
+    # No causal β found — return None rather than falling back to virtual/in silico estimates.
+    # provisional_virtual has no perturbation or genetic basis and produces misleading output.
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1197,7 +951,6 @@ def build_beta_matrix(
     coloc_data: dict[str, float] | None = None,
     program_loadings: dict[str, dict[str, float]] | None = None,
     program_gene_sets: dict[str, set[str]] | None = None,
-    geneformer_data: dict[str, dict] | None = None,
     pathway_membership: dict[str, set[str]] | None = None,
     cell_type: str = "unknown",
     disease: str | None = None,
@@ -1216,7 +969,6 @@ def build_beta_matrix(
         coloc_data:        COLOC H4 posteriors keyed by gene
         program_loadings:  NMF/cNMF loadings keyed by program → gene → weight
         program_gene_sets: Gene set definitions keyed by program → set[gene]
-        geneformer_data:   Geneformer outputs keyed by gene → program → {delta_activity}
         pathway_membership: Pathway membership keyed by program → set[gene]
         cell_type:         Primary cell type context (used for ProgramBetaMatrix annotation)
         disease:           Disease name (used for cell_type routing if cell_type not set)
@@ -1239,10 +991,6 @@ def build_beta_matrix(
             pg_set  = (program_gene_sets or {}).get(program)
             pm      = gene in (pathway_membership or {}).get(program, set())
 
-            gf_result = None
-            if geneformer_data and gene in geneformer_data:
-                gf_result = geneformer_data[gene].get(program)
-
             beta_result = estimate_beta(
                 gene=gene,
                 program=program,
@@ -1251,7 +999,6 @@ def build_beta_matrix(
                 coloc_h4=(coloc_data or {}).get(gene),
                 program_loading=loading,
                 program_gene_set=pg_set,
-                geneformer_result=gf_result,
                 pathway_member=pm if pm else None,
                 cell_type=cell_type,
                 disease=disease,
@@ -1259,8 +1006,9 @@ def build_beta_matrix(
                 current_disease_motif=current_disease_motif,
                 motif_library=motif_library,
             )
-            matrix[gene][program] = beta_result.get("beta")
-            tier_summary[beta_result.get("tier_used", 4)] += 1
+            matrix[gene][program] = beta_result.get("beta") if beta_result else None
+            if beta_result:
+                tier_summary[beta_result.get("tier_used", 4)] += 1
 
     # Best tier per gene
     tier_priority = {
@@ -1288,7 +1036,7 @@ def build_beta_matrix(
                 current_disease_motif=current_disease_motif,
                 motif_library=motif_library,
             )
-            t = b.get("evidence_tier", "provisional_virtual")
+            t = b.get("evidence_tier", "provisional_virtual") if b else "provisional_virtual"
             if tier_priority.get(t, 99) < tier_priority.get(best, 99):
                 best = t
         evidence_tier_per_gene[gene] = best if best in valid_tiers else "Tier3_Provisional"

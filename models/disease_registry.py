@@ -65,16 +65,6 @@ def get_efo_id(key: str) -> str | None:
     return DISEASE_EFO.get(key.upper().strip())
 
 
-def get_display_name(key: str) -> str | None:
-    """Return human-readable display name for a disease short key."""
-    return DISEASE_DISPLAY_NAME.get(key.upper().strip())
-
-
-def get_slug(key: str) -> str | None:
-    """Return file-safe slug for a disease short key."""
-    return DISEASE_SLUG.get(key.upper().strip())
-
-
 # ---------------------------------------------------------------------------
 # Disease-relevant programs — used for entropy filtering and mechanistic
 # necessity classification in causal_discovery_agent and target_prioritization_agent.

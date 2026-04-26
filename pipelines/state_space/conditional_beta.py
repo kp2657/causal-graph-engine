@@ -85,7 +85,7 @@ def estimate_conditional_beta(
         )
 
     # Tier 2 — eQTL-MR
-    t2 = estimate_beta_tier2(gene, program_id, eqtl_data, coloc_h4, program_loading)
+    t2 = estimate_beta_tier2(gene, program_id, eqtl_data=eqtl_data, coloc_h4=coloc_h4, program_loading=program_loading)
     if t2 is not None and math.isfinite(t2.get("beta", float("nan"))):
         return ConditionalBeta(
             gene=gene,

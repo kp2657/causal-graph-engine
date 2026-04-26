@@ -548,27 +548,3 @@ def load_replogle_betas(
     return betas
 
 
-def invalidate_cache(dataset_id: str | None = None, cache_path: Path | None = None) -> None:
-    """
-    Remove cache files for a dataset so next call recomputes from h5ad.
-
-    If dataset_id is given, removes all beta_cache_*.json files for that dataset.
-    If cache_path is given, removes just that file.
-    """
-    if cache_path is not None:
-        if cache_path.exists():
-            cache_path.unlink()
-            logger.info("Cache invalidated: %s", cache_path)
-    elif dataset_id is not None:
-        cache_dir = _PERTURBSEQ_DIR / dataset_id
-        removed = 0
-        for f in cache_dir.glob("beta_cache_*.json"):
-            f.unlink()
-            removed += 1
-        logger.info("Invalidated %d cache file(s) for %s", removed, dataset_id)
-    else:
-        # Legacy: remove old flat cache
-        legacy = _ROOT / "data" / "replogle_cache.json"
-        if legacy.exists():
-            legacy.unlink()
-            logger.info("Legacy cache invalidated: %s", legacy)

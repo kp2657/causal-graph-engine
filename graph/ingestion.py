@@ -130,41 +130,6 @@ def ingest_edge(db: "GraphDB", raw: dict[str, Any]) -> CausalEdge:
     return edge
 
 
-class IngestionResult(TypedDict):
-    written: list[CausalEdge]
-    rejected: list[tuple[dict, str]]   # (raw_edge, error_message)
-
-
-def ingest_edges(db: "GraphDB", raw_edges: list[dict[str, Any]]) -> IngestionResult:
-    """
-    Batch ingest. Continues on IngestionError, collects failures explicitly.
-
-    Returns:
-        IngestionResult with .written (succeeded) and .rejected (failed with reason).
-        Callers must check len(result["rejected"]) > 0 to detect partial failure.
-    """
-    written: list[CausalEdge] = []
-    rejected: list[tuple[dict, str]] = []
-
-    for raw in raw_edges:
-        try:
-            written.append(ingest_edge(db, raw))
-        except Exception as exc:
-            logger.error(
-                "Failed to ingest edge %s → %s: %s",
-                raw.get("from_node"), raw.get("to_node"), exc,
-            )
-            rejected.append((raw, str(exc)))
-
-    if rejected:
-        logger.warning(
-            "%d / %d edges failed ingestion.",
-            len(rejected), len(raw_edges),
-        )
-
-    return {"written": written, "rejected": rejected}
-
-
 # ---------------------------------------------------------------------------
 # Program γ ingestion — writes CellularProgram nodes + DrivesTrait edges
 # ---------------------------------------------------------------------------

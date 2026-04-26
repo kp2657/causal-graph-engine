@@ -8,20 +8,44 @@ scripts/dev/
 data/**
 *.kuzu
 *.h5ad
-# Exception: keep validated pipeline output JSON files
+# Exception: keep validated pipeline output files
 !data/analyze_coronary_artery_disease.json
 !data/analyze_rheumatoid_arthritis.json
+!data/analyze_coronary_artery_disease.md
+!data/analyze_rheumatoid_arthritis.md
+!data/exports/
+!data/exports/*.ttl
+!data/exports/*.jsonld
+!data/exports/*_edges.csv
 
 # Run logs (contain API traces and personal data)
 *.log
 
-# Internal research / presentation outputs (not part of public API)
+# Internal development tracking — not part of the public API
+STATE.md
+CLAUDE.md
+CHANGELOG.md
+CONTRIBUTING.md
 AMD_*.md
 dynamical_state_space_redesign_for_claude.md
 CHANGELOG_archive.md
 
-# Claude plan files
-.claude/plans/
+# Claude plan files and memory
+.claude/
+
+# SDK-only agents (not used in default local pipeline)
+agents/cso/
+agents/discovery/
+agents/*/prompts/
+orchestrator/prompts/
+
+# Auxiliary scripts not needed to reproduce results
+scripts/analyze_cad_graph.py
+scripts/run_tier2_subset.py
+scripts/populate_motif_library.py
+
+# Standalone scheduler (not connected to pipeline)
+scheduler/
 
 # Python artifacts
 __pycache__/

@@ -227,9 +227,29 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
 
     work = [(prog, trait) for prog in program_names for trait in traits]
 
+    # Load S-LDSC pre-computed τ coefficients (Mode 2 γ) — available after
+    # running: python -m pipelines.ldsc.runner run {disease_key}
+    _ldsc_gammas: dict[str, dict] = {}
+    try:
+        from pipelines.ldsc.gamma_loader import get_all_program_gammas_ldsc, ldsc_available
+        if ldsc_available(short_name):
+            _ldsc_gammas = get_all_program_gammas_ldsc(short_name)
+            if _ldsc_gammas:
+                print(f"[S-LDSC] Loaded τ coefficients for {len(_ldsc_gammas)} programs ({short_name})")
+    except Exception as _ldsc_err:
+        pass  # S-LDSC not yet run — falls back to OT L2G only
+
     def _fetch(prog_trait: tuple[str, str]) -> tuple[str, str, dict]:
         prog, trait = prog_trait
         try:
+            # Mode 2: S-LDSC partitioned heritability (highest priority when available)
+            # τ coefficient = per-SNP heritability enrichment from PLAtlas MVP+UKB+FinnGen
+            if prog in _ldsc_gammas:
+                ldsc_g = _ldsc_gammas[prog]
+                ldsc_g.setdefault("gamma_source_type", "s_ldsc")
+                ldsc_g["trait"] = trait
+                return prog, trait, ldsc_g
+
             result = estimate_gamma(
                 prog, trait,
                 program_gene_set=program_gene_sets.get(prog) or None,
@@ -570,24 +590,36 @@ def analyze_disease_v2(
         "_ot_disease_targets_cache": ot_disease_targets_cache,
     }
 
+    # Hard gate: require h5ad before running any β estimation.
+    # Without h5ad, Perturb-seq β falls back to provisional_virtual which has no causal
+    # basis and produces misleading output.  Fail loudly so the user downloads the file.
+    import pathlib as _pl
+    from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS as _DSN2
+    _short2 = _DSN2.get(disease_query.get("disease_name", "").lower(), "")
+    if _short2:
+        _h5ad_dir = _pl.Path(f"data/cellxgene/{_short2}")
+        _h5ad_candidates = sorted(
+            p for p in _h5ad_dir.glob(f"{_short2}_*.h5ad")
+            if "latent_cache" not in p.name and "state_cache" not in p.name
+        ) if _h5ad_dir.exists() else []
+        if not _h5ad_candidates:
+            raise RuntimeError(
+                f"\n\nMissing h5ad for {_short2.upper()}.\n"
+                f"Run:\n\n"
+                f"  python -m pipelines.discovery.cellxgene_downloader download_all {_short2}\n\n"
+                f"Expected location: data/cellxgene/{_short2}/{_short2}_<cell_type>.h5ad\n"
+                f"Without this file the pipeline cannot compute causal β estimates."
+            )
+
     # Pre-run NMF on disease h5ad so {disease}_programs.json exists on disk before
     # both Tier 2 (beta matrix) and gamma estimation call get_programs_for_disease.
     # Must run BEFORE Tier 2 to guarantee consistent program names across both.
     try:
         from pipelines.discovery.cnmf_runner import run_nmf_programs as _run_nmf
-        from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS as _DSN2
-        import pathlib as _pl
-        _short2 = _DSN2.get(disease_query.get("disease_name", "").lower(), "")
-        if _short2:
-            _h5ad_dir = _pl.Path(f"data/cellxgene/{_short2}")
-            _h5ad_candidates = sorted(
-                p for p in _h5ad_dir.glob(f"{_short2}_*.h5ad")
-                if "latent_cache" not in p.name and "state_cache" not in p.name
-            )
-            if _h5ad_candidates:
-                _run_nmf(str(_h5ad_candidates[0]), _short2, n_programs=20, n_top_genes=50)
+        if _short2 and _h5ad_candidates:
+            _run_nmf(str(_h5ad_candidates[0]), _short2, n_programs=20, n_top_genes=50)
     except Exception as _nmf_pre_exc:
-        pass  # non-fatal: falls back to cell-type programs if h5ad absent
+        pass  # NMF failure is non-fatal — programs fall back to MSigDB Hallmarks
 
     # =========================================================================
     # TIER 2 — Pathway

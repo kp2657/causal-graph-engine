@@ -15,6 +15,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import datetime
+import json
 import os
 import sys
 from pathlib import Path
@@ -75,6 +77,14 @@ def _fetch_one(name: str, spec: dict, force: bool) -> bool:
                 total += len(buf)
         tmp.rename(target)
         print(f"         downloaded {total:,} B")
+        # Write companion metadata for reproducibility auditing.
+        meta = {
+            "source":        spec["about"],
+            "url":           spec["url"],
+            "download_date": datetime.date.today().isoformat(),
+            "size_bytes":    total,
+        }
+        target.with_suffix(".meta.json").write_text(json.dumps(meta, indent=2))
         return True
     except Exception as exc:
         if tmp.exists():

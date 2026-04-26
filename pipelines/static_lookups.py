@@ -29,6 +29,7 @@ from typing import Optional
 _LOG = logging.getLogger(__name__)
 
 _DEFAULT_STATIC_DIR = Path(__file__).resolve().parent.parent / "data" / "static"
+_FROZEN_DIR         = Path(__file__).resolve().parent.parent / "frozen"
 
 _GNOMAD_FILE   = "gnomad_constraint.tsv"
 _HGNC_FILE     = "hgnc_complete.tsv"
@@ -109,9 +110,10 @@ class StaticLookups:
             self._gnomad_loaded = True
             path = self._dir / _GNOMAD_FILE
             if not path.exists():
-                _LOG.info("gnomAD constraint file missing: %s", path)
-                self._gnomad = {}
-                return
+                raise FileNotFoundError(
+                    f"Required static file missing: {path}\n"
+                    "Run: python scripts/fetch_static_data.py"
+                )
             tbl: dict[str, dict] = {}
             tbl_by_eid: dict[str, dict] = {}
             try:
@@ -154,10 +156,19 @@ class StaticLookups:
             if self._hgnc_loaded:
                 return
             self._hgnc_loaded = True
+            # Prefer frozen snapshot for exact reproduction, but only when using
+            # the default static dir — custom dirs (e.g. tests) use their own files.
             path = self._dir / _HGNC_FILE
+            if self._dir == _DEFAULT_STATIC_DIR:
+                frozen = _FROZEN_DIR / _HGNC_FILE
+                if frozen.exists():
+                    path = frozen
+                    _LOG.info("Using frozen HGNC table (%s)", path)
             if not path.exists():
-                _LOG.info("HGNC mapping file missing: %s", path)
-                return
+                raise FileNotFoundError(
+                    f"Required static file missing: {self._dir / _HGNC_FILE}\n"
+                    "Run: python scripts/fetch_static_data.py"
+                )
             try:
                 with path.open("r", encoding="utf-8", newline="") as fh:
                     reader = csv.DictReader(fh, delimiter="\t")
@@ -195,8 +206,10 @@ class StaticLookups:
             self._reactome_loaded = True
             path = self._dir / _REACTOME_FILE
             if not path.exists():
-                _LOG.info("Reactome mapping file missing: %s", path)
-                return
+                raise FileNotFoundError(
+                    f"Required static file missing: {path}\n"
+                    "Run: python scripts/fetch_static_data.py"
+                )
             tbl: dict[str, list[dict]] = {}
             try:
                 with path.open("r", encoding="utf-8", newline="") as fh:

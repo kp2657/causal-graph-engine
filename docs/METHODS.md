@@ -162,6 +162,8 @@ Z-score threshold for hit calling: `GPS_Z_RGES_DEFAULT = 2.0` (~5% FDR under N(0
 
 Background distribution (BGRD) cached at `data/gps_bgrd/` after first computation. With cached BGRD, runtime < 2 hours; without, up to 6 hours.
 
+**Scope and limitations:** GPS is a **repurposing and hypothesis-generation tool**, not a validation of causal targets. CMAP profiles are measured in cancer cell lines (MCF7, A549, PC3) which do not match the disease-relevant cell types used for target nomination (cardiac endothelial for CAD, CD4+ T cells for RA). Transcriptional convergence between GPS compounds and genetic anchor genes (`convergent_genetic_targets_hypothesis` field) is an annotation-only signal — it is never used in target scoring or γ estimation.
+
 **Citations:**
 > Lamb J et al. "The Connectivity Map: using gene-expression signatures to connect small molecules, genes, and disease." *Science* 313(5795):1929–1935 (2006). https://doi.org/10.1126/science.1132939
 
@@ -197,6 +199,30 @@ Post-OTA reweighting step that adjusts gene-γ edge confidence based on:
 3. Bootstrap edge confidence (30 resamples of β matrix, fraction with |γ| > threshold)
 
 Anchor genes (GWAS-validated) bypass SCONE downweighting.
+
+---
+
+## Validation modules
+
+Five independent validation tests are run post-Tier 3 to flag potential confounds. These are **annotation-only** — none modify `ota_gamma` or the primary ranking.
+
+### Pseudotime pre-branch test
+NMF programs are labelled `mediator`, `consequence`, or `ambiguous` based on whether they activate before or after the normal→disease branch point in pseudotime. Programs labelled `consequence` receive a 0.5× γ discount (these are downstream of disease, not causal). Implemented in `pipelines/state_space/program_precedence.py`; results cached to `data/ldsc/results/{disease_key}_program_precedence.json`.
+
+### SMR + HEIDI pleiotropic instrument test
+For eQTL-MR Tier 2 genes: β_SMR = β_GWAS / β_eQTL (ratio estimator with delta-method SE). HEIDI flag raised when H3/(H3+H4) > 0.3, indicating the GWAS and eQTL signals may be driven by different causal variants (horizontal pleiotropy). Implemented in `pipelines/smr_heidi.py`; wired into `estimate_beta_tier2()`.
+
+**Citation:**
+> Zhu Z et al. "Integration of summary data from GWAS and eQTL studies predicts complex trait gene targets." *Nat Genet* 48:481–487 (2016). https://doi.org/10.1038/ng.3538
+
+### Leave-locus-out (LOO) γ stability
+The anchor gene's own ±1 Mb locus is excluded from the program χ² enrichment and τ is recomputed. Genes whose τ rank shifts by > 10 positions are flagged as `loo_stable=False` — their γ may be inflated by the anchor gene's own GWAS signal rather than genuine program enrichment. Implemented in `pipelines/ldsc/leave_locus_out.py`.
+
+### FinnGen holdout validation
+FinnGen R10 (no UK Biobank overlap) provides an independent GWAS cohort for replication. Program-level enrichment is recomputed using FinnGen summary statistics, and Spearman rank correlation between pipeline scores and FinnGen enrichment tests whether top targets replicate. Endpoints: CAD = I9_CHD, RA = M13_RHEUMA. Implemented in `pipelines/ldsc/finngen_validation.py`.
+
+### Clinical trial AUROC
+OpenTargets `knownDrugs` GraphQL query maps Phase 2/3 trial outcomes (success vs failure/discontinued) for all nominated genes. Mann-Whitney AUROC tests whether pipeline rank correlates with clinical success. Returns `skipped` if fewer than 5 labeled genes are available. Implemented in `pipelines/validation/clinical_trial_auc.py`.
 
 ---
 

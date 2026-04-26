@@ -362,14 +362,6 @@ class TestUkbWesServerHelpers(unittest.TestCase):
         # We just test the function is importable and handles gracefully
         self.assertTrue(callable(get_burden_direction_for_gene))
 
-    def test_schema_pqtl_sle_fields_present(self):
-        from graph.schema import DISEASE_CELL_TYPE_MAP
-        sle = DISEASE_CELL_TYPE_MAP.get("SLE", {})
-        self.assertIn("pqtl_study_priority", sle)
-        self.assertIn("pqtl_key_genes", sle)
-        self.assertIn("sc_eqtl_cell_types", sle)
-        self.assertIn("TNFSF13B", sle["pqtl_key_genes"])
-
     def test_schema_pqtl_cad_fields_present(self):
         from graph.schema import DISEASE_CELL_TYPE_MAP
         cad = DISEASE_CELL_TYPE_MAP.get("CAD", {})

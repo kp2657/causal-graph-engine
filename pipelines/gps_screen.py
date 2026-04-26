@@ -272,10 +272,10 @@ def _run_gps_screen(
         sig_filename = f"DZSIG__{safe_label}.csv"
         _write_dzsig_csv(sig, input_dir / sig_filename)
 
-        # If a cached background exists, copy it into the dzsig dir and pass
-        # --RGES_bgrd_ID so GPS skips the expensive permutation step.
+        # Always pass --RGES_bgrd_ID so GPS names the BGRD file consistently
+        # (size-bucketed key) whether computing fresh or loading from cache.
         bgrd_pkl = bgrd_dir / f"BGRD__{bgrd_key}.pkl"
-        bgrd_id_arg = ["--RGES_bgrd_ID", bgrd_key] if bgrd_pkl.exists() else []
+        bgrd_id_arg = ["--RGES_bgrd_ID", bgrd_key]
         run_timeout = _GPS_TIMEOUT_WITH_BGRD if bgrd_pkl.exists() else _GPS_TIMEOUT_NO_BGRD
         if bgrd_pkl.exists():
             log.info("GPS screen: %s — using cached BGRD size=%d (timeout=%ds)", label, bgrd_size, run_timeout)

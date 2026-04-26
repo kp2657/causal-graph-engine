@@ -35,34 +35,116 @@ Known validated targets recovered: PCSK9 (CAD rank 132), LPA (CAD rank 47), IL6R
 
 ## Requirements
 
-| Resource | Minimum | Recommended |
-|---|---|---|
-| RAM | 16 GB | 32 GB (for h5ad loading) |
-| Disk | 5 GB (no h5ad) | 150 GB (Perturb-seq + CellxGENE h5ads) |
-| Python | 3.12 | — |
-| Runtime (CAD, no GPS) | ~25 min | — |
-| Runtime (CAD, with GPS) | ~4 h | — |
+| Resource | Requirement |
+|---|---|
+| RAM | 32 GB |
+| Disk | ~20 GB (all required data) |
+| Python | 3.12 |
+| Docker | GPS compound screening (optional but recommended) |
+| Runtime (CAD, no GPS) | ~25 min |
+| Runtime (CAD, with GPS) | ~4 h |
 
-The pipeline runs without h5ad files — Perturb-seq β degrades to virtual (in silico) estimates. Results are still produced but less mechanistically grounded.
+---
 
-GPS compound screening requires Docker (`docker pull binchengroup/gpsimage:latest`). Without Docker the GPS step is skipped gracefully and runtime drops to ~25 min.
+## Exact reproduction
+
+The `frozen/` directory (tracked in this repo) contains the reference files used to generate the published results:
+
+| File | Contents |
+|---|---|
+| `frozen/CAD_program_taus.json` | S-LDSC τ coefficients for CAD programs |
+| `frozen/RA_program_taus.json` | S-LDSC τ coefficients for RA programs |
+| `frozen/CAD_programs.json` | NMF program definitions for CAD |
+| `frozen/RA_programs.json` | NMF program definitions for RA |
+
+Two larger files (~57 MB) are distributed as GitHub Release assets. Download them before running:
+
+```bash
+python scripts/download_frozen_data.py
+```
+
+This places `data/api_cache.sqlite` (frozen OT L2G, GTEx, gnomAD API responses) and `data/gps_bgrd/BGRD__size500.pkl` (GPS null distribution) at the expected paths. Without these, the pipeline still runs but OT L2G scores and GPS results may differ from the published values.
 
 ---
 
 ## Setup
 
+All steps below are required. The pipeline will fail rather than silently produce degraded results if data is missing.
+
+### 1. Install dependencies
+
 ```bash
 conda create -n causal-graph python=3.12
 conda activate causal-graph
-pip install -e .                      # core dependencies
-pip install -e ".[bio,chem,dev]"      # full install (single-cell + chemistry + tests)
-cp .env.example .env                  # fill in API keys (see .env.example)
+pip install -e ".[bio,chem,dev]"
 ```
 
-Required API keys (free tiers sufficient for most usage):
-- `ANTHROPIC_API_KEY` — only needed for `AGENT_MODE=sdk`
-- `OPENGWAS_JWT` — IEU Open GWAS ([register here](https://gwas.mrcieu.ac.uk))
-- `NCBI_API_KEY` — NCBI E-utilities ([register here](https://www.ncbi.nlm.nih.gov/account/))
+### 2. Configure API credentials
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env`:
+- `OPENGWAS_JWT` — free JWT from [api.opengwas.io](https://api.opengwas.io) (**required** for Tier 2 MR; expires after 14 days — renew before each run)
+- `NCBI_API_KEY` — free key from [ncbi.nlm.nih.gov/account](https://www.ncbi.nlm.nih.gov/account/) (recommended)
+
+### 3. Download static reference data (~574 MB)
+
+gnomAD constraint, HGNC gene table, Reactome pathways.
+
+```bash
+python scripts/fetch_static_data.py
+```
+
+### 4. Download CellxGENE scRNA-seq h5ads (~600 MB)
+
+Disease-matched single-cell data from CZ CELLxGENE Census 2025-11-08.
+
+```bash
+python -m pipelines.discovery.cellxgene_downloader download_all CAD
+python -m pipelines.discovery.cellxgene_downloader download_all RA
+```
+
+### 5. Download Perturb-seq data (~16 GB)
+
+Required for Tier 1 interventional β estimates.
+
+**CAD** — Schnitzler 2023 HAEC/HCASMC ([GEO GSE210681](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE210681)):
+```bash
+mkdir -p data/perturbseq/schnitzler_cad_vascular
+# Download GSE210681_ALL_log2fcs.txt.gz from GEO into that directory
+```
+
+**RA** — CZI CD4+ T Perturb-seq ([GEO GSE314342](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE314342)):
+```bash
+mkdir -p data/perturbseq/czi_2025_cd4t_perturb
+# Download the h5ad from GEO into that directory
+```
+
+### 6. Download S-LDSC summary statistics (~727 MB)
+
+Required for heritability enrichment γ estimation.
+
+```bash
+python -m pipelines.ldsc.setup download_all
+```
+
+### 7. Verify all data is in place
+
+```bash
+python scripts/check_data.py
+```
+
+All checks must pass before running the pipeline.
+
+### 8. Pull GPS Docker image (optional — for compound screening)
+
+```bash
+docker pull binchengroup/gpsimage:latest
+```
+
+Without Docker, GPS compound screening is skipped and runtime drops to ~25 min.
 
 ---
 

@@ -1,0 +1,5420 @@
+{
+  "@context": {
+    "@vocab": "https://w3id.org/biolink/vocab/",
+    "biolink": "https://w3id.org/biolink/vocab/",
+    "cge": "https://causal-graph-engine.org/graph/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "id": "@id",
+    "type": "@type"
+  },
+  "@graph": [
+    {
+      "id": "cge:gene/TTN",
+      "type": "biolink:Gene",
+      "name": "TTN"
+    },
+    {
+      "id": "cge:trait/coronary_artery_disease",
+      "type": "biolink:Disease",
+      "name": "coronary artery disease"
+    },
+    {
+      "id": "cge:gene/TIMP1",
+      "type": "biolink:Gene",
+      "name": "TIMP1"
+    },
+    {
+      "id": "cge:gene/B2M",
+      "type": "biolink:Gene",
+      "name": "B2M"
+    },
+    {
+      "id": "cge:gene/NRG1",
+      "type": "biolink:Gene",
+      "name": "NRG1"
+    },
+    {
+      "id": "cge:gene/RACK1",
+      "type": "biolink:Gene",
+      "name": "RACK1"
+    },
+    {
+      "id": "cge:gene/FABP4",
+      "type": "biolink:Gene",
+      "name": "FABP4"
+    },
+    {
+      "id": "cge:gene/MGP",
+      "type": "biolink:Gene",
+      "name": "MGP"
+    },
+    {
+      "id": "cge:gene/KCNMA1",
+      "type": "biolink:Gene",
+      "name": "KCNMA1"
+    },
+    {
+      "id": "cge:gene/MLIP",
+      "type": "biolink:Gene",
+      "name": "MLIP"
+    },
+    {
+      "id": "cge:gene/GAPDH",
+      "type": "biolink:Gene",
+      "name": "GAPDH"
+    },
+    {
+      "id": "cge:gene/RYR2",
+      "type": "biolink:Gene",
+      "name": "RYR2"
+    },
+    {
+      "id": "cge:gene/MYOM1",
+      "type": "biolink:Gene",
+      "name": "MYOM1"
+    },
+    {
+      "id": "cge:gene/CFD",
+      "type": "biolink:Gene",
+      "name": "CFD"
+    },
+    {
+      "id": "cge:gene/MAST4",
+      "type": "biolink:Gene",
+      "name": "MAST4"
+    },
+    {
+      "id": "cge:gene/EEF1A1",
+      "type": "biolink:Gene",
+      "name": "EEF1A1"
+    },
+    {
+      "id": "cge:gene/CLU",
+      "type": "biolink:Gene",
+      "name": "CLU"
+    },
+    {
+      "id": "cge:gene/NEXN",
+      "type": "biolink:Gene",
+      "name": "NEXN"
+    },
+    {
+      "id": "cge:gene/CCSER1",
+      "type": "biolink:Gene",
+      "name": "CCSER1"
+    },
+    {
+      "id": "cge:gene/CDIN1",
+      "type": "biolink:Gene",
+      "name": "CDIN1"
+    },
+    {
+      "id": "cge:gene/DMD",
+      "type": "biolink:Gene",
+      "name": "DMD"
+    },
+    {
+      "id": "cge:gene/CRP",
+      "type": "biolink:Gene",
+      "name": "CRP"
+    },
+    {
+      "id": "cge:gene/WDPCP",
+      "type": "biolink:Gene",
+      "name": "WDPCP"
+    },
+    {
+      "id": "cge:gene/INSR",
+      "type": "biolink:Gene",
+      "name": "INSR"
+    },
+    {
+      "id": "cge:gene/TMSB4X",
+      "type": "biolink:Gene",
+      "name": "TMSB4X"
+    },
+    {
+      "id": "cge:gene/IGFBP5",
+      "type": "biolink:Gene",
+      "name": "IGFBP5"
+    },
+    {
+      "id": "cge:gene/MYL6",
+      "type": "biolink:Gene",
+      "name": "MYL6"
+    },
+    {
+      "id": "cge:gene/CCN2",
+      "type": "biolink:Gene",
+      "name": "CCN2"
+    },
+    {
+      "id": "cge:gene/CTNNA3",
+      "type": "biolink:Gene",
+      "name": "CTNNA3"
+    },
+    {
+      "id": "cge:gene/FTH1",
+      "type": "biolink:Gene",
+      "name": "FTH1"
+    },
+    {
+      "id": "cge:gene/STEAP4",
+      "type": "biolink:Gene",
+      "name": "STEAP4"
+    },
+    {
+      "id": "cge:gene/APOD",
+      "type": "biolink:Gene",
+      "name": "APOD"
+    },
+    {
+      "id": "cge:gene/HLA-B",
+      "type": "biolink:Gene",
+      "name": "HLA-B"
+    },
+    {
+      "id": "cge:gene/PRKG1",
+      "type": "biolink:Gene",
+      "name": "PRKG1"
+    },
+    {
+      "id": "cge:gene/TPT1",
+      "type": "biolink:Gene",
+      "name": "TPT1"
+    },
+    {
+      "id": "cge:gene/ACTB",
+      "type": "biolink:Gene",
+      "name": "ACTB"
+    },
+    {
+      "id": "cge:gene/SLC38A4",
+      "type": "biolink:Gene",
+      "name": "SLC38A4"
+    },
+    {
+      "id": "cge:gene/NDUFA4L2",
+      "type": "biolink:Gene",
+      "name": "NDUFA4L2"
+    },
+    {
+      "id": "cge:gene/PLCXD3",
+      "type": "biolink:Gene",
+      "name": "PLCXD3"
+    },
+    {
+      "id": "cge:gene/H3-3B",
+      "type": "biolink:Gene",
+      "name": "H3-3B"
+    },
+    {
+      "id": "cge:gene/SLC8A1",
+      "type": "biolink:Gene",
+      "name": "SLC8A1"
+    },
+    {
+      "id": "cge:gene/SAMD4A",
+      "type": "biolink:Gene",
+      "name": "SAMD4A"
+    },
+    {
+      "id": "cge:gene/TECRL",
+      "type": "biolink:Gene",
+      "name": "TECRL"
+    },
+    {
+      "id": "cge:gene/COL1A1",
+      "type": "biolink:Gene",
+      "name": "COL1A1"
+    },
+    {
+      "id": "cge:gene/CD63",
+      "type": "biolink:Gene",
+      "name": "CD63"
+    },
+    {
+      "id": "cge:gene/ITGA8",
+      "type": "biolink:Gene",
+      "name": "ITGA8"
+    },
+    {
+      "id": "cge:gene/HSP90AA1",
+      "type": "biolink:Gene",
+      "name": "HSP90AA1"
+    },
+    {
+      "id": "cge:gene/PFN1",
+      "type": "biolink:Gene",
+      "name": "PFN1"
+    },
+    {
+      "id": "cge:gene/FGF7",
+      "type": "biolink:Gene",
+      "name": "FGF7"
+    },
+    {
+      "id": "cge:gene/S100A4",
+      "type": "biolink:Gene",
+      "name": "S100A4"
+    },
+    {
+      "id": "cge:gene/TENM2",
+      "type": "biolink:Gene",
+      "name": "TENM2"
+    },
+    {
+      "id": "cge:gene/ORM2",
+      "type": "biolink:Gene",
+      "name": "ORM2"
+    },
+    {
+      "id": "cge:gene/IMMP2L",
+      "type": "biolink:Gene",
+      "name": "IMMP2L"
+    },
+    {
+      "id": "cge:gene/IFITM3",
+      "type": "biolink:Gene",
+      "name": "IFITM3"
+    },
+    {
+      "id": "cge:gene/FHL2",
+      "type": "biolink:Gene",
+      "name": "FHL2"
+    },
+    {
+      "id": "cge:gene/UBB",
+      "type": "biolink:Gene",
+      "name": "UBB"
+    },
+    {
+      "id": "cge:gene/GPX3",
+      "type": "biolink:Gene",
+      "name": "GPX3"
+    },
+    {
+      "id": "cge:gene/PKHD1L1",
+      "type": "biolink:Gene",
+      "name": "PKHD1L1"
+    },
+    {
+      "id": "cge:gene/PCDH7",
+      "type": "biolink:Gene",
+      "name": "PCDH7"
+    },
+    {
+      "id": "cge:gene/CCN1",
+      "type": "biolink:Gene",
+      "name": "CCN1"
+    },
+    {
+      "id": "cge:gene/THSD4",
+      "type": "biolink:Gene",
+      "name": "THSD4"
+    },
+    {
+      "id": "cge:gene/CMYA5",
+      "type": "biolink:Gene",
+      "name": "CMYA5"
+    },
+    {
+      "id": "cge:gene/PTMA",
+      "type": "biolink:Gene",
+      "name": "PTMA"
+    },
+    {
+      "id": "cge:gene/JUNB",
+      "type": "biolink:Gene",
+      "name": "JUNB"
+    },
+    {
+      "id": "cge:gene/DCN",
+      "type": "biolink:Gene",
+      "name": "DCN"
+    },
+    {
+      "id": "cge:gene/ACTC1",
+      "type": "biolink:Gene",
+      "name": "ACTC1"
+    },
+    {
+      "id": "cge:gene/LUM",
+      "type": "biolink:Gene",
+      "name": "LUM"
+    },
+    {
+      "id": "cge:gene/FKBP5",
+      "type": "biolink:Gene",
+      "name": "FKBP5"
+    },
+    {
+      "id": "cge:gene/SORBS1",
+      "type": "biolink:Gene",
+      "name": "SORBS1"
+    },
+    {
+      "id": "cge:gene/CFH",
+      "type": "biolink:Gene",
+      "name": "CFH"
+    },
+    {
+      "id": "cge:gene/FGF12",
+      "type": "biolink:Gene",
+      "name": "FGF12"
+    },
+    {
+      "id": "cge:gene/PDK4",
+      "type": "biolink:Gene",
+      "name": "PDK4"
+    },
+    {
+      "id": "cge:gene/CD36",
+      "type": "biolink:Gene",
+      "name": "CD36"
+    },
+    {
+      "id": "cge:edge/TTN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TTN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.459075"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TTN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TTN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.459075"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TTN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TTN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.459075"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TTN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TTN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.459075"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TTN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TTN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.459075"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TIMP1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TIMP1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475657"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TIMP1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TIMP1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475657"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TIMP1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TIMP1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475657"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TIMP1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TIMP1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475657"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TIMP1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TIMP1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475657"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/B2M__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/B2M",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.428808"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/B2M__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/B2M",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.428808"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/B2M__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/B2M",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.428808"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/B2M__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/B2M",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.428808"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/B2M__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/B2M",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.428808"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NRG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NRG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.182114"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NRG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NRG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.182114"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NRG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NRG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.182114"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NRG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NRG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.182114"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NRG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NRG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.182114"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RACK1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RACK1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145404"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RACK1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RACK1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145404"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RACK1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RACK1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145404"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RACK1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RACK1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145404"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RACK1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RACK1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145404"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FABP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FABP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.322168"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FABP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FABP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.322168"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FABP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FABP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.322168"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FABP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FABP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.322168"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FABP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FABP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.322168"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MGP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MGP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470886"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MGP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MGP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470886"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MGP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MGP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470886"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MGP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MGP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470886"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MGP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MGP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470886"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/KCNMA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/KCNMA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.133786"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/KCNMA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/KCNMA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.133786"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/KCNMA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/KCNMA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.133786"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/KCNMA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/KCNMA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.133786"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/KCNMA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/KCNMA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.133786"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MLIP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MLIP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.462646"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MLIP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MLIP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.462646"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MLIP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MLIP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.462646"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MLIP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MLIP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.462646"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MLIP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MLIP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.462646"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GAPDH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GAPDH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164078"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GAPDH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GAPDH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164078"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GAPDH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GAPDH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164078"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GAPDH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GAPDH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164078"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GAPDH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GAPDH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164078"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RYR2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RYR2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.483867"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RYR2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RYR2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.483867"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RYR2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RYR2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.483867"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RYR2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RYR2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.483867"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/RYR2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/RYR2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.483867"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYOM1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYOM1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.460748"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYOM1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYOM1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.460748"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYOM1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYOM1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.460748"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYOM1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYOM1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.460748"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYOM1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYOM1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.460748"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145805"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145805"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145805"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145805"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.145805"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MAST4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MAST4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.227341"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MAST4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MAST4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.227341"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MAST4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MAST4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.227341"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MAST4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MAST4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.227341"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MAST4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MAST4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.227341"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/EEF1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/EEF1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.198294"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/EEF1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/EEF1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.198294"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/EEF1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/EEF1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.198294"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/EEF1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/EEF1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.198294"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/EEF1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/EEF1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.198294"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CLU__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CLU",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.243077"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CLU__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CLU",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.243077"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CLU__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CLU",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.243077"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CLU__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CLU",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.243077"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CLU__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CLU",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.243077"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NEXN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NEXN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.392659"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NEXN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NEXN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.392659"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NEXN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NEXN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.392659"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NEXN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NEXN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.392659"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NEXN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NEXN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.392659"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCSER1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCSER1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.344715"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCSER1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCSER1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.344715"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCSER1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCSER1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.344715"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCSER1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCSER1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.344715"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCSER1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCSER1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.344715"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CDIN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CDIN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.319802"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CDIN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CDIN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.319802"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CDIN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CDIN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.319802"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CDIN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CDIN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.319802"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CDIN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CDIN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.319802"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DMD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DMD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.448906"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DMD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DMD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.448906"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DMD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DMD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.448906"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DMD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DMD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.448906"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DMD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DMD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.448906"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CRP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CRP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475366"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CRP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CRP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475366"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CRP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CRP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475366"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CRP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CRP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475366"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CRP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CRP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475366"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/WDPCP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/WDPCP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.45633"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/WDPCP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/WDPCP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.45633"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/WDPCP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/WDPCP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.45633"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/WDPCP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/WDPCP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.45633"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/WDPCP__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/WDPCP",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.45633"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/INSR__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/INSR",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.373003"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/INSR__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/INSR",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.373003"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/INSR__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/INSR",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.373003"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/INSR__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/INSR",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.373003"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/INSR__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/INSR",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.373003"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TMSB4X__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TMSB4X",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.333418"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TMSB4X__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TMSB4X",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.333418"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TMSB4X__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TMSB4X",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.333418"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TMSB4X__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TMSB4X",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.333418"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TMSB4X__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TMSB4X",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.333418"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IGFBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IGFBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.216765"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IGFBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IGFBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.216765"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IGFBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IGFBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.216765"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IGFBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IGFBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.216765"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IGFBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IGFBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.216765"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYL6__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYL6",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.140119"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYL6__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYL6",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.140119"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYL6__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYL6",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.140119"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYL6__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYL6",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.140119"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/MYL6__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/MYL6",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.140119"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470145"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470145"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470145"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470145"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.470145"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CTNNA3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CTNNA3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.461229"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CTNNA3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CTNNA3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.461229"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CTNNA3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CTNNA3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.461229"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CTNNA3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CTNNA3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.461229"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CTNNA3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CTNNA3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.461229"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FTH1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FTH1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.219095"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FTH1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FTH1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.219095"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FTH1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FTH1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.219095"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FTH1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FTH1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.219095"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FTH1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FTH1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.219095"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/STEAP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/STEAP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.135157"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/STEAP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/STEAP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.135157"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/STEAP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/STEAP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.135157"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/STEAP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/STEAP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.135157"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/STEAP4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/STEAP4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.135157"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/APOD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/APOD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.139456"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/APOD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/APOD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.139456"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/APOD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/APOD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.139456"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/APOD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/APOD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.139456"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/APOD__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/APOD",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.139456"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HLA-B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HLA-B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.268565"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HLA-B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HLA-B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.268565"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HLA-B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HLA-B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.268565"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HLA-B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HLA-B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.268565"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HLA-B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HLA-B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.268565"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PRKG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PRKG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475388"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PRKG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PRKG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475388"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PRKG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PRKG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475388"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PRKG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PRKG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475388"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PRKG1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PRKG1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.475388"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TPT1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TPT1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.2218"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TPT1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TPT1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.2218"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TPT1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TPT1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.2218"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TPT1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TPT1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.2218"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TPT1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TPT1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.2218"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.273842"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.273842"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.273842"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.273842"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.273842"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC38A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC38A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.246973"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC38A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC38A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.246973"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC38A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC38A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.246973"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC38A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC38A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.246973"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC38A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC38A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.246973"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NDUFA4L2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NDUFA4L2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.20016"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NDUFA4L2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NDUFA4L2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.20016"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NDUFA4L2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NDUFA4L2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.20016"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NDUFA4L2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NDUFA4L2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.20016"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/NDUFA4L2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/NDUFA4L2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.20016"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PLCXD3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PLCXD3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.360826"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PLCXD3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PLCXD3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.360826"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PLCXD3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PLCXD3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.360826"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PLCXD3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PLCXD3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.360826"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PLCXD3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PLCXD3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.360826"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/H3-3B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/H3-3B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.241955"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/H3-3B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/H3-3B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.241955"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/H3-3B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/H3-3B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.241955"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/H3-3B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/H3-3B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.241955"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/H3-3B__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/H3-3B",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.241955"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC8A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC8A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.454873"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC8A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC8A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.454873"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC8A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC8A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.454873"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC8A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC8A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.454873"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SLC8A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SLC8A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.454873"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SAMD4A__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SAMD4A",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.305413"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SAMD4A__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SAMD4A",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.305413"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SAMD4A__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SAMD4A",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.305413"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SAMD4A__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SAMD4A",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.305413"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SAMD4A__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SAMD4A",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.305413"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TECRL__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TECRL",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.372441"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TECRL__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TECRL",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.372441"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TECRL__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TECRL",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.372441"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TECRL__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TECRL",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.372441"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TECRL__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TECRL",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.372441"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/COL1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/COL1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.144197"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/COL1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/COL1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.144197"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/COL1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/COL1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.144197"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/COL1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/COL1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.144197"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/COL1A1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/COL1A1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.144197"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD63__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD63",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.229184"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD63__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD63",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.229184"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD63__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD63",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.229184"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD63__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD63",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.229184"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD63__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD63",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.229184"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ITGA8__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ITGA8",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.36281"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ITGA8__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ITGA8",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.36281"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ITGA8__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ITGA8",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.36281"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ITGA8__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ITGA8",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.36281"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ITGA8__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ITGA8",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.36281"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HSP90AA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HSP90AA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.212485"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HSP90AA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HSP90AA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.212485"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HSP90AA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HSP90AA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.212485"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HSP90AA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HSP90AA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.212485"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/HSP90AA1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/HSP90AA1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.212485"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PFN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PFN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.169929"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PFN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PFN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.169929"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PFN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PFN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.169929"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PFN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PFN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.169929"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PFN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PFN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.169929"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164766"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164766"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164766"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164766"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.164766"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/S100A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/S100A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.476946"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/S100A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/S100A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.476946"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/S100A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/S100A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.476946"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/S100A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/S100A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.476946"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/S100A4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/S100A4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.476946"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TENM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TENM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.255878"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TENM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TENM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.255878"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TENM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TENM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.255878"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TENM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TENM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.255878"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/TENM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/TENM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.255878"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ORM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ORM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.393253"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ORM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ORM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.393253"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ORM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ORM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.393253"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ORM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ORM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.393253"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ORM2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ORM2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.393253"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IMMP2L__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IMMP2L",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IMMP2L__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IMMP2L",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IMMP2L__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IMMP2L",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IMMP2L__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IMMP2L",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IMMP2L__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IMMP2L",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IFITM3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IFITM3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.158455"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IFITM3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IFITM3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.158455"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IFITM3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IFITM3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.158455"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IFITM3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IFITM3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.158455"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/IFITM3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/IFITM3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.158455"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FHL2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FHL2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.440074"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FHL2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FHL2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.440074"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FHL2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FHL2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.440074"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FHL2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FHL2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.440074"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FHL2__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FHL2",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.440074"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/UBB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/UBB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.191274"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/UBB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/UBB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.191274"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/UBB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/UBB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.191274"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/UBB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/UBB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.191274"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/UBB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/UBB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.191274"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GPX3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GPX3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.238318"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GPX3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GPX3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.238318"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GPX3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GPX3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.238318"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GPX3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GPX3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.238318"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/GPX3__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/GPX3",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.238318"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PKHD1L1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PKHD1L1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.272406"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PKHD1L1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PKHD1L1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.272406"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PKHD1L1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PKHD1L1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.272406"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PKHD1L1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PKHD1L1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.272406"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PKHD1L1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PKHD1L1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.272406"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PCDH7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PCDH7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.339363"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PCDH7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PCDH7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.339363"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PCDH7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PCDH7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.339363"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PCDH7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PCDH7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.339363"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PCDH7__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PCDH7",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.339363"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.450308"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.450308"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.450308"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.450308"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CCN1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CCN1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.450308"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/THSD4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/THSD4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.364392"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/THSD4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/THSD4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.364392"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/THSD4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/THSD4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.364392"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/THSD4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/THSD4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.364392"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/THSD4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/THSD4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.364392"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CMYA5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CMYA5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.341911"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CMYA5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CMYA5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.341911"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CMYA5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CMYA5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.341911"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CMYA5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CMYA5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.341911"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CMYA5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CMYA5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.341911"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PTMA__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PTMA",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.265917"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PTMA__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PTMA",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.265917"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PTMA__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PTMA",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.265917"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PTMA__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PTMA",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.265917"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PTMA__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PTMA",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.265917"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/JUNB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/JUNB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.278792"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/JUNB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/JUNB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.278792"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/JUNB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/JUNB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.278792"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/JUNB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/JUNB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.278792"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/JUNB__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/JUNB",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.278792"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DCN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DCN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.226177"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DCN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DCN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.226177"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DCN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DCN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.226177"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DCN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DCN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.226177"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/DCN__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/DCN",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.226177"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTC1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTC1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.126807"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTC1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTC1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.126807"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTC1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTC1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.126807"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTC1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTC1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.126807"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/ACTC1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/ACTC1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.126807"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/LUM__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/LUM",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.197736"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/LUM__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/LUM",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.197736"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/LUM__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/LUM",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.197736"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/LUM__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/LUM",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.197736"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/LUM__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/LUM",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.197736"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FKBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FKBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.389859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FKBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FKBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.389859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FKBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FKBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.389859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FKBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FKBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.389859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FKBP5__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FKBP5",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.389859"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SORBS1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SORBS1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.302044"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SORBS1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SORBS1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.302044"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SORBS1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SORBS1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.302044"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SORBS1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SORBS1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.302044"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/SORBS1__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/SORBS1",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.302044"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263953"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263953"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263953"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263953"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CFH__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CFH",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.263953"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF12__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF12",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.3342"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF12__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF12",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.3342"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF12__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF12",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.3342"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF12__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF12",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.3342"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/FGF12__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/FGF12",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.3342"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PDK4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PDK4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.313543"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PDK4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PDK4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.313543"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PDK4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PDK4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.313543"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PDK4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PDK4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.313543"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/PDK4__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/PDK4",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.313543"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD36__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD36",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.325495"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD36__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD36",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.325495"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD36__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD36",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.325495"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD36__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD36",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.325495"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    },
+    {
+      "id": "cge:edge/CD36__coronary_artery_disease__trajectory__0.1.0",
+      "type": "biolink:Association",
+      "subject": "cge:gene/CD36",
+      "predicate": "biolink:related_to",
+      "object": "cge:trait/coronary_artery_disease",
+      "cge:evidence_tier": "Tier3_Provisional",
+      "cge:method": "trajectory",
+      "cge:effect_size": {
+        "@type": "xsd:double",
+        "@value": "0.325495"
+      },
+      "biolink:has_evidence": "state_space/therapeutic_redirection"
+    }
+  ],
+  "cge:disease": "coronary artery disease",
+  "cge:generated_at": "2026-04-25T18:50:32.618590+00:00",
+  "cge:n_associations": 360
+}

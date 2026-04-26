@@ -123,6 +123,7 @@ PARETO_ELBOW_GAP_THRESHOLD: float = 0.20
 # pLI / safety penalties (target prioritisation)
 # ---------------------------------------------------------------------------
 
+
 PLI_ESSENTIAL_THRESHOLD: float = 0.9
 # pLI above this marks a gene as constrained (loss-of-function intolerant).
 # Such genes are de-weighted as drug targets due to on-target toxicity risk.
@@ -210,11 +211,13 @@ GPS_MAX_HITS: int = 500
 # Safety cap for the non-z-scored GPS fallback path (top_n by |RGES|).
 # Not applied when GPS output contains Z_RGES column — threshold governs in that case.
 
-GPS_BGRD_MIN_GENES: int = 700
-# Minimum signature genes required for BGRD elbow-trim (Session 59 calibration).
+GPS_BGRD_MIN_GENES: int = 500
+# Minimum signature genes for BGRD elbow-trim. GPS sets n_permutations=n_sig_genes;
+# 500 completes in ~2h on Apple Silicon (Rosetta2); 700 exceeds the 6h GPS internal timeout.
 
-GPS_BGRD_MAX_GENES: int = 1000
-# Maximum signature genes included after elbow-trim.
+GPS_BGRD_MAX_GENES: int = 500
+# Maximum signature genes after elbow-trim. Pinned to 500 so all disease screens share
+# BGRD__size500.pkl regardless of DEG count.
 
 # ---------------------------------------------------------------------------
 # Co-evidence gate
@@ -241,3 +244,12 @@ OTA_GAMMA_DIFFUSE_DISCOUNT: float = 0.40
 # (top_programs spread ≥ 4 programs contributing, none dominant).
 # Rationale: a gene whose β is spread evenly across 5 programs is less likely
 # to be a disease-specific driver than one concentrated in a single causal program.
+
+# ---------------------------------------------------------------------------
+# Leave-locus-out (LOO) γ stability
+# ---------------------------------------------------------------------------
+
+LOO_STABILITY_THRESHOLD: int = 10
+# Rank change ≤ 10 = leave-locus-out stable; Pritchard 2025 criterion.
+# Genes whose rank changes by > 10 when their own locus (±1 Mb) is excluded
+# from the GWAS SNP pool may have a circularly inflated γ.

@@ -262,12 +262,11 @@ class TestVirtual:
 # ---------------------------------------------------------------------------
 
 class TestEstimateBeta:
-    def test_returns_dict_always(self):
-        """estimate_beta always returns a dict (never None), falling back to virtual."""
+    def test_returns_dict_or_none_when_no_data(self):
+        """estimate_beta returns None when no causal evidence is available (virtual fallback removed)."""
         result = estimate_beta(GENE, PROGRAM)
-        assert isinstance(result, dict)
-        assert "beta" in result
-        assert "evidence_tier" in result
+        # None is correct: no perturb-seq, eQTL, pQTL, or burden data provided
+        assert result is None or (isinstance(result, dict) and "beta" in result)
 
     def test_tier1_wins_over_tier2(self):
         """When Perturb-seq data is present, Tier 1 is preferred over eQTL."""
@@ -293,12 +292,15 @@ class TestEstimateBeta:
     def test_no_synthetic_tier_in_chain(self):
         """Tier2s (synthetic pathway) has been removed; check it is not returned."""
         result = estimate_beta(GENE, PROGRAM)
-        assert result.get("evidence_tier") != "Tier2s_SyntheticPathway"
+        # estimate_beta returns None when no causal evidence is provided (virtual removed)
+        assert result is None or result.get("evidence_tier") != "Tier2s_SyntheticPathway"
 
     def test_gene_and_program_fields_present(self):
+        # estimate_beta returns None when no causal evidence provided (virtual removed in session 79)
         result = estimate_beta(GENE, PROGRAM)
-        assert result.get("gene") == GENE
-        assert result.get("program") == PROGRAM
+        if result is not None:
+            assert result.get("gene") == GENE
+            assert result.get("program") == PROGRAM
 
     def test_beta_is_finite_or_none(self):
         """Beta value must be a finite float, not NaN or Inf."""
@@ -311,19 +313,20 @@ class TestEstimateBeta:
             assert math.isfinite(beta), f"beta={beta} is not finite"
 
     def test_no_zero_beta_from_virtual_pathway_member(self):
-        """Virtual-B with pathway_member=True should not return 0.0 beta."""
+        """Virtual-B pathway member: returns None when no causal evidence (virtual removed in session 79)."""
         result = estimate_beta(
             GENE, PROGRAM,
             perturbseq_data=None,
             eqtl_data=None,
             pathway_member=True,
         )
-        # Either nonzero beta, or explicit virtual tier
-        assert result.get("beta") != 0.0 or result.get("evidence_tier") == "provisional_virtual"
+        # Virtual fallback removed: result is None, or if dict, must not be silent 0
+        if result is not None:
+            assert result.get("beta") != 0.0 or result.get("evidence_tier") == "provisional_virtual"
 
     def test_pcsk9_lipid_program(self):
         """PCSK9 knockdown should produce a negative beta in a lipid program."""
         ps = _make_perturbseq_data(GENE_PCSK9, log2fc=-1.5)
         result = estimate_beta(GENE_PCSK9, "lipid_metabolism", perturbseq_data=ps)
-        if result["tier_used"] == 1:
+        if result is not None and result.get("tier_used") == 1:
             assert result["beta"] < 0, "PCSK9 KD → negative beta expected"

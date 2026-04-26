@@ -17,7 +17,6 @@ from pipelines.ota_beta_estimation import (
     estimate_beta,
     estimate_beta_tier1,
     estimate_beta_tier2,
-    estimate_beta_geneformer,
     estimate_beta_virtual,
     build_beta_matrix,
     estimate_cad_target_betas,
@@ -81,15 +80,6 @@ class TestBetaEstimation:
         assert beta is not None
         assert beta["beta"] == pytest.approx(0.2)  # 0.4 × 0.5
 
-    def test_geneformer_virtual(self):
-        """Geneformer returns provisional_virtual (in silico, not experimental)."""
-        gf = {"delta_program_activity": 0.15, "se": 0.04}
-        beta = estimate_beta_geneformer("PCSK9", "lipid_metabolism", geneformer_result=gf)
-        assert beta is not None
-        assert beta["beta"] == pytest.approx(0.15)
-        assert beta["evidence_tier"] == "provisional_virtual"
-        assert "Geneformer" in beta["data_source"]
-
     def test_virtual_pathway_membership(self):
         """Pathway membership proxy — explicit no-causal-basis annotation."""
         beta = estimate_beta_virtual("PCSK9", "lipid_metabolism", pathway_member=True)
@@ -109,11 +99,10 @@ class TestBetaEstimation:
         assert result["tier_used"] == 1
         assert result["gene"] == "DNMT3A"
 
-    def test_full_fallback_cascade_virtual(self):
-        # Unknown gene → unknown program should fall to Tier4 virtual
+    def test_full_fallback_cascade_returns_none(self):
+        # Unknown gene → unknown program has no causal evidence → None (no virtual fallback)
         result = estimate_beta("UNKNOWN_XYZ", "UNKNOWN_PROG")
-        assert result["tier_used"] == 4
-        assert result["evidence_tier"] == "provisional_virtual"
+        assert result is None
 
     def test_build_beta_matrix_shape(self):
         genes = ["DNMT3A", "TET2"]

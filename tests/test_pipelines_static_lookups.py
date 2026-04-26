@@ -137,13 +137,6 @@ def test_reactome_symbol_not_in_hgnc_returns_empty_list(lookups: StaticLookups):
 # Graceful degradation when files are absent
 # ---------------------------------------------------------------------------
 
-def test_all_queries_return_none_when_static_dir_empty(tmp_path: Path):
-    sl = StaticLookups(tmp_path)
-    assert sl.get_gnomad_constraint("CFH") is None
-    assert sl.get_ensembl_id("CFH") is None
-    assert sl.get_reactome_pathways("CFH") is None
-
-
 def test_status_reports_load_state(static_dir: Path):
     sl = StaticLookups(static_dir)
     s = sl.status()
@@ -152,15 +145,6 @@ def test_status_reports_load_state(static_dir: Path):
     assert s["reactome_loaded"] is True
     assert s["gnomad_n_genes"] >= 3
     assert s["hgnc_n_symbols"] >= 3
-
-
-def test_status_partial_load_when_one_file_missing(tmp_path: Path):
-    (tmp_path / "hgnc_complete.tsv").write_text(_HGNC_TSV)
-    sl = StaticLookups(tmp_path)
-    s = sl.status()
-    assert s["hgnc_loaded"] is True
-    assert s["gnomad_loaded"] is False
-    assert s["reactome_loaded"] is False
 
 
 # ---------------------------------------------------------------------------

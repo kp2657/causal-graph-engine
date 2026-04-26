@@ -470,7 +470,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     current_disease_motif=current_disease_motif,
                     motif_library=motif_library,
                 )
-                beta_val = single.get("beta")
+                beta_val = single.get("beta") if single else None
                 if beta_val is not None:
                     et = single.get("evidence_tier", "provisional_virtual")
                     gene_betas[pid] = {

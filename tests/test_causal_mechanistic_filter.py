@@ -69,5 +69,5 @@ def test_call_site_guards_empty_programs():
     """The agent call site wraps _mechanistic_necessity_filter in `if _disease_programs`.
     Verify DISEASE_PROGRAMS is always non-empty for supported diseases."""
     from models.disease_registry import DISEASE_PROGRAMS
-    for key in ("SLE", "CAD"):
+    for key in ("RA", "CAD"):
         assert len(DISEASE_PROGRAMS[key]) > 0, f"DISEASE_PROGRAMS[{key}] should not be empty"

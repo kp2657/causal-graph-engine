@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from models.evidence import CausalEdge, GeneTraitAssociation, EvidenceTier
+from models.evidence import GeneTraitAssociation
 
 # Minimum mean Open Targets L2G score to accept as genetic evidence for γ estimation.
 # L2G (Locus-to-Gene; Mountjoy et al., Nature Genetics 2021) scores represent the

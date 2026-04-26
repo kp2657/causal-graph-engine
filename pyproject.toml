@@ -1,6 +1,6 @@
 [project]
 name = "causal-graph-engine"
-version = "0.2.2"
+version = "0.2.3"
 description = "Multiagent genomics pipeline for causal drug target discovery using the Ota et al. causal-effect decomposition (γ = Σ β×γ)."
 readme = "README.md"
 license = {file = "LICENSE"}

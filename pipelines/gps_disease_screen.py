@@ -110,6 +110,7 @@ def run_gps_disease_screens(
     library: str = "HTS",
     target_gene_whitelist: set[str] | None = None,
     max_parallel: int = _GPS_MAX_PARALLEL,
+    genetic_anchors: list[dict] | None = None,  # Tier 3 targets; enables transcriptional convergence annotation
 ) -> dict:
     """
     Run GPS at disease-state and NMF-program level.
@@ -384,6 +385,23 @@ def run_gps_disease_screens(
                 {**h, "annotation": ann_by_id.get(h.get("compound_id", ""), {})}
                 for h in hits
             ]
+
+    # ------------------------------------------------------------------
+    # Transcriptional convergence annotation: for each reverser, find
+    # convergent genetic anchor genes based on shared NMF program overlap.
+    # Replaces structural chemistry (ChEMBL) as primary link between GPS
+    # compounds and genetic targets.
+    # Skipped gracefully when genetic_anchors is None or empty.
+    # ------------------------------------------------------------------
+    if genetic_anchors:
+        try:
+            from pipelines.gps_transcriptional_convergence import annotate_reversers_with_convergence
+            disease_reversers, program_reversers = annotate_reversers_with_convergence(
+                disease_reversers, program_reversers, genetic_anchors
+            )
+            log.info("GPS transcriptional convergence annotation complete")
+        except Exception as _conv_exc:
+            warnings.append(f"GPS transcriptional convergence annotation failed (non-fatal): {_conv_exc}")
 
     return {
         "disease_reversers":  disease_reversers,

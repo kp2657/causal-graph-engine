@@ -288,10 +288,14 @@ def get_programs_for_disease(
     ctx = DISEASE_CELL_TYPE_MAP.get(disease, {})
     cell_type = ctx.get("perturb_seq_source", "unknown")
     out_dir = Path(cnmf_output_dir)
+    _frozen = Path(__file__).resolve().parent.parent / "frozen"
 
-    # 1. Disease-keyed cache — NMF from disease-specific h5ad (cellxgene).
-    #    These have GWAS gene overlap because they're built from disease tissue.
+    # 1. Disease-keyed cache — frozen repo copy takes priority for exact reproduction,
+    #    then locally computed NMF from disease-specific h5ad (cellxgene).
+    frozen_path  = _frozen / f"{disease}_programs.json"
     disease_path = out_dir / f"{disease}_programs.json"
+    if frozen_path.exists() and not disease_path.exists():
+        disease_path = frozen_path
     if disease_path.exists():
         data = json.loads(disease_path.read_text())
         programs = data.get("programs", [])

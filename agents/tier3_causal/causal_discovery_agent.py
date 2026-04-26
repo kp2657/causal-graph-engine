@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from models.disease_registry import DISEASE_PROGRAMS as _DISEASE_PROGRAMS
 from pipelines.static_lookups import get_lookups as _get_lookups
+from pipelines.shet_loader import get_shet_penalty as _get_shet_penalty
 from config.scoring_thresholds import OTA_GAMMA_EDGE_MIN
 from agents.tier3_causal.causal_filters import (
     _beta_stress_discount,
@@ -72,6 +73,80 @@ def run(
 
     from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS  # local helper
     short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), "CAD")
+
+    # -------------------------------------------------------------------------
+    # Load program precedence discounts (if available) and apply to gamma_estimates
+    # -------------------------------------------------------------------------
+    _disease_key_early = disease_query.get("disease_key") or ""
+    from pipelines.state_space.program_precedence import get_precedence_discount as _get_precedence_discount
+    _prec_cache = (
+        Path(__file__).parent.parent.parent
+        / "data" / "ldsc" / "results"
+        / f"{_disease_key_early}_program_precedence.json"
+    )
+    _precedence: dict = {}
+    if _disease_key_early and _prec_cache.exists():
+        try:
+            import json as _json_prec
+            _precedence = _json_prec.loads(_prec_cache.read_text()).get("programs", {})
+        except Exception as _prec_exc:
+            warnings.append(f"program_precedence cache load failed (non-fatal): {_prec_exc}")
+
+    if _precedence:
+        gamma_estimates = {
+            prog: prog_gammas
+            for prog, prog_gammas in gamma_estimates.items()
+        }  # shallow copy so we can mutate safely
+        for prog_id in list(gamma_estimates.keys()):
+            _label = _precedence.get(prog_id, {}).get("label", "ambiguous")
+            _discount = _get_precedence_discount(_label)
+            if _discount < 1.0:
+                _orig = gamma_estimates[prog_id]
+                _discounted: dict = {}
+                for trait_key, g_val in _orig.items():
+                    if isinstance(g_val, (int, float)):
+                        _discounted[trait_key] = float(g_val) * _discount
+                    elif isinstance(g_val, dict) and g_val.get("gamma") is not None:
+                        _discounted[trait_key] = {
+                            **g_val,
+                            "gamma": float(g_val["gamma"]) * _discount,
+                        }
+                    else:
+                        _discounted[trait_key] = g_val
+                gamma_estimates[prog_id] = _discounted
+                warnings.append(
+                    f"program_precedence_discount: {prog_id} label=consequence γ×{_discount:.1f}"
+                )
+
+    # -------------------------------------------------------------------------
+    # LOO stability discounts: load once per disease, applied per gene below
+    # -------------------------------------------------------------------------
+    _loo_discounts: dict[str, float] = {}
+    _disease_key_loo = disease_query.get("disease_key") or ""
+    if _disease_key_loo:
+        try:
+            from pipelines.ldsc.gamma_loader import load_loo_discounts as _load_loo_discounts
+            from pipelines.ldsc.runner import _fetch_gene_coords_hg38 as _fetch_gene_coords
+            # Build anchor positions from gene coordinate cache
+            _all_genes_for_loo = beta_matrix_result.get("genes", [])
+            _gene_coords_raw = _fetch_gene_coords(_all_genes_for_loo)
+            _anchor_positions: dict[str, tuple[int, int]] = {}
+            for _g, _coords in _gene_coords_raw.items():
+                try:
+                    _chrom_str = str(_coords[0]).lstrip("chr")
+                    _chrom_int = int(_chrom_str)
+                    _pos_mid = (int(_coords[1]) + int(_coords[2])) // 2
+                    _anchor_positions[_g] = (_chrom_int, _pos_mid)
+                except (ValueError, IndexError):
+                    pass
+            _loo_discounts = _load_loo_discounts(_disease_key_loo, _anchor_positions)
+            if _loo_discounts:
+                _n_unstable = sum(1 for v in _loo_discounts.values() if v < 1.0)
+                warnings.append(
+                    f"loo_stability: {_n_unstable} unstable anchor genes (discount=0.8× applied)"
+                )
+        except Exception as _loo_exc:
+            warnings.append(f"loo_discount_load failed (non-fatal): {_loo_exc}")
 
     # -------------------------------------------------------------------------
     # Compute Ota composite γ for each gene × trait
@@ -163,29 +238,20 @@ def run(
                 _n_programs_contributing = int(ota_result.get("n_programs_contributing", 0))
 
                 import math as _math
-                # Beta stress discount: attenuate gamma for essential-gene KO artefacts.
-                # Genes whose betas are uniformly large across all programs are non-specific
-                # cell-stress responders (Mediator, ESCRT, V-ATPase, DNA replication), not
-                # disease-pathway targets.  Apply per-gene, once, before storing.
+                # Stress flag: essential-gene KO artefact signal (Mediator, ESCRT, etc.)
+                # Flagged only — ota_gamma is NOT modified.
                 _stress_mult = _beta_stress_discount(gene_beta) if not _math.isnan(ota_gamma) else 1.0
                 _stress_flagged = _stress_mult < 1.0
-                if _stress_flagged:
-                    ota_gamma = ota_gamma * _stress_mult
 
-                # Apply tissue expression weight (fetched outside the trait loop — see below).
+                # Tissue weight: flagged only — ota_gamma is NOT modified.
                 _tissue_mult = _tissue_weights.get(gene, 1.0)
-                if not _math.isnan(ota_gamma):
-                    ota_gamma = ota_gamma * _tissue_mult
 
-                # Scale top_programs contributions by the same multipliers so that
-                # Σ(contributions) stays consistent with the final ota_gamma.  Skips
-                # the empty/list forms (OTA estimator may emit lists in degenerate cases).
-                _tp_mult = _stress_mult * _tissue_mult
-                if isinstance(top_programs, dict) and _tp_mult != 1.0:
-                    top_programs = {p: v * _tp_mult for p, v in top_programs.items()}
+                # LOO stability flag — annotation only, does NOT modify ota_gamma
+                _loo_discount = _loo_discounts.get(gene, 1.0)
+                _loo_stable = _loo_discount >= 1.0
 
                 key = f"{gene}__{trait}"
-                gene_gamma[key] = {
+                r: dict = {
                     "gene":               gene,
                     "trait":              trait,
                     "ota_gamma":          ota_gamma,
@@ -197,10 +263,14 @@ def run(
                     "ota_gamma_ci_lower": ota_result.get("ota_gamma_ci_lower"),
                     "ota_gamma_ci_upper": ota_result.get("ota_gamma_ci_upper"),
                     "genebayes_grounded":      ota_result.get("genebayes_grounded", False),
-                    "stress_discounted":        _stress_flagged,
+                    "stress_flag":              _stress_flagged,
                     "tissue_weight":            round(_tissue_mult, 4),
                     "n_programs_contributing":  _n_programs_contributing,
+                    "loo_stable":               _loo_stable,
                 }
+                if not _loo_stable:
+                    r["loo_discount"] = _loo_discount
+                gene_gamma[key] = r
             except Exception as exc:
                 warnings.append(f"Ota γ computation failed for {gene} → {trait}: {exc}")
 
@@ -489,6 +559,19 @@ def run(
         key=lambda r: abs(r["ota_gamma"]),
         reverse=True,
     )
+
+    # --- shet constraint annotation (GeneBayes posteriors, Spence 2024) -------
+    # Flag genes under purifying selection against heterozygous LoF.
+    # shet_penalty and shet_flag are set for downstream inspection;
+    # ota_gamma is NOT modified.
+    from pipelines.shet_loader import get_shet as _get_shet
+    for _sr in _gwas_top:
+        _shet_val = _get_shet(_sr.get("gene", ""))
+        if _shet_val is not None:
+            _sr["shet"] = round(_shet_val, 6)
+            _sr["shet_flag"] = _shet_val >= 0.05   # highly constrained
+            _sr["shet_penalty"] = _get_shet_penalty(_sr.get("gene", ""))
+    # -------------------------------------------------------------------------
 
     # --- Phase E: Shannon entropy score (reporting only) ----------------------
     # Compute per-gene entropy across disease-relevant programs as an independent

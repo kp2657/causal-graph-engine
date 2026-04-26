@@ -156,6 +156,7 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
             top_n_programs=5,
             top_n_compounds=20,
             target_gene_whitelist=_whitelist,
+            genetic_anchors=targets or None,
         )
         gps_disease_reversers = disease_screen_result.get("disease_reversers", [])
         gps_program_reversers = disease_screen_result.get("program_reversers", {})

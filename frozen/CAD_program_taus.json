@@ -1,0 +1,56 @@
+{
+  "program_taus": {
+    "CAD_NMF_P01": 0.01247,
+    "CAD_NMF_P02": 0.069615,
+    "CAD_NMF_P03": -0.022628,
+    "CAD_NMF_P04": -0.030562,
+    "CAD_NMF_P05": 0.000329
+  },
+  "h2": null,
+  "mean_chisq_genome": 1.0413,
+  "n_snps_genome": 12266025,
+  "raw_annotations": [
+    {
+      "name": "CAD_NMF_P01",
+      "tau": 0.01247,
+      "tau_se": 0.00531,
+      "tau_p": 0.018852,
+      "n_snps": 71739,
+      "mean_chisq": 1.0543
+    },
+    {
+      "name": "CAD_NMF_P02",
+      "tau": 0.069615,
+      "tau_se": 0.007836,
+      "tau_p": 0.0,
+      "n_snps": 36957,
+      "mean_chisq": 1.1138
+    },
+    {
+      "name": "CAD_NMF_P03",
+      "tau": -0.022628,
+      "tau_se": 0.00604,
+      "tau_p": 0.00018,
+      "n_snps": 50157,
+      "mean_chisq": 1.0178
+    },
+    {
+      "name": "CAD_NMF_P04",
+      "tau": -0.030562,
+      "tau_se": 0.006346,
+      "tau_p": 1e-06,
+      "n_snps": 49967,
+      "mean_chisq": 1.0095
+    },
+    {
+      "name": "CAD_NMF_P05",
+      "tau": 0.000329,
+      "tau_se": 0.006719,
+      "tau_p": 0.96095,
+      "n_snps": 49393,
+      "mean_chisq": 1.0417
+    }
+  ],
+  "method": "gwas_chisq_enrichment_hg38",
+  "disease_key": "CAD"
+}
