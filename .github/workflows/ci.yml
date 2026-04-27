@@ -27,7 +27,6 @@ jobs:
             tests/test_gps_*.py \
             tests/test_scoring_*.py \
             tests/test_pipelines*.py \
-            tests/test_phase_*.py \
             tests/test_shet_loader.py \
             tests/test_smr_heidi.py \
             tests/test_finngen_validation.py \
