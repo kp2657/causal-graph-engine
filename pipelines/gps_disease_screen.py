@@ -253,6 +253,21 @@ def run_gps_disease_screens(
             prog_sig, sig_source = _build_program_signature_combined(
                 prog_id, direction, prog_sig, disease_sig, targets
             )
+
+        # Pad to _GPS_BGRD_MIN_PERMS genes with low-weight DEG genes so the program
+        # screen maps to BGRD size=500 (the shared cached bucket).
+        # GPS requires ≥~500 permutations for a reliable null distribution; smaller
+        # BGRD sizes cause Docker exit 1.  Padding genes get weights 100× smaller
+        # than program genes so they don't dilute the program-specific RGES signal.
+        if h5ad_full_deg and len(prog_sig) < _GPS_BGRD_MIN_PERMS:
+            max_lfc = max((abs(v) for v in prog_sig.values()), default=1.0)
+            pad_scale = max_lfc * 0.01   # 100× smaller than program genes
+            for gene, lfc in sorted(h5ad_full_deg.items(), key=lambda kv: -abs(kv[1])):
+                if gene not in prog_sig:
+                    prog_sig[gene] = direction * pad_scale * (lfc / (abs(lfc) + 1e-8))
+                if len(prog_sig) >= _GPS_BGRD_MIN_PERMS:
+                    break
+
         n_genes = len(prog_sig)
 
         programs_screened.append({
