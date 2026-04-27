@@ -23,8 +23,21 @@ jobs:
       - name: Debug environment
         run: |
           python --version
-          python -c "import sys; print('sys.path:', sys.path[:3])"
-          python -c "import pipelines.ota_beta_estimation; print('imports OK')"
+          pip list | grep -E "pytest|kuzu|fastmcp|numpy|pydantic"
+          python -c "import sys; print('sys.path:', sys.path)"
+          python -c "import pipelines.ota_beta_estimation; print('ota_beta OK')"
+          python -c "import pipelines.gps_disease_screen; print('gps_disease OK')"
+          python -c "import agents.tier3_causal.causal_filters; print('causal_filters OK')"
+
+      - name: Collect tests (dry run)
+        run: |
+          python -m pytest \
+            tests/test_causal_entropy_filter.py \
+            tests/test_causal_pli_penalty.py \
+            tests/test_gps_convergence.py \
+            tests/test_pipelines.py \
+            tests/test_shet_loader.py \
+            --collect-only -q 2>&1 || true
 
       - name: Run unit tests
         run: |
@@ -49,4 +62,4 @@ jobs:
             tests/test_leave_locus_out.py \
             tests/test_program_precedence.py \
             tests/test_clinical_trial_auc.py \
-            -q --tb=short
+            -v --tb=long 2>&1
