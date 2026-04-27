@@ -2,13 +2,16 @@
 """
 download_frozen_data.py — Download frozen reference files for exact result reproduction.
 
-Downloads two files from the GitHub release assets:
-  - data/api_cache.sqlite   (46 MB) — frozen OT L2G, GTEx, gnomAD API responses
-  - data/gps_bgrd/BGRD__size500.pkl (11 MB) — GPS null distribution (BGRD)
+Downloads four files from the GitHub release assets:
+  - data/api_cache.sqlite                        (46 MB) — frozen OT L2G, GTEx, gnomAD API responses
+  - data/gps_bgrd/BGRD__size500.pkl              (11 MB) — GPS null distribution (BGRD)
+  - data/checkpoints/coronary_artery_disease__tier3.json  (5.6 MB) — CAD Tier 3 checkpoint
+  - data/checkpoints/rheumatoid_arthritis__tier3.json     (9.2 MB) — RA Tier 3 checkpoint
 
-Without these files the pipeline still runs, but:
+Without these files:
   - API calls hit live endpoints → OT L2G scores may differ from published results
-  - GPS BGRD is recomputed from scratch (~1 hour) with a fresh random permutation
+  - GPS BGRD is recomputed from scratch (~1 hour)
+  - run_tier4 requires the full pipeline re-run (Tiers 1–3) to regenerate checkpoints
 
 Usage:
     python scripts/download_frozen_data.py
@@ -40,6 +43,16 @@ _ASSETS = [
         "name":    "BGRD__size500.pkl",
         "dest":    ROOT / "data" / "gps_bgrd" / "BGRD__size500.pkl",
         "size_mb": 11,
+    },
+    {
+        "name":    "coronary_artery_disease__tier3.json",
+        "dest":    ROOT / "data" / "checkpoints" / "coronary_artery_disease__tier3.json",
+        "size_mb": 6,
+    },
+    {
+        "name":    "rheumatoid_arthritis__tier3.json",
+        "dest":    ROOT / "data" / "checkpoints" / "rheumatoid_arthritis__tier3.json",
+        "size_mb": 9,
     },
 ]
 

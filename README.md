@@ -57,13 +57,19 @@ The `frozen/` directory (tracked in this repo) contains the reference files used
 | `frozen/CAD_programs.json` | NMF program definitions for CAD |
 | `frozen/RA_programs.json` | NMF program definitions for RA |
 
-Two larger files (~57 MB) are distributed as GitHub Release assets. Download them before running:
+Four files are distributed as GitHub Release assets. Download them before running:
 
 ```bash
 python scripts/download_frozen_data.py
 ```
 
-This places `data/api_cache.sqlite` (frozen OT L2G, GTEx, gnomAD API responses) and `data/gps_bgrd/BGRD__size500.pkl` (GPS null distribution) at the expected paths. Without these, the pipeline still runs but OT L2G scores and GPS results may differ from the published values.
+This places:
+- `data/api_cache.sqlite` — frozen OT L2G, GTEx, gnomAD API responses (46 MB)
+- `data/gps_bgrd/BGRD__size500.pkl` — GPS null distribution (11 MB)
+- `data/checkpoints/coronary_artery_disease__tier3.json` — CAD Tier 3 checkpoint (5.6 MB)
+- `data/checkpoints/rheumatoid_arthritis__tier3.json` — RA Tier 3 checkpoint (9.2 MB)
+
+Without these, `run_tier4` requires a full Tiers 1–3 re-run (~25 min, needs all data downloaded), and OT L2G scores and GPS results may differ from the published values.
 
 ---
 
