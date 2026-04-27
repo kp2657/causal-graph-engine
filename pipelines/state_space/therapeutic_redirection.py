@@ -504,6 +504,7 @@ def compute_therapeutic_redirection_per_celltype(
         "pooled_fraction":       pooled_frac,
         "evidence_tiers":        tiers,
         "provenance":            prov,
+        "tr_track":              "perturb_seq",  # Path C: real Perturb-seq β was used
     }
 
 

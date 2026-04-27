@@ -63,6 +63,7 @@ from config.scoring_thresholds import (  # noqa: E402
     GPS_JACCARD_SKIP_THRESHOLD,
     GPS_PROGRAM_WEIGHT_FRACTION,
     GPS_Z_RGES_DEFAULT,
+    GPS_Z_RGES_PROGRAM,
     GPS_MAX_HITS,
 )
 
@@ -303,7 +304,7 @@ def run_gps_disease_screens(
             label=label,
             library=library,
             top_n=top_n_compounds,
-            z_threshold=z_threshold,
+            z_threshold=GPS_Z_RGES_PROGRAM,
             max_hits=max_hits,
         )
         for hit in hits:

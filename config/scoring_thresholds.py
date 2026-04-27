@@ -207,6 +207,11 @@ GPS_Z_RGES_DEFAULT: float = 3.5
 # The threshold governs the z-scored path; GPS_MAX_HITS is only the non-z-scored fallback cap.
 # Source: [GPS] — connectivity-map approach; Z-threshold selection is application-specific.
 
+GPS_Z_RGES_PROGRAM: float = 2.0
+# Z_RGES threshold for program-level GPS screens (lower than disease-state threshold).
+# Program signatures are smaller (~50–200 genes vs ~500 for disease-state), producing
+# fewer reverters per screen. 2.0σ balances sensitivity vs. noise for program screens.
+
 GPS_MAX_HITS: int = 500
 # Safety cap for the non-z-scored GPS fallback path (top_n by |RGES|).
 # Not applied when GPS output contains Z_RGES column — threshold governs in that case.
