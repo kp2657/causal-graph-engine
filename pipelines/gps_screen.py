@@ -99,6 +99,15 @@ def screen_target_for_emulators(
         log.info("GPS screen skipped for %s: no Perturb-seq signature", gene)
         return []
 
+    # GPS BGRD reliability gate: signatures below 50 genes map to BGRD bucket ≤20,
+    # which causes Docker exit 1 (too few permutations for Run_reversal_score.py).
+    if len(sig) < 50:
+        log.info(
+            "GPS emulation screen skipped for %s: only %d GPS-filtered genes "
+            "(need ≥50 for reliable BGRD)", gene, len(sig),
+        )
+        return []
+
     # Negate KO signature: compounds that REVERSE the negated KO mimic the KO
     # (see module docstring). For protective genes (gamma < 0), don't negate.
     direction = -1.0 if (ota_gamma is None or ota_gamma >= 0) else 1.0
@@ -246,6 +255,16 @@ def _run_gps_screen(
     for the same label skip permutation and run only Run_reversal_score.py.
     """
     if not _check_gps_library_overlap(label, sig):
+        return []
+
+    # BGRD bucket ≤20 (sig_size < 35) causes GPS Docker exit 1 — too few permutations.
+    _SIZE_BUCKETS_CHECK = [5, 10, 20, 50, 100, 200, 300, 500, 700, 1000]
+    _bgrd_size_check = min(_SIZE_BUCKETS_CHECK, key=lambda b: abs(b - len(sig)))
+    if _bgrd_size_check <= 20:
+        log.warning(
+            "GPS screen skipped for %s: sig size %d maps to BGRD bucket %d "
+            "(GPS Docker unreliable at this size)", label, len(sig), _bgrd_size_check,
+        )
         return []
 
     safe_label = "".join(c if c.isalnum() or c in "-_" else "_" for c in label)[:40]
