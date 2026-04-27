@@ -233,7 +233,7 @@ models/disease_registry.py                 — canonical disease name / EFO / sl
 
 If you use this pipeline, please cite:
 
-> Ota, M. et al. (2023). Genomic medicine across ancestries. *Nature Genetics*.
+> Ota M, Spence JP, Zeng T, Dann E, Milind N, Marson A, Pritchard JK. Causal modelling of gene effects from regulators to programs to traits. *Nature*. 2026 Feb;650(8101):399–408. doi: [10.1038/s41586-025-09866-3](https://doi.org/10.1038/s41586-025-09866-3). PMID: 41372418.
 
 And the primary data sources: Open Targets, IEU Open GWAS, GTEx, Replogle 2022 (K562 Perturb-seq), CZI CD4+ T Perturb-seq (GSE314342).
 
