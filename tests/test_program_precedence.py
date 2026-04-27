@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-import anndata
+anndata = pytest.importorskip("anndata")
 
 
 # ---------------------------------------------------------------------------
