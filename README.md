@@ -235,7 +235,23 @@ If you use this pipeline, please cite:
 
 > Ota M, Spence JP, Zeng T, Dann E, Milind N, Marson A, Pritchard JK. Causal modelling of gene effects from regulators to programs to traits. *Nature*. 2026 Feb;650(8101):399–408. doi: [10.1038/s41586-025-09866-3](https://doi.org/10.1038/s41586-025-09866-3). PMID: 41372418.
 
-And the primary data sources: Open Targets, IEU Open GWAS, GTEx, Replogle 2022 (K562 Perturb-seq), CZI CD4+ T Perturb-seq (GSE314342).
+**Primary data sources — please also cite:**
+
+> Schnitzler GR, Shang S, Zeng T, et al. Convergence of coronary artery disease genes onto endothelial cell programs. *Nature*. 2023;626(7999):799–807. doi: 10.1038/s41586-023-06973-7. PMID: 38057663. (Perturb-seq: GEO GSE210681)
+
+> Replogle JM, Saunders RA, Pogson AN, et al. Mapping information-rich genotype-phenotype landscapes with genome-scale Perturb-seq. *Cell*. 2022;185(14):2559–2575. doi: 10.1016/j.cell.2022.05.013. PMID: 35688146. (K562 Perturb-seq)
+
+> CZI CD4+ T cell Perturb-seq (GEO GSE314342). *(citation pending publication)*
+
+> Spence JP, Zeng T, Mostafavi H, Pritchard JK. Genome-wide Bayesian estimation of the selective effects of heterozygous loss-of-function variants. *Nature Genetics*. 2024;56:1483–1491. doi: 10.1038/s41588-024-01820-9. PMID: 38982189. (shet constraint)
+
+> Ochoa D, Hercules A, Carmona M, et al. Open Targets Platform: supporting systematic drug–target identification and prioritisation. *Nucleic Acids Research*. 2021;49(D1):D1302–D1310. doi: 10.1093/nar/gkaa1027. PMID: 33196642.
+
+> Elsworth B, Lyon M, Alexander T, et al. The MRC IEU OpenGWAS data infrastructure. *bioRxiv*. 2020. doi: 10.1101/2020.08.10.244293. (IEU Open GWAS)
+
+> GTEx Consortium. The GTEx Consortium atlas of genetic regulatory effects across human tissues. *Science*. 2020;369(6509):1318–1330. doi: 10.1126/science.aaz1776. PMID: 32913098.
+
+> GPS compound screening Docker image: `binchengroup/gpsimage`. *(citation TBD — please supply GPS paper)*
 
 ---
 
