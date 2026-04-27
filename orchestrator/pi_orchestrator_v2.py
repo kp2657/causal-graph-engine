@@ -1053,6 +1053,7 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     print(f"  GPS priority compounds:  {len(chemistry_result.get('gps_priority_compounds', []))}")
 
     result = {
+        **graph_output,  # spreads target_list, genetic_anchors, etc. to top level
         "disease_name":          disease_name,
         "genetics_result":       genetics_result,
         "beta_matrix_result":    beta_result,
