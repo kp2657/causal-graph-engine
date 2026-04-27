@@ -254,8 +254,9 @@ def _run_sklearn_nmf(adata: Any, disease: str, k: int, n_top: int) -> dict:
     programs = []
     for i in range(k_empiric):
         loading_vec = H[i]
-        # Empiric cut-off: elbow on cumulative loading curve, bounded [20, 500]
-        n_genes = _empiric_program_size(loading_vec, min_genes=20, max_genes=500)
+        # Empiric cut-off: elbow on cumulative loading curve, bounded [100, 500]
+        # min_genes=100 ensures GPS L1000 signatures have sufficient overlap (~978 landmark genes)
+        n_genes = _empiric_program_size(loading_vec, min_genes=100, max_genes=500)
         top_idx = np.argsort(loading_vec)[::-1][:n_genes]
         top_genes = [gene_names[j] for j in top_idx if loading_vec[j] > 0]
         gene_loadings = {
@@ -267,7 +268,7 @@ def _run_sklearn_nmf(adata: Any, disease: str, k: int, n_top: int) -> dict:
         programs.append({
             "program_id":    f"{disease.upper()}_NMF_P{i+1:02d}",
             "gene_set":      top_genes,
-            "top_genes":     top_genes[:20],
+            "top_genes":     top_genes,
             "gene_loadings": gene_loadings,
             "n_genes":       len(top_genes),
             "cell_type":     getattr(adata, "_discovery_cell_type", "unknown"),
@@ -330,7 +331,7 @@ def _run_cnmf_package(adata: Any, disease: str, k: int, n_top: int) -> dict:
         programs.append({
             "program_id":    f"{disease.upper()}_cNMF_P{i+1:02d}",
             "gene_set":      top_genes[:n_top],
-            "top_genes":     top_genes[:20],
+            "top_genes":     top_genes[:n_top],
             "gene_loadings": gene_loadings,
             "cell_type":     "unknown",
             "source":        "cNMF",

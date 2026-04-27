@@ -440,7 +440,7 @@ def run_cnmf_program_extraction(
 
 
 @_tool
-def get_program_gene_loadings(program_name: str, top_n: int = 20) -> dict:
+def get_program_gene_loadings(program_name: str, top_n: int = 500) -> dict:
     """
     Return the top gene loadings for a cNMF program.
 
