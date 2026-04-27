@@ -9,8 +9,8 @@ data/**
 *.kuzu
 *.h5ad
 # Exception: keep validated pipeline output files
-!data/analyze_coronary_artery_disease.json
-!data/analyze_rheumatoid_arthritis.json
+# Note: full result JSONs exceed GitHub's 100 MB limit and are excluded.
+# Regenerate with: python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "<disease>"
 !data/analyze_coronary_artery_disease.md
 !data/analyze_rheumatoid_arthritis.md
 !data/exports/
