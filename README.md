@@ -1,26 +1,26 @@
 # Causal Graph Engine
 
-A genomics pipeline for causal drug target discovery, implementing the Ota et al. causal-effect decomposition:
+A genomics pipeline for genetically-grounded drug target prioritization, implementing the Ota et al. causal-effect decomposition:
 
 ```
 γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait})
 ```
 
 Where:
-- **β** (gene → program): estimated from CRISPR Perturb-seq and eQTL Mendelian randomization
+- **β** (gene → program): estimated from CRISPR Perturb-seq (interventional) and eQTL Mendelian randomization (genetic instrument)
 - **γ** (program → trait): estimated from GWAS enrichment (OT L2G, S-LDSC, Reactome)
 
-Both quantities are genetic-instrument-grounded, removing reverse causation from target scores. See [`docs/OTA_ALGORITHM.md`](docs/OTA_ALGORITHM.md) for method details.
+Both quantities use genetic instruments or direct perturbations to reduce reverse-causation bias in target scores. The Perturb-seq β is the strongest component — direct CRISPR knockout is interventional by design. See [`docs/OTA_ALGORITHM.md`](docs/OTA_ALGORITHM.md) for method details.
 
 ---
 
 ## What it produces
 
 For each input disease, the pipeline outputs a ranked target list with:
-- Causal effect estimate (γ) per gene
+- Genetically-grounded effect estimate (γ) per gene
 - Evidence tier (Tier1 = direct Perturb-seq, Tier2 = eQTL-MR, Tier3 = provisional)
 - GPS compound screen results (disease-state reversal and program reversal)
-- Kùzu graph database of all causal edges
+- Kùzu graph database of all gene–program–trait edges
 
 **Validated results (v0.2.3):**
 
