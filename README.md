@@ -237,17 +237,17 @@ If you use this pipeline, please cite:
 
 **Primary data sources — please also cite:**
 
-> Schnitzler GR et al. Convergence of coronary artery disease genes onto endothelial cell programs. *Nature*. *(doi/PMID TBD — please verify)* (Perturb-seq: GEO GSE210681)
+> Schnitzler GR, Kang H, Fang S, et al. Convergence of coronary artery disease genes onto endothelial cell programs. *Nature*. 2024;626(8000):799–807. doi: [10.1038/s41586-024-07022-x](https://doi.org/10.1038/s41586-024-07022-x). PMID: 38326615. (Perturb-seq: GEO GSE210681)
 
 > Replogle JM, Saunders RA, Pogson AN, et al. Mapping information-rich genotype-phenotype landscapes with genome-scale Perturb-seq. *Cell*. 2022;185(14):2559–2575. doi: [10.1016/j.cell.2022.05.013](https://doi.org/10.1016/j.cell.2022.05.013). PMID: 35688146. (K562 Perturb-seq)
 
-> CZI CD4+ T cell Perturb-seq (GEO GSE314342). *(preprint — citation pending)*
+> Zhu R, Dann E, Yan J, et al. Genome-scale perturb-seq in primary human CD4+ T cells maps context-specific regulators of T cell programs and human immune traits. *bioRxiv*. 2025 Dec 24. doi: [10.64898/2025.12.23.696273](https://doi.org/10.64898/2025.12.23.696273). (GEO GSE314342)
 
 > Xing J, Tan M, Leshchiner D, et al. Deep-learning-based de novo discovery and design of therapeutics that reverse disease-associated transcriptional phenotypes. *Cell*. 2026 Mar 17:S0092-8674(26)00223-0. doi: [10.1016/j.cell.2026.02.016](https://doi.org/10.1016/j.cell.2026.02.016). PMID: 41850287. (GPS compound screening)
 
-> Spence JP, Zeng T, Mostafavi H, Pritchard JK. Genome-wide Bayesian estimation of the selective effects of heterozygous loss-of-function variants. *Nature Genetics*. 2024;56:1483–1491. doi: [10.1038/s41588-024-01820-9](https://doi.org/10.1038/s41588-024-01820-9). PMID: 38982189. (shet constraint)
+> Zeng T, Spence JP, Mostafavi H, Pritchard JK. Bayesian estimation of gene constraint from an evolutionary model with gene features. *Nature Genetics*. 2024;56:1632–1643. doi: [10.1038/s41588-024-01820-9](https://doi.org/10.1038/s41588-024-01820-9). PMID: 38977852. (shet constraint)
 
-> Ochoa D, Hercules A, Carmona M, et al. Open Targets Platform: supporting systematic drug–target identification and prioritisation. *Nucleic Acids Research*. 2021;49(D1):D1302–D1310. doi: [10.1093/nar/gkaa1027](https://doi.org/10.1093/nar/gkaa1027). PMID: 33196642.
+> Buniello A, Suveges D, Cruz-Castillo C, et al. Open Targets Platform: facilitating therapeutic hypotheses building in drug discovery. *Nucleic Acids Research*. 2025;53(D1):D1467–D1475. doi: [10.1093/nar/gkae1128](https://doi.org/10.1093/nar/gkae1128). PMID: 39657122.
 
 > Elsworth B, Lyon M, Alexander T, et al. The MRC IEU OpenGWAS data infrastructure. *bioRxiv*. 2020. doi: [10.1101/2020.08.10.244293](https://doi.org/10.1101/2020.08.10.244293).
 
