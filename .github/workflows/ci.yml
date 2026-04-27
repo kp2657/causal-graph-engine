@@ -20,13 +20,29 @@ jobs:
       - name: Install dependencies
         run: pip install -e ".[dev]"
 
+      - name: Debug environment
+        run: |
+          python --version
+          python -c "import sys; print('sys.path:', sys.path[:3])"
+          python -c "import pipelines.ota_beta_estimation; print('imports OK')"
+
       - name: Run unit tests
         run: |
           python -m pytest \
-            tests/test_causal_*.py \
-            tests/test_gps_*.py \
-            tests/test_scoring_*.py \
-            tests/test_pipelines*.py \
+            tests/test_causal_entropy_filter.py \
+            tests/test_causal_inherited_genetic_evidence.py \
+            tests/test_causal_mechanistic_filter.py \
+            tests/test_causal_pareto_cutoff.py \
+            tests/test_causal_pli_penalty.py \
+            tests/test_causal_program_drivers.py \
+            tests/test_gps_branching_probability.py \
+            tests/test_gps_convergence.py \
+            tests/test_gps_library_overlap.py \
+            tests/test_gps_program_signature.py \
+            tests/test_scoring_tau_specificity.py \
+            tests/test_pipelines.py \
+            tests/test_pipelines_new_genomics.py \
+            tests/test_pipelines_static_lookups.py \
             tests/test_shet_loader.py \
             tests/test_smr_heidi.py \
             tests/test_finngen_validation.py \
