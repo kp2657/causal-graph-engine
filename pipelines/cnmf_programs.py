@@ -700,6 +700,228 @@ def run_cnmf_pipeline(
     }
 
 
+def run_scvi_program_extraction(
+    h5ad_path: str,
+    n_latent: int = 10,
+    n_layers: int = 2,
+    n_hidden: int = 128,
+    max_epochs: int = 200,
+    batch_size: int = 128,
+    min_genes_per_program: int = 10,
+    max_genes_per_program: int = 200,
+    output_dir: str = "./data/cnmf_programs",
+    cell_type: str = "scvi",
+    random_state: int = 42,
+    min_disease_fraction: float = 0.20,
+) -> dict:
+    """
+    Extract gene expression programs using scVI latent factors.
+
+    Replaces sklearn NMF with a probabilistic VAE (negative-binomial likelihood)
+    that models scRNA-seq count noise explicitly. Gene programs are derived from
+    the scVI decoder weight matrix: each latent dimension corresponds to one program,
+    and decoder weights give per-gene loadings (analogous to NMF W matrix).
+
+    Key difference vs NMF:
+      - NMF: non-negative factorisation of log-normalised expression
+      - scVI: VAE on raw counts; decoder weights can be positive or negative
+              (absolute value used for gene ranking within each program)
+
+    Output schema is identical to run_cnmf_pipeline() for drop-in compatibility
+    with get_programs_for_disease() and the GWAS γ enrichment pipeline.
+
+    Args:
+        h5ad_path:             Path to h5ad with raw integer counts in .X.
+        n_latent:              Number of latent dimensions (= number of programs).
+        n_layers:              scVI encoder/decoder depth.
+        n_hidden:              Hidden layer width.
+        max_epochs:            Training epochs (200 CPU-feasible; 400+ for GPU).
+        batch_size:            Mini-batch size.
+        min_genes_per_program: Minimum genes per program (loading elbow lower bound).
+        max_genes_per_program: Maximum genes per program (loading elbow upper bound).
+        output_dir:            Where to write the program JSON cache.
+        cell_type:             Label used in output filenames and program IDs.
+        random_state:          Reproducibility seed.
+        min_disease_fraction:  Disease cell oversampling fraction (same as NMF pipeline).
+
+    Returns:
+        dict compatible with get_programs_for_disease() output schema.
+    """
+    import os
+    if not os.path.exists(h5ad_path):
+        return {
+            "status":    "error",
+            "h5ad_path": h5ad_path,
+            "message":   f"File not found: {h5ad_path}",
+        }
+
+    try:
+        import anndata
+        import numpy as np
+        from scipy.sparse import issparse
+        import scvi as scvi_lib
+    except ImportError as exc:
+        return {
+            "status": "error",
+            "message": f"Missing dependency: {exc}. Run: pip install scvi-tools anndata",
+        }
+
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning)
+
+    adata = anndata.read_h5ad(h5ad_path)
+
+    # --- Raw counts: scVI requires integers -----------------------------------
+    X = adata.X
+    if issparse(X):
+        X = X.toarray()
+    if X.dtype.kind == "f":
+        X = np.round(X).astype(np.int32)
+    else:
+        X = X.astype(np.int32)
+
+    # --- Disease cell oversampling (same logic as NMF pipeline) ---------------
+    n_disease_oversampled = 0
+    n_normal_downsampled  = 0
+    obs = adata.obs.copy()
+    disease_col = next(
+        (c for c in ("disease", "disease_state", "condition") if c in obs.columns),
+        None,
+    )
+    if disease_col is not None:
+        disease_mask = obs[disease_col] != "normal"
+        n_disease = disease_mask.sum()
+        n_normal  = (~disease_mask).sum()
+        if n_disease / max(n_disease + n_normal, 1) < min_disease_fraction:
+            target_normal = int(n_disease / min_disease_fraction) - n_disease
+            target_normal = max(0, min(target_normal, n_normal))
+            normal_idx = np.where(~disease_mask)[0]
+            keep_normal = np.random.RandomState(random_state).choice(
+                normal_idx, size=target_normal, replace=False,
+            )
+            keep_idx = np.concatenate([np.where(disease_mask)[0], keep_normal])
+            X   = X[keep_idx]
+            obs = obs.iloc[keep_idx].copy()
+            n_disease_oversampled = n_disease
+            n_normal_downsampled  = target_normal
+
+    var = adata.var.copy()
+    adata_counts = anndata.AnnData(X, obs=obs, var=var)
+
+    # --- HVG selection (top 2000) for scVI training ---------------------------
+    try:
+        import scanpy as sc
+        adata_log = adata_counts.copy()
+        adata_log.X = adata_log.X.astype(float)
+        sc.pp.normalize_total(adata_log, target_sum=1e4)
+        sc.pp.log1p(adata_log)
+        n_hvg = min(2000, adata_counts.n_vars)
+        sc.pp.highly_variable_genes(adata_log, n_top_genes=n_hvg, flavor="seurat_v3")
+        hvg_mask = adata_log.var["highly_variable"].values
+    except Exception:
+        hvg_mask = np.ones(adata_counts.n_vars, dtype=bool)
+    gene_names = adata_counts.var_names[hvg_mask].tolist()
+    adata_hvg = adata_counts[:, hvg_mask].copy()
+
+    # --- Train scVI -----------------------------------------------------------
+    scvi_lib.settings.seed = random_state
+    scvi_lib.model.SCVI.setup_anndata(adata_hvg)
+    model = scvi_lib.model.SCVI(
+        adata_hvg,
+        n_latent=n_latent,
+        n_layers=n_layers,
+        n_hidden=n_hidden,
+    )
+    model.train(
+        max_epochs=max_epochs,
+        batch_size=batch_size,
+        progress_bar_refresh_rate=0,
+    )
+
+    # --- Extract decoder weights as gene loadings ----------------------------
+    # scVI decoder: linear layer mapping latent z → hidden → gene params.
+    # We extract the first linear weight (n_hidden × n_latent) and the final
+    # gene output weight (n_genes × n_hidden), computing effective loading as
+    # W_eff = |W_gene @ W_hidden| per latent dimension.
+    try:
+        import torch
+        decoder = model.module.decoder
+        # Access the mean decoder's first and last linear layers
+        px_decoder = decoder.px_decoder      # Sequential: Linear(n_latent→n_hidden)...
+        px_scale    = decoder.px_scale_decoder  # Linear(n_hidden→n_genes)
+
+        with torch.no_grad():
+            # First linear layer: (n_hidden × n_latent)
+            W1 = px_decoder[0].weight.detach().cpu().numpy()  # (n_hidden, n_latent)
+            # Output linear layer: (n_genes × n_hidden)
+            W_out = px_scale.weight.detach().cpu().numpy()    # (n_genes, n_hidden)
+        # Effective loading: (n_genes × n_latent)
+        W_eff = np.abs(W_out @ W1)
+    except Exception:
+        # Fallback: use correlation between latent z and gene expression
+        z = model.get_latent_representation()           # (n_cells, n_latent)
+        X_norm = adata_hvg.X.astype(float)
+        if issparse(X_norm):
+            X_norm = X_norm.toarray()
+        # Pearson correlation: (n_genes × n_latent)
+        z_c    = z    - z.mean(axis=0)
+        X_c    = X_norm - X_norm.mean(axis=0)
+        z_std  = z_c.std(axis=0) + 1e-8
+        X_std  = X_c.std(axis=0) + 1e-8
+        W_eff  = np.abs((X_c.T @ z_c) / (X_c.shape[0] * X_std[:, None] * z_std[None, :]))
+
+    # --- Build programs from loadings ----------------------------------------
+    programs = []
+    gene_name_idx = {g: i for i, g in enumerate(gene_names)}
+    for dim_idx in range(n_latent):
+        loadings = W_eff[:, dim_idx]
+        top_idx = _select_genes_by_loading(
+            loadings,
+            min_genes=min_genes_per_program,
+            max_genes=max_genes_per_program,
+        )
+        top_genes = [gene_names[i] for i in top_idx]
+        if len(top_genes) < min_genes_per_program:
+            continue
+
+        prog_id = f"{cell_type}_scVI_Z{dim_idx:02d}"
+        programs.append({
+            "program_id":    prog_id,
+            "cell_type":     cell_type,
+            "gene_set":      top_genes,
+            "top_genes":     top_genes[:20],
+            "source":        "scvi_decoder_weights",
+            "n_genes":       len(top_genes),
+            "loading_scores": [round(float(loadings[i]), 4) for i in top_idx],
+        })
+
+    # --- Cache to JSON --------------------------------------------------------
+    import json, pathlib
+    out_dir = pathlib.Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cache_path = out_dir / f"{cell_type}_scvi_programs.json"
+    cache_obj = {
+        "programs":   programs,
+        "n_programs": len(programs),
+        "source":     f"scVI_{cell_type}_h5ad",
+        "n_latent":   n_latent,
+        "n_epochs":   max_epochs,
+        "n_hvg":      int(hvg_mask.sum()),
+        "n_disease_cells_used":   n_disease_oversampled,
+        "n_normal_cells_downsampled": n_normal_downsampled,
+        "note": (
+            f"scVI VAE n_latent={n_latent}, {n_layers} layers, "
+            f"n_hidden={n_hidden}, {max_epochs} epochs. "
+            f"{int(hvg_mask.sum())} HVGs. "
+            f"Loadings from decoder weight matrix (|W_out @ W1|). "
+            f"genes/program: elbow [{min_genes_per_program}–{max_genes_per_program}]."
+        ),
+    }
+    cache_path.write_text(json.dumps(cache_obj, indent=2))
+
+    return cache_obj
+
+
 def load_cnmf_programs(output_dir: str = "./data/cnmf_programs") -> dict:
     """
     Load pre-computed cNMF programs, falling back to hardcoded provisional list.

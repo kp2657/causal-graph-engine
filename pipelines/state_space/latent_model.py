@@ -188,23 +188,126 @@ class PCADiffusionBackend:
 
 class ScVIBackend:
     """
-    Variational autoencoder backend via scvi-tools.
-    Phase 2: full implementation requires GPU environment.
-    Stub raises NotImplementedError until activated.
+    Variational autoencoder backend via scvi-tools (requires dedicated scvi-env).
+
+    Uses scVI's negative-binomial likelihood to model scRNA-seq count data,
+    producing a probabilistic latent space (n_latent dimensions per cell).
+    Pseudotime is estimated as normalised Euclidean distance in latent space
+    from the cell with the smallest latent-dimension-1 value.
+
+    Environment constraint: scvi-tools requires torch, which conflicts with
+    NumPy 2.x (needed by scanpy 1.12) at the ABI level in the main causal-graph
+    conda env. ScVIBackend must be run in the dedicated scvi-env:
+
+        conda create -n scvi-env python=3.11
+        conda activate scvi-env
+        pip install scvi-tools anndata scanpy
+
+    Typical usage: call run_scvi_program_extraction() from cnmf_programs.py,
+    which wraps this backend and can be run in scvi-env as a standalone script,
+    writing program JSON output that the main pipeline reads.
+
+    Requires raw integer count data in adata.X (not log-normalised).
+    If adata.X contains floats, they are rounded to the nearest integer.
     """
     name: str = "scvi"
 
+    def __init__(
+        self,
+        n_latent: int = 10,
+        n_layers: int = 2,
+        n_hidden: int = 128,
+        max_epochs: int = 100,
+        batch_size: int = 128,
+        random_state: int = 42,
+    ) -> None:
+        self.n_latent    = n_latent
+        self.n_layers    = n_layers
+        self.n_hidden    = n_hidden
+        self.max_epochs  = max_epochs
+        self.batch_size  = batch_size
+        self.random_state = random_state
+
     def fit_transform(self, adata: Any, **kwargs) -> dict[str, Any]:
         try:
-            import scvi  # noqa: F401
+            import scvi
+            import numpy as np
+            from scipy.sparse import issparse
         except ImportError as exc:
             raise ImportError(
-                "ScVIBackend requires scvi-tools: pip install scvi-tools"
+                "ScVIBackend requires scvi-tools in scvi-env: "
+                "conda create -n scvi-env python=3.11 && pip install scvi-tools anndata scanpy"
             ) from exc
-        raise NotImplementedError(
-            "ScVIBackend: full implementation deferred to Phase 2 (GPU environment). "
-            "Use get_backend(use_scvi=False) for CPU execution."
+
+        import warnings
+        warnings.filterwarnings("ignore", category=UserWarning)
+
+        # scVI requires raw integer counts — round floats if needed
+        X = adata.X
+        if issparse(X):
+            X = X.toarray()
+        if X.dtype.kind == "f":
+            X = np.round(X).astype(np.int32)
+        else:
+            X = X.astype(np.int32)
+
+        import anndata as ad
+        adata_int = ad.AnnData(X, obs=adata.obs.copy(), var=adata.var.copy())
+
+        scvi.settings.seed = self.random_state
+        scvi.model.SCVI.setup_anndata(adata_int)
+        model = scvi.model.SCVI(
+            adata_int,
+            n_latent=self.n_latent,
+            n_layers=self.n_layers,
+            n_hidden=self.n_hidden,
         )
+        model.train(
+            max_epochs=self.max_epochs,
+            batch_size=self.batch_size,
+            progress_bar_refresh_rate=0,
+        )
+
+        z = model.get_latent_representation()  # (n_cells, n_latent) float32
+
+        # Store latent in original adata
+        adata.obsm["X_scvi"] = z
+
+        # Build kNN connectivity in latent space (for downstream compatibility)
+        from scipy.spatial import KDTree
+        from scipy.sparse import csr_matrix
+        n_neighbors = min(15, adata.n_obs - 1)
+        tree = KDTree(z)
+        _, nn_idx = tree.query(z, k=n_neighbors + 1)
+        nn_idx = nn_idx[:, 1:]
+        n_cells = z.shape[0]
+        rows = np.repeat(np.arange(n_cells), n_neighbors)
+        cols = nn_idx.ravel()
+        conn = csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n_cells, n_cells))
+        conn = (conn + conn.T)
+        conn.data[:] = 1.0
+        adata.obsp["connectivities"] = conn
+
+        # Pseudotime: normalised Euclidean distance from root in latent space
+        root_idx = int(np.argmin(z[:, 0]))
+        dists = np.linalg.norm(z - z[root_idx], axis=1)
+        max_d = dists.max()
+        pseudotime = dists / max_d if max_d > 0 else dists
+        adata.obs["dpt_pseudotime"] = pseudotime.astype(float)
+
+        # Alias X_scvi as X_diffmap for API compatibility with downstream code
+        adata.obsm["X_diffmap"] = z
+        adata.obsm["X_pca"] = z  # proxy for centroid computation
+
+        # Attach trained model for decoder weight extraction in cnmf_programs
+        adata.uns["scvi_model"] = model
+
+        return {
+            "latent_key":     "X_scvi",
+            "pca_key":        "X_pca",
+            "pseudotime_key": "dpt_pseudotime",
+            "backend":        self.name,
+        }
 
 
 # ---------------------------------------------------------------------------
