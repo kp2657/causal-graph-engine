@@ -80,8 +80,14 @@ def compute_gps_convergence(
             best_gamma = 0.0
             conv_score = 0.0
 
+        # Spread compound fields but drop 'annotation' — it carries
+        # convergent_genetic_targets_hypothesis (O(N_targets) gene list) which
+        # bloats gps_convergence.convergence_by_program to tens of millions of entries.
+        ann = compound.get("annotation") or {}
+        safe_ann = {k: v for k, v in ann.items() if k != "convergent_genetic_targets_hypothesis"}
         return {
-            **compound,
+            **{k: v for k, v in compound.items() if k != "annotation"},
+            "annotation":          safe_ann,
             "program_id":          program_id,
             "converged_targets":   converged_targets,
             "is_novel_mechanism":  is_novel,

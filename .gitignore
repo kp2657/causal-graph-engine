@@ -9,10 +9,13 @@ data/**
 *.kuzu
 *.h5ad
 # Exception: keep validated pipeline output files
-# Note: full result JSONs exceed GitHub's 100 MB limit and are excluded.
+# Note: full result JSONs excluded (can exceed 100 MB GitHub limit; pre-fix run_tier4
+# produced 12 GB files by serialising all intermediate pipeline data — now fixed).
 # Regenerate with: python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "<disease>"
 !data/analyze_coronary_artery_disease.md
 !data/analyze_rheumatoid_arthritis.md
+# Tier4 checkpoints contain full intermediate data and can be very large
+data/checkpoints/*__tier4.json
 !data/exports/
 !data/exports/*.ttl
 !data/exports/*.jsonld

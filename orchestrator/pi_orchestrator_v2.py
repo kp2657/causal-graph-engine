@@ -1052,21 +1052,24 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     print(f"  GPS program reversers:   {sum(len(v) for v in chemistry_result.get('gps_program_reversers', {}).values())} across {len(chemistry_result.get('gps_program_reversers', {}))} programs")
     print(f"  GPS priority compounds:  {len(chemistry_result.get('gps_priority_compounds', []))}")
 
-    result = {
-        **graph_output,  # spreads target_list, genetic_anchors, etc. to top level
-        "disease_name":          disease_name,
-        "genetics_result":       genetics_result,
-        "beta_matrix_result":    beta_result,
-        "regulatory_result":     regulatory_result,
-        "causal_result":         causal_result,
-        "kg_result":             kg_result,
-        "prioritization_result": prioritization_result,
-        "chemistry_result":      chemistry_result,
-        "trials_result":         clinical_result,
-        "graph_output":          graph_output,
-        "pipeline_status":       "SUCCESS",
+    # Build trimmed output using the same path as analyze_disease_v2 — avoids
+    # serialising full intermediate dicts (prioritization_result, chemistry_result
+    # gps_convergence, causal_result) which can exceed 10 GB for large diseases.
+    all_warnings: list[str] = []
+    all_warnings.extend(graph_output.get("warnings", []))
+    all_warnings.extend(chemistry_result.get("warnings", []))
+    all_warnings.extend(clinical_result.get("warnings", []))
+    pipeline_outputs = {
+        "graph_output":        graph_output,
+        "chemistry_result":    chemistry_result,
+        "phenotype_result":    disease_query,
+        "all_warnings":        all_warnings,
+        "pipeline_status":     "SUCCESS",
+        "pipeline_duration_s": None,
+        "total_edges_written": 0,
+        "edge_write_breakdown": {},
     }
-    return result
+    return _build_final_output(pipeline_outputs)
 
 
 if __name__ == "__main__":
