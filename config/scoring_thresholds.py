@@ -156,12 +156,6 @@ SCORE_TRIAL_BONUS: float = 0.10
 SCORE_SAFETY_PENALTY: float = 0.10
 # t_mod deduction per safety flag (adverse event signal, on-target toxicity report).
 
-SCORE_T_MOD_MIN: float = 0.50
-# Minimum t_mod clamp — prevents extreme safety penalties from zeroing out scores.
-
-SCORE_T_MOD_MAX: float = 1.50
-# Maximum t_mod clamp.
-
 SCORE_RISK_ESCAPE_WEIGHT: float = 0.20
 # Escape risk penalty weight in risk_discount.
 
@@ -223,14 +217,6 @@ GPS_BGRD_MIN_GENES: int = 500
 GPS_BGRD_MAX_GENES: int = 500
 # Maximum signature genes after elbow-trim. Pinned to 500 so all disease screens share
 # BGRD__size500.pkl regardless of DEG count.
-
-# ---------------------------------------------------------------------------
-# Co-evidence gate
-# ---------------------------------------------------------------------------
-
-CO_EVIDENCE_WEIGHT_UNGROUNDED: float = 0.20
-# Multiplicative penalty applied to scores for targets with no genetic co-evidence.
-# Prevents purely transcriptional candidates from outranking genetically anchored ones.
 
 # ---------------------------------------------------------------------------
 # OTA gamma scoring cap
