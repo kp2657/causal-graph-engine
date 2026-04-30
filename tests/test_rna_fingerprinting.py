@@ -150,22 +150,52 @@ class TestPreprocessRnaFingerprints:
 
     def test_denoised_values_differ_from_raw(self, tmp_path):
         """SVD reconstruction should produce different values than raw log2FC."""
-        _write_sigs(tmp_path, "test_ds", _MOCK_SIGS)
+        _write_sigs(tmp_path, "diff_ds", _MOCK_SIGS)
         import mcp_servers.perturbseq_server as ps
         orig = ps._CACHE_DIR
         ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
         try:
-            preprocess_rna_fingerprints("test_ds", top_k=5)
-            fp_path = tmp_path / "test_ds" / "signatures_fingerprint.json.gz"
+            preprocess_rna_fingerprints("diff_ds", top_k=5)
+            fp_path = tmp_path / "diff_ds" / "signatures_fingerprint.json.gz"
             with gzip.open(fp_path, "rt") as f:
                 fp_sigs = json.load(f)
         finally:
             ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
         # Denoised STAT3 for IL6R should differ from raw 2.5
         il6r_stat3_raw = _MOCK_SIGS["IL6R"].get("STAT3", None)
         il6r_fp = fp_sigs.get("IL6R", {})
         if "STAT3" in il6r_fp and il6r_stat3_raw is not None:
             assert il6r_fp["STAT3"] != il6r_stat3_raw
+
+    def test_magnitude_preserved_after_rescaling(self, tmp_path):
+        """Each perturbation's fingerprint L2 norm should match the raw signature's L2 norm."""
+        import math, gzip as gz
+        _write_sigs(tmp_path, "mag_ds", _MOCK_SIGS)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            preprocess_rna_fingerprints("mag_ds", top_k=20)  # keep most genes
+            fp_path = tmp_path / "mag_ds" / "signatures_fingerprint.json.gz"
+            with gz.open(fp_path, "rt") as f:
+                fp_sigs = json.load(f)
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+
+        for pert, raw_genes in _MOCK_SIGS.items():
+            raw_norm = math.sqrt(sum(v**2 for v in raw_genes.values()))
+            fp_genes  = fp_sigs.get(pert, {})
+            fp_norm   = math.sqrt(sum(v**2 for v in fp_genes.values()))
+            if raw_norm > 0 and fp_norm > 0:
+                # norms are within same order of magnitude: centering shifts the
+                # column norms, so exact matching isn't expected; check within 2×
+                assert fp_norm / raw_norm < 2.0 and raw_norm / fp_norm < 2.0, (
+                    f"{pert}: raw_norm={raw_norm:.3f} fp_norm={fp_norm:.3f} (>2× apart)"
+                )
 
 
 # ---------------------------------------------------------------------------

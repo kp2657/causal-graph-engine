@@ -976,6 +976,15 @@ def preprocess_rna_fingerprints(
     U, S, Vt = randomized_svd(M, n_components=k, random_state=42)
     M_denoised = (U * S) @ Vt  # (n_genes × n_perts)
 
+    # Magnitude rescaling: restore each column to its original L2 norm.
+    # SVD reconstruction shrinks values toward zero (low-rank approximation),
+    # which would compress β downstream. Rescaling keeps the denoised *direction*
+    # (noise removed) while preserving the original *scale* (log2FC magnitude).
+    raw_norms = _np.linalg.norm(M, axis=0)           # original column norms
+    den_norms = _np.linalg.norm(M_denoised, axis=0)  # denoised column norms
+    scale = _np.where(den_norms > 1e-8, raw_norms / den_norms, 1.0)
+    M_denoised *= scale[_np.newaxis, :]
+
     # Extract denoised fingerprints — top_k genes by absolute denoised value
     denoised: dict[str, dict[str, float]] = {}
     for j, pert in enumerate(all_perts):
