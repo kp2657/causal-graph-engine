@@ -230,6 +230,13 @@ FINGERPRINT_MAX_NONGWAS_NOMINEES: int = 300
 # Maximum number of non-GWAS genes added to the candidate list via SVD cosine
 # nomination per run. Keeps the β matrix computation tractable.
 
+USE_SVD_GENE_NOMINATION: bool = True
+# When True, the orchestrator replaces the full Perturb-seq union (all KO genes)
+# with SVD cosine-nominated genes only (those co-regulated with the GWAS centroid
+# in latent SVD space, cosine ≥ FINGERPRINT_SVD_COSINE_MIN). This collapses
+# ~2000 mechanistic candidates to ~50 principled nominees. Set False to revert to
+# the full Perturb-seq union (session 92 behaviour).
+
 # ---------------------------------------------------------------------------
 # GPS disease signature — genetic credibility weighting
 # ---------------------------------------------------------------------------

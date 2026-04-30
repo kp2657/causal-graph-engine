@@ -466,6 +466,46 @@ def _collect_perturbseq_genes(disease_query: dict) -> list[str]:
         return []
 
 
+def _collect_svd_nominees(disease_query: dict, gwas_gene_list: list[str]) -> list[str]:
+    """
+    Return non-GWAS Perturb-seq genes nominated by SVD cosine similarity.
+
+    Computes cosine similarity of each non-GWAS perturbed gene to the GWAS
+    centroid in truncated SVD latent space (from svd_loadings.npz written by
+    preprocess_rna_fingerprints). Returns only genes above
+    FINGERPRINT_SVD_COSINE_MIN, capped at FINGERPRINT_MAX_NONGWAS_NOMINEES.
+
+    Falls back to empty list when svd_loadings.npz is absent (e.g. first run
+    before preprocessing) so the pipeline degrades gracefully.
+    """
+    dataset_id: str | None = None
+    disease_name = (disease_query.get("disease_name") or "").lower()
+    try:
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        short_key = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name, "")
+        if short_key and short_key in DISEASE_CELL_TYPE_MAP:
+            dataset_id = DISEASE_CELL_TYPE_MAP[short_key].get("scperturb_dataset")
+    except Exception:
+        pass
+
+    if not dataset_id or not gwas_gene_list:
+        return []
+
+    try:
+        from mcp_servers.perturbseq_server import compute_svd_nomination_scores
+        nominees = compute_svd_nomination_scores(dataset_id, gwas_genes=gwas_gene_list)
+        if isinstance(nominees, dict):  # error dict
+            _log("SVD_NOM_FAIL", "_collect_svd_nominees", nominees.get("error", "unknown"))
+            return []
+        genes = [n["gene"] for n in nominees]
+        _log("SVD_NOM", "_collect_svd_nominees",
+             f"{len(genes)} SVD-nominated non-GWAS genes (cosine≥threshold) from {dataset_id}")
+        return genes
+    except Exception as exc:
+        _log("SVD_NOM_FAIL", "_collect_svd_nominees", str(exc))
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Tier 4 feedback helper
 # ---------------------------------------------------------------------------
@@ -587,15 +627,31 @@ def analyze_disease_v2(
     gene_list, gwas_ot_scores, ot_disease_targets_cache = _collect_gene_list(disease_query, genetics_result)
     gwas_gene_list = list(gene_list)
 
-    # Union all Perturb-seq KO genes — GWAS genes retain priority; non-GWAS
-    # Perturb-seq genes are appended so OTA scores them via program-level γ.
-    perturb_genes = _collect_perturbseq_genes(disease_query)
-    perturb_only_genes = [g for g in perturb_genes if g not in gwas_gene_list]
+    # Non-GWAS Perturb-seq nominees: SVD cosine-gated (USE_SVD_GENE_NOMINATION=True,
+    # default) or full KO union (False, legacy behaviour).
+    # SVD gate: only non-GWAS genes co-regulated with the GWAS centroid in latent
+    # SVD space (cosine ≥ FINGERPRINT_SVD_COSINE_MIN) enter the pipeline.  This
+    # collapses ~2000 perturb-seq-only mechanistic candidates to ~50 principled
+    # nominees, keeping the target list interpretable.
+    try:
+        from config.scoring_thresholds import USE_SVD_GENE_NOMINATION
+    except Exception:
+        USE_SVD_GENE_NOMINATION = False
+
+    if USE_SVD_GENE_NOMINATION:
+        perturb_only_genes = _collect_svd_nominees(disease_query, gwas_gene_list)
+        _log("SVD_UNION", "gene_list",
+             f"added {len(perturb_only_genes)} SVD-nominated non-GWAS genes "
+             f"(total {len(gwas_gene_list) + len(perturb_only_genes)}: "
+             f"{len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} SVD nominees)")
+    else:
+        perturb_genes = _collect_perturbseq_genes(disease_query)
+        perturb_only_genes = [g for g in perturb_genes if g not in gwas_gene_list]
+        if perturb_only_genes:
+            _log("PERTURB_UNION", "gene_list",
+                 f"added {len(perturb_only_genes)} Perturb-seq-only genes "
+                 f"(total {len(gene_list)}: {len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} novel)")
     gene_list = gwas_gene_list + perturb_only_genes
-    if perturb_only_genes:
-        _log("PERTURB_UNION", "gene_list",
-             f"added {len(perturb_only_genes)} Perturb-seq-only genes "
-             f"(total {len(gene_list)}: {len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} novel)")
 
     _disease_key_for_pareto = disease_query.get("disease_key") or ""
 
