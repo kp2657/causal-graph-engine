@@ -61,6 +61,12 @@ log = logging.getLogger(__name__)
 _CACHE_DIR = Path(__file__).parent.parent / "data" / "perturbseq"
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Some datasets use a different directory name than their registry key.
+# Maps canonical dataset_id → actual storage subdirectory under _CACHE_DIR.
+_DATASET_DIR_ALIAS: dict[str, str] = {
+    "Schnitzler_GSE210681": "schnitzler_cad_vascular",
+}
+
 # ---------------------------------------------------------------------------
 # Dataset registry
 # ---------------------------------------------------------------------------
@@ -215,7 +221,14 @@ _SIG_CACHE: dict[str, dict[str, dict[str, float]]] = {}
 def _sig_path(dataset_id: str, variant: str = "") -> Path:
     """Return path to signatures file. variant="" → signatures.json.gz; else signatures_{variant}.json.gz."""
     suffix = f"_{variant}" if variant else ""
-    return _CACHE_DIR / dataset_id / f"signatures{suffix}.json.gz"
+    storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+    return _CACHE_DIR / storage_dir / f"signatures{suffix}.json.gz"
+
+
+def _npz_path(dataset_id: str) -> Path:
+    """Return path to svd_loadings.npz, respecting directory aliases."""
+    storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+    return _CACHE_DIR / storage_dir / "svd_loadings.npz"
 
 
 def _cache_key(dataset_id: str, variant: str = "") -> str:
@@ -1004,7 +1017,7 @@ def preprocess_rna_fingerprints(
     # Only saved for the primary variant (source_variant="") — delta/Stim48hr share
     # the same nomination space as the primary.
     if not source_variant:
-        npz_path = _CACHE_DIR / dataset_id / "svd_loadings.npz"
+        npz_path = _npz_path(dataset_id)
         _np.savez_compressed(str(npz_path), Vt=Vt, pert_names=_np.array(all_perts))
         log.info("SVD loadings saved: %s (rank=%d, %d perts)", npz_path, k, n_perts)
 
@@ -1020,7 +1033,7 @@ def preprocess_rna_fingerprints(
         "n_genes":          n_genes,
         "svd_rank":         k,
         "sig_path":         str(_sig_path(dataset_id, fp_variant)),
-        "svd_loadings_path": str(_CACHE_DIR / dataset_id / "svd_loadings.npz") if not source_variant else None,
+        "svd_loadings_path": str(_npz_path(dataset_id)) if not source_variant else None,
     }
 
 
@@ -1056,7 +1069,7 @@ def compute_svd_nomination_scores(
 
     from config.scoring_thresholds import FINGERPRINT_SVD_COSINE_MIN, FINGERPRINT_MAX_NONGWAS_NOMINEES
 
-    npz_path = _CACHE_DIR / dataset_id / "svd_loadings.npz"
+    npz_path = _npz_path(dataset_id)
     if not npz_path.exists():
         log.warning("SVD loadings not found for %s — run preprocess_rna_fingerprints first", dataset_id)
         return []
