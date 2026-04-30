@@ -176,12 +176,12 @@ class TestPhenotypeArchitect:
         }
 
     def test_known_disease_resolves_efo(self):
-        from agents.tier1_phenomics.phenotype_architect import DISEASE_EFO_MAP
+        from steps.tier1_phenomics.disease_query_builder import DISEASE_EFO_MAP
         assert "coronary artery disease" in DISEASE_EFO_MAP
         assert DISEASE_EFO_MAP["coronary artery disease"] == "EFO_0001645"
 
     def test_efo_icd10_map_cad(self):
-        from agents.tier1_phenomics.phenotype_architect import EFO_ICD10_MAP
+        from steps.tier1_phenomics.disease_query_builder import EFO_ICD10_MAP
         assert "I25" in EFO_ICD10_MAP["EFO_0001645"]
 
     @patch("mcp_servers.gwas_genetics_server.get_gwas_catalog_studies")
@@ -190,7 +190,7 @@ class TestPhenotypeArchitect:
         mock_studies.return_value = {"total_studies": 5, "efo_id": "EFO_0001645"}
         mock_gwas_list.return_value = {"datasets": [{"id": "ieu-a-7"}]}
 
-        from agents.tier1_phenomics.phenotype_architect import run
+        from steps.tier1_phenomics.disease_query_builder import run
         result = run("coronary artery disease")
         assert result["efo_id"] == "EFO_0001645"
         assert "I25" in result["icd10_codes"]
@@ -202,7 +202,7 @@ class TestPhenotypeArchitect:
         mock_studies.return_value = {"total_studies": 0, "efo_id": None}
         mock_gwas_list.return_value = {"datasets": []}
 
-        from agents.tier1_phenomics.phenotype_architect import run
+        from steps.tier1_phenomics.disease_query_builder import run
         result = run("unknown_disease_xyz")
         assert result["efo_id"] is None
         assert result["icd10_codes"] == []
@@ -225,7 +225,7 @@ class TestStatisticalGeneticist:
         mock_gwas_assoc.return_value = {"associations": []}
         mock_gnomad.return_value = {"PCSK9": {"pLI": 0.02}}
 
-        from agents.tier1_phenomics.statistical_geneticist import run
+        from steps.tier1_phenomics.gwas_anchor_validator import run
         result = run(MOCK_DISEASE_QUERY)
 
         assert "anchor_genes_validated" in result
@@ -256,7 +256,7 @@ class TestPerturbationGenomicsAgent:
         mock_loadings.return_value = {"top_genes": ["PCSK9", "LDLR"]}
         mock_eqtl.return_value = {"data": []}
 
-        from agents.tier2_pathway.perturbation_genomics_agent import run
+        from steps.tier2_pathway.beta_matrix_builder import run
         result = run(["PCSK9", "TET2"], MOCK_DISEASE_QUERY)
 
         assert "beta_matrix" in result
@@ -283,7 +283,7 @@ class TestPerturbationGenomicsAgent:
         mock_loadings.return_value = {"top_genes": []}
         mock_eqtl.return_value = {"data": []}
 
-        from agents.tier2_pathway.perturbation_genomics_agent import run
+        from steps.tier2_pathway.beta_matrix_builder import run
         result = run(["PCSK9"], MOCK_DISEASE_QUERY)
         warns = result["warnings"]
         assert any("Biology mismatch" in w for w in warns)
@@ -311,7 +311,7 @@ class TestPerturbationGenomicsAgent:
             return {"beta": None, "evidence_tier": "provisional_virtual"}
         mock_estimate.side_effect = _side_effect
 
-        from agents.tier2_pathway.perturbation_genomics_agent import run
+        from steps.tier2_pathway.beta_matrix_builder import run
         result = run(["PCSK9"], MOCK_DISEASE_QUERY)
 
         tier = result["evidence_tier_per_gene"]["PCSK9"]
@@ -336,7 +336,7 @@ class TestPerturbationGenomicsAgent:
         mock_perturb.return_value = {"top_programs_up": [], "top_programs_dn": []}
         mock_estimate.return_value = {"beta": None, "evidence_tier": "provisional_virtual"}
 
-        from agents.tier2_pathway.perturbation_genomics_agent import run
+        from steps.tier2_pathway.beta_matrix_builder import run
         # AMD disease → should query Retina tissue
         amd_query = {"disease_name": "age-related macular degeneration", "efo_id": "EFO_0001481"}
         run(["CFH"], amd_query)
@@ -367,7 +367,7 @@ class TestRegulatoryGenomicsAgent:
             "associations": [{"p_value_exponent": -10, "trait": "LDL cholesterol"}]
         }
 
-        from agents.tier2_pathway.regulatory_genomics_agent import run
+        from steps.tier2_pathway.eqtl_coloc_mapper import run
         result = run(["PCSK9"], MOCK_DISEASE_QUERY)
 
         assert "PCSK9" in result["gene_eqtl_summary"]
@@ -388,7 +388,7 @@ class TestRegulatoryGenomicsAgent:
         mock_eqtl.return_value = {"data": []}
         mock_snp.return_value = {"associations": []}
 
-        from agents.tier2_pathway.regulatory_genomics_agent import run
+        from steps.tier2_pathway.eqtl_coloc_mapper import run
         result = run(["PCSK9"], MOCK_DISEASE_QUERY)
         warns = result["warnings"]
         assert any("PCSK9 Liver eQTL not significant" in w for w in warns)
@@ -399,7 +399,7 @@ class TestRegulatoryGenomicsAgent:
 # ===========================================================================
 
 class TestCausalDiscoveryAgent:
-    @patch("agents.tier3_causal.causal_discovery_agent._maybe_therapeutic_redirection")
+    @patch("steps.tier3_causal.ota_gamma_calculator._maybe_therapeutic_redirection")
     @patch("pipelines.ota_gamma_estimation.compute_ota_gamma")
     @patch("mcp_servers.graph_db_server.write_causal_edges")
     @patch("mcp_servers.graph_db_server.run_evalue_check")
@@ -415,7 +415,7 @@ class TestCausalDiscoveryAgent:
         mock_write.return_value = {"n_written": 2}
         mock_evalue.return_value = {"e_value": 5.0}
 
-        from agents.tier3_causal.causal_discovery_agent import run
+        from steps.tier3_causal.ota_gamma_calculator import run
         result = run(MOCK_BETA_MATRIX_RESULT, MOCK_GAMMA_ESTIMATES, MOCK_DISEASE_QUERY)
 
         assert "n_edges_written" in result
@@ -423,7 +423,7 @@ class TestCausalDiscoveryAgent:
         assert "shd" in result
         assert "warnings" in result
 
-    @patch("agents.tier3_causal.causal_discovery_agent._maybe_therapeutic_redirection")
+    @patch("steps.tier3_causal.ota_gamma_calculator._maybe_therapeutic_redirection")
     @patch("pipelines.ota_gamma_estimation.compute_ota_gamma")
     @patch("mcp_servers.graph_db_server.write_causal_edges")
     @patch("mcp_servers.graph_db_server.run_evalue_check")
@@ -438,7 +438,7 @@ class TestCausalDiscoveryAgent:
         mock_write.return_value = {"n_written": 0}
         mock_evalue.return_value = {"e_value": 100.0}
 
-        from agents.tier3_causal.causal_discovery_agent import run
+        from steps.tier3_causal.ota_gamma_calculator import run
         result = run(MOCK_BETA_MATRIX_RESULT, MOCK_GAMMA_ESTIMATES, MOCK_DISEASE_QUERY)
         assert "n_edges_written" in result
         assert result["n_edges_written"] == 0 or result["n_edges_written"] >= 0
@@ -470,7 +470,7 @@ class TestKGCompletionAgent:
         mock_query.return_value = {"edges": []}
         mock_write.return_value = {"n_written": 5}
 
-        from agents.tier3_causal.kg_completion_agent import run
+        from steps.tier3_causal.drug_target_graph_enricher import run
         result = run(MOCK_CAUSAL_RESULT, MOCK_DISEASE_QUERY)
 
         assert "n_pathway_edges_added" in result
@@ -499,7 +499,7 @@ class TestTargetPrioritizationAgent:
             {"symbol": "DNMT3A", "pLI": 0.0},
         ]}
 
-        from agents.tier4_translation.target_prioritization_agent import run
+        from steps.tier4_translation.target_ranker import run
         result = run(MOCK_CAUSAL_RESULT, MOCK_KG_RESULT, MOCK_DISEASE_QUERY)
 
         targets = result["targets"]
@@ -516,7 +516,7 @@ class TestTargetPrioritizationAgent:
         # Correct format: {"genes": [{"symbol": ..., "pLI": ...}]}
         mock_gnomad.return_value = {"genes": [{"symbol": "PCSK9", "pLI": 0.95}]}
 
-        from agents.tier4_translation.target_prioritization_agent import run
+        from steps.tier4_translation.target_ranker import run
         result = run(MOCK_CAUSAL_RESULT, MOCK_KG_RESULT, MOCK_DISEASE_QUERY)
         # Find PCSK9 record
         pcsk9 = next((t for t in result["targets"] if t["target_gene"] == "PCSK9"), None)
@@ -543,7 +543,7 @@ class TestChemistryAgent:
         }
         mock_hgnc.return_value = {"genes": [], "n_resolved": 0, "n_unresolved": 0, "mapping_sample": []}
 
-        from agents.tier4_translation.chemistry_agent import run
+        from steps.tier4_translation.gps_compound_screener import run
         result = run(MOCK_PRIORITIZATION_RESULT, MOCK_DISEASE_QUERY)
 
         assert "target_chemistry" in result
@@ -569,7 +569,7 @@ class TestChemistryAgent:
         gamma_stub = {"prog_x": {"CAD": {"gamma": 0.15, "evidence_tier": "Tier2"}}}
         prio = {**MOCK_PRIORITIZATION_RESULT, "_gamma_estimates": gamma_stub}
 
-        from agents.tier4_translation.chemistry_agent import run
+        from steps.tier4_translation.gps_compound_screener import run
         run(prio, MOCK_DISEASE_QUERY)
 
         mock_gps.assert_called_once()
@@ -599,7 +599,7 @@ class TestClinicalTrialistAgent:
         mock_target_trials.return_value = {"trials": []}
         mock_ot_drug.return_value = {"indications": ["hypercholesterolemia"]}
 
-        from agents.tier4_translation.clinical_trialist_agent import run
+        from steps.tier4_translation.trial_landscape_mapper import run
         result = run(MOCK_PRIORITIZATION_RESULT, MOCK_DISEASE_QUERY)
 
         assert "trial_summary" in result
@@ -623,7 +623,7 @@ class TestClinicalTrialistAgent:
         mock_target_trials.return_value = {"trials": []}
         mock_ot_drug.return_value = {}
 
-        from agents.tier4_translation.clinical_trialist_agent import run
+        from steps.tier4_translation.trial_landscape_mapper import run
         result = run(MOCK_PRIORITIZATION_RESULT, MOCK_DISEASE_QUERY)
         # PCSK9 should now be high risk due to safety signal
         risk = result["development_risk"].get("PCSK9")
@@ -636,7 +636,7 @@ class TestClinicalTrialistAgent:
 
 class TestScientificWriterAgent:
     def test_returns_graphoutput_schema(self):
-        from agents.tier5_writer.scientific_writer_agent import run
+        from steps.tier5_writer.report_builder import run
         result = run(
             phenotype_result=MOCK_DISEASE_QUERY,
             genetics_result={"instruments": [], "warnings": []},
@@ -660,7 +660,7 @@ class TestScientificWriterAgent:
             assert key in result, f"Missing key: {key}"
 
     def test_executive_summary_contains_disease(self):
-        from agents.tier5_writer.scientific_writer_agent import run
+        from steps.tier5_writer.report_builder import run
         result = run(
             phenotype_result=MOCK_DISEASE_QUERY,
             genetics_result={"warnings": []},
@@ -676,7 +676,7 @@ class TestScientificWriterAgent:
         assert "coronary artery disease" in result["executive_summary"].lower()
 
     def test_top_narratives_count(self):
-        from agents.tier5_writer.scientific_writer_agent import run
+        from steps.tier5_writer.report_builder import run
         result = run(
             phenotype_result=MOCK_DISEASE_QUERY,
             genetics_result={"warnings": []},
@@ -692,7 +692,7 @@ class TestScientificWriterAgent:
         assert len(result["top_target_narratives"]) <= 3
 
     def test_limitations_mentions_provisional_virtual(self):
-        from agents.tier5_writer.scientific_writer_agent import run
+        from steps.tier5_writer.report_builder import run
         result = run(
             phenotype_result=MOCK_DISEASE_QUERY,
             genetics_result={"warnings": []},

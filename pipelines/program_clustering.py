@@ -31,7 +31,7 @@ def cluster_by_program_influence(
     Annotate each OTA-grounded gene in top_genes with program-cluster fields.
 
     Args:
-        top_genes:              List of gene dicts from causal_discovery_agent.
+        top_genes:              List of gene dicts from ota_gamma_calculator.
                                 Each must have a "programs" key containing
                                 {program_id: contribution} from compute_ota_gamma.
         max_clusters:           Hard cap on k. Actual k = min(max_clusters,

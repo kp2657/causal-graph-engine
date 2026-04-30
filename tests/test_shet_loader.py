@@ -86,7 +86,7 @@ def test_shet_penalty_log_linear_monotonic():
 
 
 def test_shet_agent_integration(monkeypatch):
-    """shet penalty is applied to ota_gamma for constrained genes in causal_discovery_agent."""
+    """shet penalty is applied to ota_gamma for constrained genes in ota_gamma_calculator."""
     for mod in ("kuzu", "rdflib"):
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
@@ -95,7 +95,7 @@ def test_shet_agent_integration(monkeypatch):
     # constrained gene → max penalty (0.20)
     monkeypatch.setattr(sl, "get_shet", lambda gene: 0.1 if gene == "CONSTRAINED" else 0.0001)
 
-    # Simulate the shet penalty block from causal_discovery_agent
+    # Simulate the shet penalty block from ota_gamma_calculator
     records = [
         {"gene": "CONSTRAINED", "ota_gamma": 0.5, "dominant_tier": "Tier3_Provisional"},
         {"gene": "CFH", "ota_gamma": 0.5, "dominant_tier": "Tier2_Convergent"},

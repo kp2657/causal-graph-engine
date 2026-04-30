@@ -1380,6 +1380,93 @@ def get_l2g_prioritized_gene_list_for_efo(
     }
 
 
+@_api_cached(ttl_days=30)
+def get_gene_max_pip_for_trait(gene_symbol: str, efo_id: str) -> dict:
+    """
+    Return the maximum fine-mapped posterior inclusion probability (PIP) for a gene
+    across all credible sets for a trait (EFO ID).
+
+    PIP is the probability that a variant in a credible set is the causal variant.
+    A high PIP gene (≥ 0.1) is both GWAS-implicated and fine-mapped to a specific locus —
+    stronger evidence than L2G score alone (which relies on functional annotations).
+
+    Used as tiebreaker 2 in target_ranker (after L2G score).
+
+    Query: studies → credibleSets → locus (posteriorProbability) + l2GPredictions (gene→locus link).
+    Strategy: find credible sets where this gene is the top L2G prediction, then return
+    the max PIP of the top variant in those credible sets.
+
+    Returns:
+        {gene_symbol, efo_id, max_pip, n_loci_with_pip, data_source}
+    """
+    if not gene_symbol or not efo_id:
+        return {"gene_symbol": gene_symbol, "efo_id": efo_id, "max_pip": 0.0, "n_loci_with_pip": 0}
+
+    studies_res = get_open_targets_gwas_studies_for_efo(efo_id, max_studies=30)
+    studies = studies_res.get("studies") or []
+    if not studies:
+        return {"gene_symbol": gene_symbol, "efo_id": efo_id, "max_pip": 0.0, "n_loci_with_pip": 0,
+                "data_source": "OT_Platform_v4"}
+
+    q = """
+    query GeneCredSets($studyId: String!, $size: Int!) {
+      credibleSets(studyIds: [$studyId] page: {size: $size, index: 0}) {
+        rows {
+          studyLocusId
+          locus(page: {size: 1, index: 0}) {
+            rows { posteriorProbability }
+          }
+          l2GPredictions {
+            rows {
+              target { approvedSymbol }
+              score
+            }
+          }
+        }
+      }
+    }
+    """
+    gene_upper = gene_symbol.upper()
+    max_pip = 0.0
+    n_loci = 0
+
+    for study in studies[:20]:
+        sid = study.get("id")
+        if not sid:
+            continue
+        data = _ot_gql(q, {"studyId": sid, "size": 30})
+        if "error" in data:
+            continue
+        for cs in (data.get("credibleSets", {}).get("rows") or []):
+            # Check if this gene is top L2G for this credible set
+            l2g_rows = (cs.get("l2GPredictions", {}).get("rows") or [])
+            if not l2g_rows:
+                continue
+            best_l2g = max(l2g_rows, key=lambda r: float(r.get("score") or 0), default=None)
+            if best_l2g is None:
+                continue
+            best_sym = (best_l2g.get("target") or {}).get("approvedSymbol", "")
+            if best_sym.upper() != gene_upper:
+                continue
+            # This CS is attributed to our gene — get its top PIP
+            locus_rows = (cs.get("locus", {}).get("rows") or [])
+            for lv in locus_rows:
+                pip = lv.get("posteriorProbability")
+                if pip is not None:
+                    pip_f = float(pip)
+                    if pip_f > max_pip:
+                        max_pip = pip_f
+                    n_loci += 1
+
+    return {
+        "gene_symbol":    gene_symbol,
+        "efo_id":         efo_id,
+        "max_pip":        round(max_pip, 4),
+        "n_loci_with_pip": n_loci,
+        "data_source":    "OT_Platform_v4_credibleSets_PIP",
+    }
+
+
 # ---------------------------------------------------------------------------
 _BURDEN_CACHE: dict[str, dict[str, dict]] = {}  # phenocode -> {GENE_UPPER: best_row}
 _BURDEN_PHENOCODE_MAP: dict[str, str] = {

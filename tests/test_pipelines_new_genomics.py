@@ -244,8 +244,9 @@ class TestEstimateBetaNewTiersFallback(unittest.TestCase):
         # pQTL should win over eQTL direction
         self.assertEqual(result["evidence_tier"], "Tier2p_pQTL_MR")
 
-    def test_sc_eqtl_before_pqtl(self):
-        """sc-eQTL (Tier2c) should activate before pQTL (Tier2p)."""
+    def test_pqtl_before_sc_eqtl(self):
+        """pQTL (Tier2p) should now activate before sc-eQTL (Tier2c): the drug
+        target is the protein, so a protein QTL is causally prior to an mRNA eQTL."""
         from pipelines.ota_beta_estimation import estimate_beta
         sc_data = {
             "top_eqtl": {"beta": 0.5, "pvalue": 1e-8, "condition_label": "monocyte",
@@ -262,7 +263,7 @@ class TestEstimateBetaNewTiersFallback(unittest.TestCase):
             sc_eqtl_data=sc_data, pqtl_data=pqtl,
             program_loading=0.7,
         )
-        self.assertIn("Tier2c", result["evidence_tier"])
+        self.assertIn("Tier2p", result["evidence_tier"])
 
     def test_burden_without_eqtl(self):
         """Rare burden (Tier2rb) activates when no eQTL/pQTL present."""

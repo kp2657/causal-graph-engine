@@ -6,7 +6,7 @@ Verifies that:
 - _collect_perturbseq_genes returns [] gracefully when no cache exists
 - The orchestrator unions perturb_only_genes with gwas_gene_list
 - perturb_only_genes excludes genes already in the GWAS list
-- target_prioritization_agent flags perturb_novel genes correctly
+- target_ranker flags perturb_novel genes correctly
 """
 from __future__ import annotations
 
@@ -148,12 +148,12 @@ class TestGeneListUnion:
 
 
 # ---------------------------------------------------------------------------
-# target_prioritization_agent — perturb_novel flag
+# target_ranker — perturb_novel flag
 # ---------------------------------------------------------------------------
 
 class TestPerturbNovelFlag:
     def _run_prioritization(self, gene: str, perturb_only_genes: list[str]):
-        from agents.tier4_translation.target_prioritization_agent import run
+        from steps.tier4_translation.target_ranker import run
         disease_query = {
             "disease_name": "age-related macular degeneration",
             "efo_id": "EFO_0001365",

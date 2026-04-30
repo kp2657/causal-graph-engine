@@ -13,7 +13,7 @@ def _get_entropy_fn():
     for mod in ["kuzu", "rdflib"]:
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
-    from agents.tier3_causal.causal_discovery_agent import _program_entropy
+    from steps.tier3_causal.ota_gamma_calculator import _program_entropy
     return _program_entropy
 
 
@@ -55,7 +55,7 @@ def test_entropy_discount_applied_above_p75():
     for mod in ["kuzu", "rdflib"]:
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
-    from agents.tier3_causal.causal_discovery_agent import _program_entropy
+    from steps.tier3_causal.ota_gamma_calculator import _program_entropy
 
     progs = frozenset({"P1", "P2", "P3", "P4"})
     # Gene A: focused (low entropy); Gene B: uniform (high entropy)
@@ -95,7 +95,7 @@ def test_entropy_discount_floor():
     for mod in ["kuzu", "rdflib"]:
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
-    from agents.tier3_causal.causal_discovery_agent import _program_entropy
+    from steps.tier3_causal.ota_gamma_calculator import _program_entropy
 
     progs = frozenset({f"P{i}" for i in range(10)})
     beta = {"HOUSEKEEPING": {p: 1.0 for p in progs}}   # perfectly uniform

@@ -26,7 +26,7 @@ Category thresholds
   midstream_mediator   0.30 <= controller_likelihood <= 0.50
   downstream_marker    controller_likelihood < 0.30
 
-Marker discount (consumed by target_prioritization_agent.py)
+Marker discount (consumed by target_ranker.py)
 ------------------------------------------------------------
   marker_confidence   = signal that gene is a terminal/maintenance marker
                         derived from transition profile (high persistence, low entry/recovery)
@@ -201,7 +201,7 @@ def compute_marker_discount(
     """
     marker_discount = clip(0.25 × (1 − controller_likelihood) × marker_confidence, 0, 0.40)
 
-    Applied in target_prioritization_agent.py:
+    Applied in target_ranker.py:
         final = core × t_mod × risk_discount × (1 − marker_discount)
     """
     cl = controller_annotation.controller_likelihood

@@ -67,7 +67,7 @@ def get_efo_id(key: str) -> str | None:
 
 # ---------------------------------------------------------------------------
 # Disease-relevant programs — used for entropy filtering and mechanistic
-# necessity classification in causal_discovery_agent and target_prioritization_agent.
+# necessity classification in ota_gamma_calculator and target_ranker.
 # ---------------------------------------------------------------------------
 DISEASE_PROGRAMS: dict[str, frozenset] = {
     "CAD": frozenset({

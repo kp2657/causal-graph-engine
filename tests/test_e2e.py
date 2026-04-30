@@ -138,7 +138,7 @@ class TestKuzuIntegration:
 
 class TestCausalDiscoveryIntegration:
     """
-    Run causal_discovery_agent.run() with stub inputs + real Kùzu writes.
+    Run ota_gamma_calculator.run() with stub inputs + real Kùzu writes.
 
     Verifies that:
     - Ota γ is computed correctly from stub β × γ
@@ -148,7 +148,7 @@ class TestCausalDiscoveryIntegration:
     """
 
     def test_causal_agent_writes_edges(self, kuzu_db):
-        from agents.tier3_causal.causal_discovery_agent import run
+        from steps.tier3_causal.ota_gamma_calculator import run
 
         result = run(
             beta_matrix_result=_STUB_BETA_MATRIX_RESULT,
@@ -160,7 +160,7 @@ class TestCausalDiscoveryIntegration:
         assert result["n_edges_written"] >= 0
 
     def test_causal_agent_returns_top_genes(self, kuzu_db):
-        from agents.tier3_causal.causal_discovery_agent import run
+        from steps.tier3_causal.ota_gamma_calculator import run
 
         result = run(
             beta_matrix_result=_STUB_BETA_MATRIX_RESULT,
@@ -172,8 +172,8 @@ class TestCausalDiscoveryIntegration:
 
 
     def test_causal_agent_writes_are_readable(self, kuzu_db):
-        """Edges written by causal_discovery_agent can be read back from Kùzu."""
-        from agents.tier3_causal.causal_discovery_agent import run
+        """Edges written by ota_gamma_calculator can be read back from Kùzu."""
+        from steps.tier3_causal.ota_gamma_calculator import run
         from mcp_servers.graph_db_server import query_graph_for_disease
 
         run(

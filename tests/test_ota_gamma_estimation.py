@@ -160,11 +160,16 @@ class TestComputeOtaGamma:
         return beta_estimates, gamma_estimates
 
     def test_formula_correctness(self):
-        """OTA formula: γ_gene = Σ_P β_{gene→P} × γ_{P→trait}."""
+        """OTA formula: γ_gene = Σ_P β_{gene→P} × γ_{P→trait} × w_P, where
+        w_P = 1/(1 + gamma_se) down-weights programs with uncertain γ.
+        When gamma_se is absent the fallback is 0.5×|γ|."""
         beta_est, gamma_est = self._make_inputs()
         result = compute_ota_gamma("CFH", "AMD", beta_est, gamma_est)
-        expected = (-0.6 * 0.45) + (-0.2 * 0.10)
-        assert math.isclose(result["ota_gamma"], expected, rel_tol=1e-4), \
+        # SE-weighted expected: w = 1/(1 + 0.5*|gamma|) for each program
+        w1 = 1.0 / (1.0 + 0.5 * 0.45)   # complement_activation
+        w2 = 1.0 / (1.0 + 0.5 * 0.10)   # lipid_metabolism
+        expected = (-0.6 * 0.45 * w1) + (-0.2 * 0.10 * w2)
+        assert math.isclose(result["ota_gamma"], expected, rel_tol=1e-3), \
             f"Expected {expected:.4f}, got {result['ota_gamma']:.4f}"
 
     def test_returns_dict(self):

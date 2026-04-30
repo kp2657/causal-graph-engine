@@ -160,7 +160,8 @@ class TestGammaEstimation:
         result = compute_ota_gamma("TET2", "CAD", beta_estimates, gamma_estimates)
         assert result["gene"] == "TET2"
         assert result["trait"] == "CAD"
-        assert result["ota_gamma"] == pytest.approx(0.31, abs=0.01)  # only inflammatory contributes
+        # SE-weighted: w = 1/(1 + 0.5*0.31) ≈ 0.866; contribution = 1.0 * 0.31 * 0.866 ≈ 0.268
+        assert result["ota_gamma"] == pytest.approx(0.268, abs=0.01)  # only inflammatory contributes
         assert result["dominant_tier"] == "Tier1_Interventional"
 
     def test_compute_ota_gamma_no_contributions(self):

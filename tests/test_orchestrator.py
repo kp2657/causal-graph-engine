@@ -230,13 +230,13 @@ class TestCollectGeneList:
 class TestTier1DirectCall:
     """Tier 1 agent functions are called directly (no AgentRunner)."""
 
-    @patch("agents.tier1_phenomics.phenotype_architect.run")
-    @patch("agents.tier1_phenomics.statistical_geneticist.run")
+    @patch("steps.tier1_phenomics.disease_query_builder.run")
+    @patch("steps.tier1_phenomics.gwas_anchor_validator.run")
     def test_direct_calls_return_dicts(self, mock_sg, mock_pa):
         mock_pa.return_value = {**MOCK_DISEASE_QUERY, "warnings": []}
         mock_sg.return_value = {"instruments": [], "anchor_genes_validated": {}, "warnings": []}
-        from agents.tier1_phenomics.phenotype_architect import run as pa_run
-        from agents.tier1_phenomics.statistical_geneticist import run as sg_run
+        from steps.tier1_phenomics.disease_query_builder import run as pa_run
+        from steps.tier1_phenomics.gwas_anchor_validator import run as sg_run
         dq = pa_run("coronary artery disease")
         gr = sg_run(dq)
         assert dq.get("efo_id") == "EFO_0001645"
@@ -289,19 +289,18 @@ class TestAnalyzeDiseaseV2Quality:
 
     def _patch_all(self):
         return [
-            patch("agents.tier1_phenomics.phenotype_architect.run",         return_value=_TIER_STUBS["pa"]),
-            patch("agents.tier1_phenomics.statistical_geneticist.run",       return_value=_TIER_STUBS["sg"]),
-            patch("agents.tier2_pathway.perturbation_genomics_agent.run",    return_value=_TIER_STUBS["pga"]),
-            patch("agents.tier2_pathway.regulatory_genomics_agent.run",      return_value=_TIER_STUBS["rga"]),
+            patch("steps.tier1_phenomics.disease_query_builder.run",        return_value=_TIER_STUBS["pa"]),
+            patch("steps.tier1_phenomics.gwas_anchor_validator.run",        return_value=_TIER_STUBS["sg"]),
+            patch("steps.tier2_pathway.beta_matrix_builder.run",            return_value=_TIER_STUBS["pga"]),
+            patch("steps.tier2_pathway.eqtl_coloc_mapper.run",              return_value=_TIER_STUBS["rga"]),
             patch("orchestrator.pi_orchestrator_v2._get_gamma_estimates",    return_value={}),
-            patch("agents.tier3_causal.causal_discovery_agent.run",          return_value=_TIER_STUBS["cda"]),
-            patch("agents.tier3_causal.kg_completion_agent.run",             return_value=_TIER_STUBS["kgc"]),
-            patch("agents.tier4_translation.target_prioritization_agent.run",return_value=_TIER_STUBS["tpa"]),
-            patch("agents.tier4_translation.chemistry_agent.run",            return_value=_TIER_STUBS["chem"]),
-            patch("agents.tier4_translation.clinical_trialist_agent.run",    return_value=_TIER_STUBS["ct"]),
-            patch("agents.tier5_writer.scientific_writer_agent.run",         return_value=_TIER_STUBS["writer"]),
+            patch("steps.tier3_causal.ota_gamma_calculator.run",            return_value=_TIER_STUBS["cda"]),
+            patch("steps.tier3_causal.drug_target_graph_enricher.run",      return_value=_TIER_STUBS["kgc"]),
+            patch("steps.tier4_translation.target_ranker.run",              return_value=_TIER_STUBS["tpa"]),
+            patch("steps.tier4_translation.gps_compound_screener.run",      return_value=_TIER_STUBS["chem"]),
+            patch("steps.tier4_translation.trial_landscape_mapper.run",     return_value=_TIER_STUBS["ct"]),
+            patch("steps.tier5_writer.report_builder.run",                  return_value=_TIER_STUBS["writer"]),
             patch("mcp_servers.open_targets_server.get_open_targets_disease_targets", return_value={"targets": []}),
-                  return_value=([], {})),
         ]
 
     def test_pipeline_success_shape(self):
@@ -323,7 +322,7 @@ class TestAnalyzeDiseaseV2Quality:
         patches = self._patch_all()
         for p in patches: p.start()
         try:
-            with patch("agents.tier1_phenomics.phenotype_architect.run",
+            with patch("steps.tier1_phenomics.disease_query_builder.run",
                        return_value={"stub_fallback": True, "warnings": []}):
                 result = analyze_disease_v2("unknown disease xyz")
             assert "FAILED_TIER1_PHENOTYPE" in result.get("pipeline_status", "")
@@ -336,7 +335,7 @@ class TestAnalyzeDiseaseV2Quality:
         patches = self._patch_all()
         for p in patches: p.start()
         try:
-            with patch("agents.tier3_causal.causal_discovery_agent.run",
+            with patch("steps.tier3_causal.ota_gamma_calculator.run",
                        return_value=zero_edge_cda):
                 result = analyze_disease_v2("coronary artery disease")
             assert "HALTED" not in result.get("pipeline_status", "SUCCESS")

@@ -392,6 +392,35 @@ query DiseaseGeneEvidence($ensemblId: String!, $efoId: String!) {
 """
 
 
+_BURDEN_LOOKUP_CACHE: dict[str, dict] = {}  # disease → {gene: record}
+
+def _local_burden_lookup(gene: str, disease: str) -> dict | None:
+    """
+    Look up UKB WES gene burden from pre-built local JSON (Backman et al. 2021).
+
+    Files live at data/wes/{disease}_burden.json and are built by
+    scripts/download_wes_burden.py --build-lookup.
+
+    Returns {burden_p, burden_beta, burden_se, marker, study} or None.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+
+    key = disease.upper()
+    if key not in _BURDEN_LOOKUP_CACHE:
+        path = _Path(__file__).parent.parent / "data" / "wes" / f"{key}_burden.json"
+        if path.exists():
+            try:
+                with open(path) as f:
+                    _BURDEN_LOOKUP_CACHE[key] = _json.load(f)
+            except Exception:
+                _BURDEN_LOOKUP_CACHE[key] = {}
+        else:
+            _BURDEN_LOOKUP_CACHE[key] = {}
+
+    return _BURDEN_LOOKUP_CACHE.get(key, {}).get(gene)
+
+
 @_tool
 @api_cached(ttl_days=30)
 def get_gene_burden(
@@ -447,45 +476,21 @@ def get_gene_burden(
     mis_z     = constraint.get("missense_z")
     gene_id   = ensembl_id or constraint.get("gene_id")
 
-    # 2. Attempt OT Platform rare variant evidence query
+    # 2. Local UKB WES burden lookup (Backman et al. 2021 via GWAS Catalog).
+    #    Covers all 18,000+ protein-coding genes for CAD (I25) and RA (M05/M06).
+    #    burden_beta = log(OR): + = LoF carriers have higher risk, - = protective.
     burden_p    = None
     burden_beta = None
     burden_se   = None
     burden_study = None
 
-    if gene_id and disease:
-        efo_id = _DISEASE_BURDEN_EFO.get(disease)
-        if efo_id:
-            try:
-                ot_data = _ot_gql(_OT_DISEASE_GENE_EVIDENCE_QUERY, {
-                    "ensemblId": gene_id,
-                    "efoId":     efo_id,
-                }, endpoint=OT_PLATFORM_GQL)
-
-                target_data = ot_data.get("target") or {}
-                rows = target_data.get("associatedDiseases", {}).get("rows", [])
-                
-                for row in rows:
-                    if row.get("disease", {}).get("id") == efo_id:
-                        evidences = row.get("evidences", {}).get("rows", [])
-                        # Find rare variant evidence (lowest p-value)
-                        for ev in evidences:
-                            p_mant = ev.get("pValueMantissa")
-                            p_exp  = ev.get("pValueExponent")
-                            beta   = ev.get("beta")
-                            if p_mant is not None and p_exp is not None:
-                                p = float(p_mant) * (10 ** int(p_exp))
-                                if burden_p is None or p < burden_p:
-                                    burden_p    = p
-                                    burden_beta = float(beta) if beta is not None else None
-                                    ci_lo = ev.get("betaConfidenceIntervalLower")
-                                    ci_hi = ev.get("betaConfidenceIntervalUpper")
-                                    if ci_lo is not None and ci_hi is not None:
-                                        burden_se = (float(ci_hi) - float(ci_lo)) / (2 * 1.96)
-                                    burden_study = ev.get("studyId")
-                        break # found the disease
-            except Exception:
-                pass
+    if disease:
+        local_rec = _local_burden_lookup(gene, disease)
+        if local_rec:
+            burden_p     = local_rec.get("burden_p")
+            burden_beta  = local_rec.get("burden_beta")
+            burden_se    = local_rec.get("burden_se")
+            burden_study = local_rec.get("study", "Backman2021_UKB_WES")
 
     # 3. Interpret constraint + burden
     interp_parts = []
@@ -520,7 +525,10 @@ def get_gene_burden(
         "n_exp_lof":      constraint.get("n_exp_lof"),
         "n_obs_lof":      constraint.get("n_obs_lof"),
         "interpretation": "; ".join(interp_parts),
-        "data_source":    "OT Platform (rare variant evidence) + gnomAD v2.1 constraint",
+        "data_source":    (
+            "Backman2021 UKB WES gene burden (GWAS Catalog) + gnomAD v2.1 constraint"
+            if burden_study else "gnomAD v2.1 constraint only"
+        ),
     }
 
 

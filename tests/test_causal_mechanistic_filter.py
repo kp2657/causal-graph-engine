@@ -1,4 +1,4 @@
-"""Tests for mechanistic necessity filter in causal_discovery_agent."""
+"""Tests for mechanistic necessity filter in ota_gamma_calculator."""
 from __future__ import annotations
 
 import sys
@@ -9,7 +9,7 @@ def _get_filter_fn():
     for mod in ["kuzu", "rdflib"]:
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
-    from agents.tier3_causal.causal_discovery_agent import _mechanistic_necessity_filter
+    from steps.tier3_causal.ota_gamma_calculator import _mechanistic_necessity_filter
     return _mechanistic_necessity_filter
 
 

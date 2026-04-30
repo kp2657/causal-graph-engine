@@ -65,6 +65,9 @@ from config.scoring_thresholds import (  # noqa: E402
     GPS_Z_RGES_DEFAULT,
     GPS_Z_RGES_PROGRAM,
     GPS_MAX_HITS,
+    GPS_CAUSAL_DE_L2G_THRESHOLD,
+    GPS_CAUSAL_DE_WEIGHT,
+    GPS_REACTIVE_DE_WEIGHT,
 )
 
 
@@ -432,6 +435,43 @@ def run_gps_disease_screens(
 # Disease signature
 # ---------------------------------------------------------------------------
 
+def _apply_genetic_credibility_weights(
+    sig: dict[str, float],
+    ot_genetic_scores: dict[str, float],
+) -> dict[str, float]:
+    """
+    Re-weight a GPS disease signature by GWAS genetic credibility (OT L2G score).
+
+    Genes above GPS_CAUSAL_DE_L2G_THRESHOLD are GWAS-colocalized DE genes — their
+    expression change is likely driven by a causal variant, not a downstream response.
+    These get upweighted (GPS_CAUSAL_DE_WEIGHT = 1.5×).
+
+    Genes without genetic instrument (L2G < threshold) are likely downstream of
+    disease or reflect cellular response — de-emphasised (GPS_REACTIVE_DE_WEIGHT = 0.6×).
+
+    When ot_genetic_scores is empty, returns sig unchanged (graceful fallback).
+    """
+    if not ot_genetic_scores:
+        return sig
+    n_causal = n_reactive = 0
+    weighted: dict[str, float] = {}
+    for gene, lfc in sig.items():
+        l2g = ot_genetic_scores.get(gene, 0.0)
+        if l2g >= GPS_CAUSAL_DE_L2G_THRESHOLD:
+            weighted[gene] = lfc * GPS_CAUSAL_DE_WEIGHT
+            n_causal += 1
+        else:
+            weighted[gene] = lfc * GPS_REACTIVE_DE_WEIGHT
+            n_reactive += 1
+    log.info(
+        "GPS sig genetic credibility weights: %d causal DE (L2G≥%.2f, ×%.1f) + "
+        "%d reactive (×%.1f) of %d genes",
+        n_causal, GPS_CAUSAL_DE_L2G_THRESHOLD, GPS_CAUSAL_DE_WEIGHT,
+        n_reactive, GPS_REACTIVE_DE_WEIGHT, len(sig),
+    )
+    return weighted
+
+
 def _build_disease_signature(targets: list[dict], disease_query: dict | None = None) -> dict[str, float]:
     """
     Build {gene: log2FC} restricted to GPS's selected_genes_2198 set.
@@ -441,9 +481,16 @@ def _build_disease_signature(targets: list[dict], disease_query: dict | None = N
        best GPS overlap. Requires cached h5ad from pipeline run.
     2. tau_disease_log2fc from target records (from CELLxGENE DEG in pipeline).
     3. OTA gamma proxy — available without h5ad, ~72 GPS-compatible genes for AMD.
+
+    All paths apply genetic credibility re-weighting via GWAS L2G scores:
+    genes with L2G ≥ GPS_CAUSAL_DE_L2G_THRESHOLD are upweighted (causal DE),
+    others are down-weighted (reactive/bystander DE).
     """
     from pipelines.gps_screen import _get_gps_genes
     gps_genes = _get_gps_genes()
+    ot_genetic_scores: dict[str, float] = (
+        disease_query.get("ot_genetic_scores") or {} if disease_query else {}
+    )
 
     def _in_gps(gene: str) -> bool:
         return gps_genes is None or gene in gps_genes
@@ -452,7 +499,7 @@ def _build_disease_signature(targets: list[dict], disease_query: dict | None = N
     if disease_query:
         sig = _build_sig_from_h5ad(disease_query, gps_genes)
         if len(sig) >= _MIN_DISEASE_SIG_GENES:
-            return sig
+            return _apply_genetic_credibility_weights(sig, ot_genetic_scores)
 
     sig: dict[str, float] = {}
 
@@ -467,7 +514,7 @@ def _build_disease_signature(targets: list[dict], disease_query: dict | None = N
                 pass
 
     if len(sig) >= _MIN_DISEASE_SIG_GENES:
-        return sig
+        return _apply_genetic_credibility_weights(sig, ot_genetic_scores)
 
     # Pass 3: OTA gamma proxy
     gammas = [abs(t.get("ota_gamma", 0.0) or 0.0) for t in targets]
@@ -484,7 +531,7 @@ def _build_disease_signature(targets: list[dict], disease_query: dict | None = N
     # Trim low-signal tail: keep genes accounting for ≥90% cumulative γ weight.
     # Reduces permutation count without meaningful RGES signal loss.
     sig = _ota_proxy_trim(sig)
-    return sig
+    return _apply_genetic_credibility_weights(sig, ot_genetic_scores)
 
 
 # Map disease_key prefixes → cellxgene subdir name(s) to search first.

@@ -60,7 +60,11 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.evidence import ProgramBetaMatrix
-from config.scoring_thresholds import COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX
+from config.scoring_thresholds import (
+    COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX,
+    EQTL_GWAS_DIRECTION_SIGMA_FACTOR, EQTL_GWAS_DIRECTION_COLOC_MIN,
+    WES_CODING_MECHANISM_P,
+)
 
 
 def _se_from_pval(beta: float, pval: float, min_z: float = 2.0) -> float:
@@ -226,6 +230,52 @@ def estimate_beta_tier1(
 
 
 # ---------------------------------------------------------------------------
+# Helper: GWAS risk allele direction vs eQTL NES concordance
+# ---------------------------------------------------------------------------
+
+def _eqtl_gwas_direction_concordant(
+    eqtl_nes: float | None,
+    gwas_beta: float | None,
+) -> bool | None:
+    """
+    Return True if eQTL NES and GWAS beta are directionally concordant.
+
+    Concordance means the eQTL-increasing allele for expression goes in the
+    same direction as the GWAS risk allele — consistent with the gene's mRNA
+    level being a mediator of the GWAS signal.
+
+    Returns None when either value is missing or zero (cannot determine direction).
+    """
+    if eqtl_nes is None or gwas_beta is None:
+        return None
+    if abs(float(eqtl_nes)) < 1e-10 or abs(float(gwas_beta)) < 1e-10:
+        return None
+    return math.copysign(1.0, float(eqtl_nes)) == math.copysign(1.0, float(gwas_beta))
+
+
+def _coding_mechanism_gate(burden_data: dict | None) -> bool:
+    """
+    Return True if WES burden evidence suggests a coding (not regulatory) mechanism.
+
+    When WES rare LoF burden is nominally significant (p < WES_CODING_MECHANISM_P),
+    the gene likely acts via protein-level changes rather than mRNA regulation.
+    eQTL-MR in this regime may be measuring the wrong instrument (mRNA level) when
+    the true instrument is protein abundance/function. Suppress Tier 2a/2b/2c eQTL-MR.
+
+    Tier 2p (pQTL), Tier 2rb (rare burden), and Tier 2.5 (direction-only) are unaffected.
+    """
+    if burden_data is None:
+        return False
+    burden_p = burden_data.get("burden_p")
+    if burden_p is None:
+        return False
+    try:
+        return float(burden_p) < WES_CODING_MECHANISM_P
+    except (TypeError, ValueError):
+        return False
+
+
+# ---------------------------------------------------------------------------
 # Tier 2: eQTL-MR (Mendelian Randomization via GTEx)
 # ---------------------------------------------------------------------------
 
@@ -294,20 +344,44 @@ def estimate_beta_tier2(
     tissue = eqtl_data.get("tissue", "unknown_tissue")
     coloc_str = f"_COLOC_H4={coloc_h4:.2f}" if coloc_h4 is not None else ""
 
+    raw_sigma = (
+        abs((eqtl_data.get("se") or 0.0) * (loading if loading is not None else 1.0))
+        or _se_from_pval(beta, float(eqtl_data.get("pval_nominal") or 0.05))
+    )
+    # COLOC H4 magnitude scales beta_sigma: borderline H4 (0.80) has ~2x the
+    # uncertainty of high H4 (0.95). Map [COLOC_H4_MIN, 0.95] → sigma multiplier
+    # [2.0, 1.0] so borderline colocs propagate wider uncertainty downstream.
+    if coloc_h4 is not None and coloc_h4 < 0.95:
+        _h4_range = max(0.95 - COLOC_H4_MIN, 1e-6)
+        _h4_mult = 1.0 + (0.95 - coloc_h4) / _h4_range  # 1.0 at H4=0.95, 2.0 at H4=COLOC_H4_MIN
+        raw_sigma = raw_sigma * _h4_mult
+
+    # GWAS direction vs eQTL direction concordance: when eQTL NES and GWAS beta
+    # agree in direction at COLOC H4 ≥ EQTL_GWAS_DIRECTION_COLOC_MIN, tighten sigma
+    # by EQTL_GWAS_DIRECTION_SIGMA_FACTOR — two independent lines of genetic evidence.
+    _eqtl_gwas_concordant = False
+    _gwas_beta = eqtl_data.get("beta_gwas")
+    if (
+        coloc_h4 is not None and coloc_h4 >= EQTL_GWAS_DIRECTION_COLOC_MIN
+        and _gwas_beta is not None
+    ):
+        _concordant = _eqtl_gwas_direction_concordant(nes, _gwas_beta)
+        if _concordant:
+            raw_sigma *= EQTL_GWAS_DIRECTION_SIGMA_FACTOR
+            _eqtl_gwas_concordant = True
+
     return {
-        "beta":          beta,
-        "beta_se":       eqtl_data.get("se"),
-        "ci_lower":      None,
-        "ci_upper":      None,
-        "beta_sigma":    (
-            abs((eqtl_data.get("se") or 0.0) * (loading if loading is not None else 1.0))
-            or _se_from_pval(beta, float(eqtl_data.get("pval_nominal") or 0.05))
-        ),
-        "evidence_tier": "Tier2_Convergent",
-        "data_source":   f"GTEx_{tissue}_eQTL_MR{coloc_str}",
-        "coloc_h4":      coloc_h4,
-        "mr_method":     "eQTL_NES_x_loading",
-        "note":          "MR-based: genetic instrument (cis-eQTL) for gene expression → program loading",
+        "beta":                    beta,
+        "beta_se":                 eqtl_data.get("se"),
+        "ci_lower":                None,
+        "ci_upper":                None,
+        "beta_sigma":              raw_sigma,
+        "evidence_tier":           "Tier2_Convergent",
+        "data_source":             f"GTEx_{tissue}_eQTL_MR{coloc_str}",
+        "coloc_h4":                coloc_h4,
+        "mr_method":               "eQTL_NES_x_loading",
+        "eqtl_gwas_concordant":    _eqtl_gwas_concordant,
+        "note":                    "MR-based: genetic instrument (cis-eQTL) for gene expression → program loading",
     }
 
 
@@ -882,10 +956,11 @@ def estimate_beta(
 
     Priority:
       1. Tier1    — cell-type-matched Perturb-seq (direct intervention)
+      2. Tier2p   — pQTL-MR (protein-level instrument; UKB-PPP / INTERVAL / deCODE)
+                    [elevated: drug target IS the protein; pQTL causally prior to eQTL]
       2. Tier2a   — GTEx eQTL-MR (COLOC H4 ≥ 0.8)
       2. Tier2b   — OT credible-set instruments (GWAS/eQTL, when GTEx absent)
       2. Tier2c   — sc-eQTL from eQTL Catalogue (cell-type specific; OneK1K / Blueprint)
-      2. Tier2p   — pQTL-MR (protein-level instrument; UKB-PPP / INTERVAL / deCODE)
       2. Tier2L   — Latent Hijack (Cross-disease mechanistic transfer)
       2. Tier2.5  — eQTL direction-only (eQTL present but COLOC H4 < 0.8; sigma=0.50)
       2. Tier2rb  — Rare variant burden direction (UKB WES collapsing; sigma=0.60)
@@ -897,27 +972,64 @@ def estimate_beta(
     _matched = _is_cell_type_matched(cell_type, disease)
     beta = estimate_beta_tier1(gene, program, perturbseq_data, cell_type=cell_type, cell_type_matched=_matched)
     if beta is not None:
+        # Cross-check Tier1 sign vs Tier2 eQTL-MR at high COLOC (Gap 5).
+        # eQTL + GWAS is a human genetic causal direction; if it contradicts
+        # the cell-line Perturb-seq at high COLOC, flag uncertainty but keep Tier1.
+        if coloc_h4 is not None and coloc_h4 >= COLOC_H4_MIN:
+            _t2_check = estimate_beta_tier2(
+                gene, program,
+                eqtl_data=eqtl_data, coloc_h4=coloc_h4,
+                program_loading=program_loading,
+            )
+            if _t2_check is not None:
+                _b1 = beta.get("beta") or 0.0
+                _b2 = _t2_check.get("beta") or 0.0
+                if _b1 * _b2 < 0 and abs(_b1) > 1e-10 and abs(_b2) > 1e-10:
+                    _existing = beta.get("warnings") or []
+                    beta = {
+                        **beta,
+                        "beta_sigma": max(float(beta.get("beta_sigma") or 0.0), 0.60),
+                        "perturb_eqtl_discordant": True,
+                        "warnings": _existing + [
+                            f"Tier1 (Perturb-seq β={_b1:+.3f}) contradicts "
+                            f"Tier2 eQTL-MR (β={_b2:+.3f}, COLOC H4={coloc_h4:.2f}). "
+                            "Cell-line artefact or context-specific effect possible. "
+                            "beta_sigma widened to 0.60."
+                        ],
+                    }
         return {**beta, "gene": gene, "program": program, "tier_used": 1}
 
-    # Tier 2a — GTEx eQTL-MR
-    beta = estimate_beta_tier2(gene, program, eqtl_data=eqtl_data, coloc_h4=coloc_h4, program_loading=program_loading)
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 2}
-
-    # Tier 2b — OT credible-set instruments (GWAS fine-mapping + eQTL catalogue)
-    beta = estimate_beta_tier2_ot_instrument(gene, program, ot_instruments, program_loading)
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 2}
-
-    # Tier 2c — single-cell eQTL (cell-type specific; fills GTEx bulk gaps)
-    beta = estimate_beta_tier2_sc_eqtl(gene, program, sc_eqtl_data, coloc_h4, program_loading)
-    if beta is not None:
-        return {**beta, "gene": gene, "program": program, "tier_used": 2}
-
     # Tier 2p — pQTL-MR (protein-level instrument; UKB-PPP / INTERVAL / deCODE)
+    # Elevated above eQTL: the drug target IS the protein, so a protein QTL is
+    # causally prior to an mRNA eQTL (which adds an extra transcription→translation step
+    # with additional confounding). Genes with pQTL instruments get more direct causal
+    # linkage to therapeutic effect.
     beta = estimate_beta_tier2_pqtl(gene, program, pqtl_data, program_loading)
     if beta is not None:
         return {**beta, "gene": gene, "program": program, "tier_used": 2}
+
+    # Coding variant gate: if WES burden p < WES_CODING_MECHANISM_P, the gene likely
+    # acts via protein-level changes. eQTL-MR (mRNA level) is the wrong instrument —
+    # suppress Tier 2a/2b/2c. Tier 2p (pQTL) and Tier 2rb (rare burden) are unaffected.
+    _coding_gated = _coding_mechanism_gate(burden_data)
+
+    # Tier 2a — GTEx eQTL-MR
+    if not _coding_gated:
+        beta = estimate_beta_tier2(gene, program, eqtl_data=eqtl_data, coloc_h4=coloc_h4, program_loading=program_loading)
+        if beta is not None:
+            return {**beta, "gene": gene, "program": program, "tier_used": 2}
+
+    # Tier 2b — OT credible-set instruments (GWAS fine-mapping + eQTL catalogue)
+    if not _coding_gated:
+        beta = estimate_beta_tier2_ot_instrument(gene, program, ot_instruments, program_loading)
+        if beta is not None:
+            return {**beta, "gene": gene, "program": program, "tier_used": 2}
+
+    # Tier 2c — single-cell eQTL (cell-type specific; fills GTEx bulk gaps)
+    if not _coding_gated:
+        beta = estimate_beta_tier2_sc_eqtl(gene, program, sc_eqtl_data, coloc_h4, program_loading)
+        if beta is not None:
+            return {**beta, "gene": gene, "program": program, "tier_used": 2}
 
     # Tier 2L — Latent Hijack (Cross-disease mechanistic transfer)
     beta = estimate_beta_tier2L_latent_transfer(gene, program, current_disease_motif, motif_library)

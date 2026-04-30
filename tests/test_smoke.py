@@ -50,9 +50,9 @@ class TestImports:
         from pipelines.state_space import therapeutic_redirection  # noqa: F401
 
     def test_import_agents(self):
-        from agents.tier3_causal import causal_discovery_agent  # noqa: F401
-        from agents.tier4_translation import chemistry_agent  # noqa: F401
-        from agents.tier4_translation import target_prioritization_agent  # noqa: F401
+        from steps.tier3_causal import ota_gamma_calculator  # noqa: F401
+        from steps.tier4_translation import gps_compound_screener  # noqa: F401
+        from steps.tier4_translation import target_ranker  # noqa: F401
 
     def test_import_mcp_servers(self):
         from mcp_servers import chemistry_server  # noqa: F401
@@ -208,7 +208,7 @@ class TestSchemas:
 
 # Minimal mock results — only keys the orchestrator actually reads
 _MOCK = {
-    "phenotype_architect": {
+    "disease_query_builder": {
         "disease_name": "coronary artery disease",
         "efo_id": "EFO_0001645",
         "modifier_types": ["germline"],
@@ -217,20 +217,20 @@ _MOCK = {
         "use_precomputed_only": True,
         "day_one_mode": True,
     },
-    "statistical_geneticist": {
+    "gwas_anchor_validator": {
         "instruments": [{"exposure": "LDL-C", "f_statistic": 45.0}],
         "anchor_genes_validated": {"PCSK9": True, "LDLR": True},
         "n_gw_significant_hits": 30,
         "warnings": [],
     },
-    "perturbation_genomics_agent":{"genes": ["PCSK9"], "beta_matrix": {"PCSK9": {"lipid_metabolism": 0.8}}, "evidence_tier_per_gene": {"PCSK9": "Tier1_Interventional"}, "n_tier1": 1, "n_virtual": 0, "programs": [], "warnings": []},
-    "regulatory_genomics_agent":   {"tier2_upgrades": [], "warnings": []},
-    "causal_discovery_agent":      {"n_edges_written": 2, "top_genes": [{"gene": "PCSK9", "ota_gamma": 0.51}], "warnings": []},
-    "kg_completion_agent":         {"n_pathway_edges_added": 1, "n_drug_target_edges_added": 1, "warnings": []},
-    "target_prioritization_agent": {"targets": [{"target_gene": "PCSK9", "rank": 1, "evidence_tier": "Tier1_Interventional", "safety_flags": None}], "warnings": []},
-    "chemistry_agent":             {"target_chemistry": {}, "repurposing_candidates": [], "gps_disease_reversers": [], "gps_program_reversers": {}, "gps_programs_screened": [], "gps_priority_compounds": [], "warnings": []},
-    "clinical_trialist_agent":     {"trial_summary": {"n_trials": 0}, "key_trials": [], "warnings": []},
-    "scientific_writer_agent":     {"disease_name": "coronary artery disease", "efo_id": "EFO_0001645", "target_list": [{"gene": "PCSK9"}], "n_tier1_edges": 2, "n_tier2_edges": 0, "n_tier3_edges": 0, "n_virtual_edges": 0, "executive_summary": "Smoke test.", "target_table": [], "top_target_narratives": [], "evidence_quality": {}, "limitations": [], "pipeline_version": "0.1.0", "generated_at": "2026-01-01T00:00:00Z", "warnings": []},
+    "beta_matrix_builder":        {"genes": ["PCSK9"], "beta_matrix": {"PCSK9": {"lipid_metabolism": 0.8}}, "evidence_tier_per_gene": {"PCSK9": "Tier1_Interventional"}, "n_tier1": 1, "n_virtual": 0, "programs": [], "warnings": []},
+    "eqtl_coloc_mapper":          {"tier2_upgrades": [], "warnings": []},
+    "ota_gamma_calculator":       {"n_edges_written": 2, "top_genes": [{"gene": "PCSK9", "ota_gamma": 0.51}], "warnings": []},
+    "drug_target_graph_enricher": {"n_pathway_edges_added": 1, "n_drug_target_edges_added": 1, "warnings": []},
+    "target_ranker":              {"targets": [{"target_gene": "PCSK9", "rank": 1, "evidence_tier": "Tier1_Interventional", "safety_flags": None}], "warnings": []},
+    "gps_compound_screener":      {"target_chemistry": {}, "repurposing_candidates": [], "gps_disease_reversers": [], "gps_program_reversers": {}, "gps_programs_screened": [], "gps_priority_compounds": [], "warnings": []},
+    "trial_landscape_mapper":     {"trial_summary": {"n_trials": 0}, "key_trials": [], "warnings": []},
+    "report_builder":             {"disease_name": "coronary artery disease", "efo_id": "EFO_0001645", "target_list": [{"gene": "PCSK9"}], "n_tier1_edges": 2, "n_tier2_edges": 0, "n_tier3_edges": 0, "n_virtual_edges": 0, "executive_summary": "Smoke test.", "target_table": [], "top_target_narratives": [], "evidence_quality": {}, "limitations": [], "pipeline_version": "0.1.0", "generated_at": "2026-01-01T00:00:00Z", "warnings": []},
 }
 
 
@@ -248,26 +248,26 @@ def _mock_pipeline(tmp_path, monkeypatch):
 
     from orchestrator.pi_orchestrator_v2 import analyze_disease_v2
     with (
-        patch("agents.tier1_phenomics.phenotype_architect.run",
-              return_value=_MOCK["phenotype_architect"]),
-        patch("agents.tier1_phenomics.statistical_geneticist.run",
-              return_value=_MOCK["statistical_geneticist"]),
-        patch("agents.tier2_pathway.perturbation_genomics_agent.run",
-              return_value=_MOCK["perturbation_genomics_agent"]),
-        patch("agents.tier2_pathway.regulatory_genomics_agent.run",
-              return_value=_MOCK["regulatory_genomics_agent"]),
-        patch("agents.tier3_causal.causal_discovery_agent.run",
-              return_value=_MOCK["causal_discovery_agent"]),
-        patch("agents.tier3_causal.kg_completion_agent.run",
-              return_value=_MOCK["kg_completion_agent"]),
-        patch("agents.tier4_translation.target_prioritization_agent.run",
-              return_value=_MOCK["target_prioritization_agent"]),
-        patch("agents.tier4_translation.chemistry_agent.run",
-              return_value=_MOCK["chemistry_agent"]),
-        patch("agents.tier4_translation.clinical_trialist_agent.run",
-              return_value=_MOCK["clinical_trialist_agent"]),
-        patch("agents.tier5_writer.scientific_writer_agent.run",
-              return_value=_MOCK["scientific_writer_agent"]),
+        patch("steps.tier1_phenomics.disease_query_builder.run",
+              return_value=_MOCK["disease_query_builder"]),
+        patch("steps.tier1_phenomics.gwas_anchor_validator.run",
+              return_value=_MOCK["gwas_anchor_validator"]),
+        patch("steps.tier2_pathway.beta_matrix_builder.run",
+              return_value=_MOCK["beta_matrix_builder"]),
+        patch("steps.tier2_pathway.eqtl_coloc_mapper.run",
+              return_value=_MOCK["eqtl_coloc_mapper"]),
+        patch("steps.tier3_causal.ota_gamma_calculator.run",
+              return_value=_MOCK["ota_gamma_calculator"]),
+        patch("steps.tier3_causal.drug_target_graph_enricher.run",
+              return_value=_MOCK["drug_target_graph_enricher"]),
+        patch("steps.tier4_translation.target_ranker.run",
+              return_value=_MOCK["target_ranker"]),
+        patch("steps.tier4_translation.gps_compound_screener.run",
+              return_value=_MOCK["gps_compound_screener"]),
+        patch("steps.tier4_translation.trial_landscape_mapper.run",
+              return_value=_MOCK["trial_landscape_mapper"]),
+        patch("steps.tier5_writer.report_builder.run",
+              return_value=_MOCK["report_builder"]),
         patch("orchestrator.pi_orchestrator_v2._get_gamma_estimates", return_value={}),
     ):
         result = analyze_disease_v2("coronary artery disease")

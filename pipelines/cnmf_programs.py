@@ -303,6 +303,7 @@ def get_programs_for_disease(
             programs = _resolve_ensembl_gene_sets(programs)
             programs = [p for p in programs if p.get("gene_set")]
             if programs:
+                programs = _annotate_and_rank_by_tau(programs, disease)
                 return {
                     "programs":   programs,
                     "n_programs": len(programs),
@@ -317,6 +318,7 @@ def get_programs_for_disease(
         data = json.loads(cell_type_path.read_text())
         programs = data.get("programs", [])
         if programs:
+            programs = _annotate_and_rank_by_tau(programs, disease)
             return {
                 "programs":   programs,
                 "n_programs": len(programs),
@@ -339,6 +341,50 @@ def get_programs_for_disease(
 
 
 # ---------------------------------------------------------------------------
+# S-LDSC τ annotation and program ranking
+# ---------------------------------------------------------------------------
+
+def _annotate_and_rank_by_tau(programs: list[dict], disease: str) -> list[dict]:
+    """
+    Annotate NMF programs with S-LDSC τ (per-SNP heritability enrichment) and
+    sort descending by τ so heritability-enriched programs are processed first.
+
+    Programs with τ > 0 are causally enriched for disease heritability (causal).
+    Programs with τ ≤ 0 are bystanders (reactive to disease, not causal drivers).
+    When S-LDSC data is unavailable the programs are returned unchanged (τ=None).
+    """
+    try:
+        from pipelines.ldsc.gamma_loader import _load_tau_file
+        tau_data = _load_tau_file(disease.upper())
+    except Exception:
+        tau_data = None
+
+    if not tau_data:
+        return programs
+
+    program_taus: dict[str, float] = tau_data.get("program_taus", {})
+    if not program_taus:
+        return programs
+
+    annotated: list[dict] = []
+    for prog in programs:
+        prog_id = prog.get("program_id", "")
+        tau = program_taus.get(prog_id)
+        annotated.append({**prog, "sldsc_tau": tau})
+
+    # Sort: programs with τ > 0 first (descending), τ = None after, τ ≤ 0 last.
+    def _tau_sort_key(p: dict) -> tuple:
+        t = p.get("sldsc_tau")
+        if t is None:
+            return (1, 0.0)   # unknown → middle
+        if t > 0:
+            return (0, -t)    # causal → first, descending
+        return (2, t)         # bystander → last
+
+    annotated.sort(key=_tau_sort_key)
+    return annotated
+
+
 # ---------------------------------------------------------------------------
 # Empirical selection helpers
 # ---------------------------------------------------------------------------

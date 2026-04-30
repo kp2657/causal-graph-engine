@@ -178,11 +178,11 @@ Output files:
 
 ```
 orchestrator/pi_orchestrator_v2.py          — 5-tier pipeline entry point
-  agents/tier1_phenomics/                   — disease phenotyping + GWAS instrument selection
-  agents/tier2_pathway/                     — Perturb-seq β estimation + regulatory upgrades
-  agents/tier3_causal/                      — OTA γ computation + causal graph construction
-  agents/tier4_translation/                 — target prioritization + GPS compound screens
-  agents/tier5_writer/                      — output assembly + narrative report
+  steps/tier1_phenomics/                   — disease phenotyping + GWAS instrument selection
+  steps/tier2_pathway/                     — Perturb-seq β estimation + regulatory upgrades
+  steps/tier3_causal/                      — OTA γ computation + causal graph construction
+  steps/tier4_translation/                 — target prioritization + GPS compound screens
+  steps/tier5_writer/                      — output assembly + narrative report
 pipelines/
   ota_beta_estimation.py                    — Tier1 (Perturb-seq), Tier2 (eQTL-MR), virtual β
   ota_gamma_estimation.py                   — GWAS enrichment γ (OT L2G, Reactome, S-LDSC)

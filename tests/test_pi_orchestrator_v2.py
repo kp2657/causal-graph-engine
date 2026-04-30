@@ -91,21 +91,21 @@ def test_analyze_disease_v2_happy_path(tmp_path):
     mock_chem = MagicMock(return_value=chem)
 
     with (
-        patch("agents.tier1_phenomics.phenotype_architect.run", return_value=dq),
-        patch("agents.tier1_phenomics.statistical_geneticist.run", return_value=gen),
+        patch("steps.tier1_phenomics.disease_query_builder.run", return_value=dq),
+        patch("steps.tier1_phenomics.gwas_anchor_validator.run", return_value=gen),
         patch(
             "orchestrator.pi_orchestrator_v2._collect_gene_list",
             return_value=(["PCSK9"], {}, {"targets": [], "source": "test", "efo_id": "EFO_0001645"}),
         ),
         patch("orchestrator.pi_orchestrator_v2._get_gamma_estimates", return_value=gamma_stub),
-        patch("agents.tier2_pathway.perturbation_genomics_agent.run", return_value=beta),
-        patch("agents.tier2_pathway.regulatory_genomics_agent.run", return_value=reg),
-        patch("agents.tier3_causal.causal_discovery_agent.run", return_value=causal),
-        patch("agents.tier3_causal.kg_completion_agent.run", return_value=kg),
-        patch("agents.tier4_translation.target_prioritization_agent.run", return_value=dict(prio)),
-        patch("agents.tier4_translation.chemistry_agent.run", mock_chem),
-        patch("agents.tier4_translation.clinical_trialist_agent.run", return_value=clin),
-        patch("agents.tier5_writer.scientific_writer_agent.run", return_value=_writer_minimal_graph_output()),
+        patch("steps.tier2_pathway.beta_matrix_builder.run", return_value=beta),
+        patch("steps.tier2_pathway.eqtl_coloc_mapper.run", return_value=reg),
+        patch("steps.tier3_causal.ota_gamma_calculator.run", return_value=causal),
+        patch("steps.tier3_causal.drug_target_graph_enricher.run", return_value=kg),
+        patch("steps.tier4_translation.target_ranker.run", return_value=dict(prio)),
+        patch("steps.tier4_translation.gps_compound_screener.run", mock_chem),
+        patch("steps.tier4_translation.trial_landscape_mapper.run", return_value=clin),
+        patch("steps.tier5_writer.report_builder.run", return_value=_writer_minimal_graph_output()),
     ):
         result = analyze_disease_v2("coronary artery disease", _ckpt_dir=tmp_path)
 
@@ -126,7 +126,7 @@ def test_analyze_disease_v2_failed_tier1_phenotype():
         "stub_fallback": True,
     }
 
-    with patch("agents.tier1_phenomics.phenotype_architect.run", return_value=stub_dq):
+    with patch("steps.tier1_phenomics.disease_query_builder.run", return_value=stub_dq):
         result = analyze_disease_v2("unknown disease xyz")
 
     assert result["pipeline_status"] == "FAILED_TIER1_PHENOTYPE"

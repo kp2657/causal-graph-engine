@@ -496,7 +496,7 @@ def get_open_targets_targets_bulk(gene_symbols: list[str]) -> dict:
     """
     Fetch tractability, known drugs, and max phase for multiple genes in parallel.
 
-    Replaces per-gene serial calls in chemistry_agent with a single batched operation.
+    Replaces per-gene serial calls in gps_compound_screener with a single batched operation.
     Uses ThreadPoolExecutor to parallelise per-gene `get_open_targets_target_info` calls.
 
     Args:
@@ -757,7 +757,7 @@ def get_ot_genetic_instruments_bulk(
     # Cache-first pass: skip genes that are already populated.  Key shape
     # matches the @api_cached(get_ot_genetic_instruments) signature when
     # called with only (gene, efo_id) positional args and no kwargs — the
-    # exact usage at perturbation_genomics_agent.py call sites.
+    # exact usage at beta_matrix_builder.py call sites.
     for g in gene_symbols:
         k = _make_key("get_ot_genetic_instruments", (g, efo_id), {})
         hit = cache.get(k)

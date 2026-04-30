@@ -76,7 +76,7 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = [
-    "agents",
+    "steps",
     "config",
     "graph",
     "mcp_servers",

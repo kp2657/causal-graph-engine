@@ -120,6 +120,81 @@ PARETO_ELBOW_GAP_THRESHOLD: float = 0.20
 # Source: empirical calibration on AMD Run 22 and CAD Run 3.
 
 # ---------------------------------------------------------------------------
+# WES burden directional concordance check
+# ---------------------------------------------------------------------------
+
+WES_CONCORDANCE_P_THRESHOLD: float = 0.05
+# Minimum burden-test significance for WES concordance boost to apply.
+# Relaxed to p<0.05 so that nominally significant burden signals inform ranking;
+# boost scales continuously with stat strength so weak signals get a small lift.
+
+WES_CONCORDANT_BOOST: float = 1.50
+# Multiplicative boost on ota_gamma when WES burden direction agrees with OTA direction
+# (p < WES_CONCORDANCE_P_THRESHOLD). Concordance with a direct human genetic causal
+# signal increases confidence in the OTA estimate. Scales linearly from 1.0 at
+# p=0.05 to 1.5 at p=5e-8 (GWS), linear in -log10(p) space.
+
+WES_CODING_MECHANISM_P: float = 1e-4
+# WES burden p-value below which a gene is assumed to act via a coding mechanism.
+# When p < WES_CODING_MECHANISM_P, Tier 2a/2b/2c eQTL-MR β is suppressed in
+# ota_beta_estimation.estimate_beta() — eQTL (mRNA level) is not the right instrument
+# when the variant effect is coding/protein-level. Tier 2p (pQTL), 2rb, and 2.5 are unaffected.
+
+# ---------------------------------------------------------------------------
+# GWAS direction vs eQTL direction concordance (ota_beta_estimation)
+# ---------------------------------------------------------------------------
+
+EQTL_GWAS_DIRECTION_SIGMA_FACTOR: float = 0.75
+# sigma multiplier applied to Tier2/2c eQTL beta_sigma when eQTL NES direction
+# agrees with GWAS risk allele direction (at COLOC H4 ≥ 0.5).
+# Tightens uncertainty when two independent lines of genetic evidence agree on direction.
+# 0.75 = 25% sigma reduction; preserves most uncertainty while rewarding concordance.
+
+EQTL_GWAS_DIRECTION_COLOC_MIN: float = 0.50
+# Minimum COLOC H4 for GWAS direction vs eQTL concordance check.
+# Below this the signals may not share a causal variant — don't reward agreement.
+
+# ---------------------------------------------------------------------------
+# Fine-mapped posterior inclusion probability (target_ranker)
+# ---------------------------------------------------------------------------
+
+FINE_MAPPED_PIP_MIN: float = 0.10
+# Minimum fine-mapped PIP to report a gene's credible set membership.
+# Genes below this threshold are not reported as fine-mapped; PIP field = 0.0.
+# Source: Schaid et al. (2018) recommend PIP ≥ 0.1 as "plausibly fine-mapped".
+
+# ---------------------------------------------------------------------------
+# S-LDSC heritability enrichment — program ranking and bystander filtering
+# ---------------------------------------------------------------------------
+
+SLDSC_BYSTANDER_WEIGHT: float = 0.30
+# Multiplicative weight applied to the β×γ contribution of programs with τ ≤ 0
+# (no GWAS heritability enrichment). Programs not enriched for disease heritability
+# are likely bystander/reactive programs (cellular response to disease, not causal).
+# When S-LDSC data is unavailable this weight is not applied (graceful fallback).
+
+SLDSC_TAU_SIGNIFICANT_P: float = 0.05
+# τ_p threshold below which a program is considered significantly heritability-enriched.
+# Used to annotate program contributions in the OTA sum output.
+
+# ---------------------------------------------------------------------------
+# GPS disease signature — genetic credibility weighting
+# ---------------------------------------------------------------------------
+
+GPS_CAUSAL_DE_L2G_THRESHOLD: float = 0.20
+# L2G score above which a differentially expressed gene is considered
+# "genetically causal DE" (expression change driven by a GWAS-implicated variant).
+# Genes above this threshold get upweighted in the GPS disease signature.
+
+GPS_CAUSAL_DE_WEIGHT: float = 1.50
+# Weight multiplier for GWAS-colocalized DE genes in the GPS disease signature.
+# Compounds that reverse these genes' expression are more likely to be on-mechanism.
+
+GPS_REACTIVE_DE_WEIGHT: float = 0.60
+# Weight multiplier for DE genes with no genetic instrument (L2G < threshold).
+# These are likely downstream of disease, not causal; de-emphasised in the signature.
+
+# ---------------------------------------------------------------------------
 # pLI / safety penalties (target prioritisation)
 # ---------------------------------------------------------------------------
 

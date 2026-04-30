@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.tier5_writer.scientific_writer_agent import (
+from steps.tier5_writer.report_builder import (
     _inherited_genetic_evidence,
     _lookup_program_gamma,
     _causal_narrative,

@@ -1,6 +1,6 @@
 """
 Tests for the OT-genetic fallback `top_programs` reconstruction in
-`agents/tier3_causal/causal_discovery_agent.py`.
+`steps/tier3_causal/ota_gamma_calculator.py`.
 
 Regression target: AMD Run 2 produced `program_flag: no_program_data` for
 every top target because the fallback explicitly set `top_programs = []`.
@@ -14,12 +14,12 @@ import math
 
 import pytest
 
-from agents.tier3_causal.causal_discovery_agent import (
+from steps.tier3_causal.ota_gamma_calculator import (
     _build_fallback_top_programs,
     _extract_beta_for_program,
     _extract_gamma_for_trait,
 )
-from agents.tier4_translation.target_prioritization_agent import (
+from steps.tier4_translation.target_ranker import (
     _classify_program_drivers,
 )
 

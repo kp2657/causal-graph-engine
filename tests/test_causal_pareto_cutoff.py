@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from agents.tier3_causal.causal_discovery_agent import _pareto_cutoff
+from steps.tier3_causal.ota_gamma_calculator import _pareto_cutoff
 
 
 def _rec(gene: str, gamma: float) -> dict:

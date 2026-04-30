@@ -1,4 +1,4 @@
-"""Tests for pLI soft penalty on OT L2G pool in causal_discovery_agent."""
+"""Tests for pLI soft penalty on OT L2G pool in ota_gamma_calculator."""
 from __future__ import annotations
 
 import math
@@ -37,7 +37,7 @@ def test_pli_mid_value():
 
 
 def test_pli_penalty_in_causal_agent(monkeypatch):
-    """Verify the pLI penalty is applied at the _ot_val read site in causal_discovery_agent."""
+    """Verify the pLI penalty is applied at the _ot_val read site in ota_gamma_calculator."""
     import sys, types
 
     # Stub out heavy optional deps
@@ -45,7 +45,7 @@ def test_pli_penalty_in_causal_agent(monkeypatch):
         if mod not in sys.modules:
             sys.modules[mod] = types.ModuleType(mod)
 
-    from agents.tier3_causal import causal_discovery_agent as cda
+    from steps.tier3_causal import ota_gamma_calculator as cda
 
     captured: list[float] = []
 

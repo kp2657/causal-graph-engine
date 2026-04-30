@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.evidence import GeneTraitAssociation
+from config.scoring_thresholds import SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P
 
 # Minimum mean Open Targets L2G score to accept as genetic evidence for γ estimation.
 # L2G (Locus-to-Gene; Mountjoy et al., Nature Genetics 2021) scores represent the
@@ -38,7 +39,7 @@ _OT_GENETIC_SCORE_MIN = 0.05
 
 # ---------------------------------------------------------------------------
 # TypedDicts — define the expected shape of beta/gamma estimate dicts so
-# downstream code (compute_ota_gamma, causal_discovery_agent) doesn't rely
+# downstream code (compute_ota_gamma, ota_gamma_calculator) doesn't rely
 # on defensive isinstance checks.
 # ---------------------------------------------------------------------------
 
@@ -260,18 +261,54 @@ def compute_ota_gamma(
         # rather than program-specific causal effects.
         beta_val = max(-2.0, min(2.0, float(beta_val)))
 
-        contribution = beta_val * gamma_val
+        # γ SE-weighted contribution: programs with high GWAS uncertainty (few L2G
+        # genes, noisy enrichment) are down-weighted relative to well-grounded ones.
+        # Weight = 1/(1 + gamma_se): ranges from ~1.0 (se≈0, tight L2G cluster) to
+        # ~0.5 (se=gamma, dispersed signal). Preserves direction; just scales magnitude.
+        gamma_se = gamma_info.get("gamma_se") if isinstance(gamma_info, dict) else None
+        if gamma_se is None:
+            gamma_se = abs(gamma_val) * 0.50  # fallback: 50% SE assumed when unknown
+        gamma_weight = 1.0 / (1.0 + float(gamma_se))
+
+        # S-LDSC bystander filter: programs with τ ≤ 0 (no GWAS heritability enrichment)
+        # are reactive/bystander programs — cellular response to disease, not causal drivers.
+        # When S-LDSC data is available (gamma_source_type="s_ldsc"), programs with
+        # non-positive τ already return None from gamma_loader and are skipped above.
+        # For programs with OT L2G / h5ad DEG gamma (no S-LDSC), check tau if present.
+        _tau = gamma_info.get("tau") if isinstance(gamma_info, dict) else None
+        _gamma_source = gamma_info.get("gamma_source_type", "") if isinstance(gamma_info, dict) else ""
+        _is_bystander = False
+        if _tau is not None and _gamma_source == "s_ldsc" and float(_tau) <= 0:
+            # Should have been filtered in gamma_loader, but guard defensively
+            gamma_weight *= SLDSC_BYSTANDER_WEIGHT
+            _is_bystander = True
+        elif _tau is not None and _gamma_source != "s_ldsc" and float(_tau) <= 0:
+            # Non-S-LDSC gamma for a program where we happen to know τ ≤ 0 — down-weight
+            gamma_weight *= SLDSC_BYSTANDER_WEIGHT
+            _is_bystander = True
+
+        _tau_p = gamma_info.get("tau_p") if isinstance(gamma_info, dict) else None
+        _heritability_significant = (
+            _tau is not None and float(_tau) > 0
+            and _tau_p is not None and float(_tau_p) < SLDSC_TAU_SIGNIFICANT_P
+        )
+
+        contribution = beta_val * gamma_val * gamma_weight
         ota_gamma += contribution
         tiers_used.append(beta_info.get("evidence_tier", "unknown") if isinstance(beta_info, dict) else "unknown")
 
         if abs(contribution) > 1e-6:  # only include non-trivial contributions
             contributions.append({
-                "program":      program,
-                "beta":         round(beta_val, 4),
-                "gamma":        round(gamma_val, 4),
-                "contribution": round(contribution, 4),
-                "beta_tier":    beta_info.get("evidence_tier") if isinstance(beta_info, dict) else None,
-                "gamma_source": gamma_info.get("data_source"),
+                "program":                  program,
+                "beta":                     round(beta_val, 4),
+                "gamma":                    round(gamma_val, 4),
+                "gamma_weight":             round(gamma_weight, 4),
+                "contribution":             round(contribution, 4),
+                "beta_tier":                beta_info.get("evidence_tier") if isinstance(beta_info, dict) else None,
+                "gamma_source":             gamma_info.get("data_source") if isinstance(gamma_info, dict) else None,
+                "tau":                      round(_tau, 4) if _tau is not None else None,
+                "heritability_significant": _heritability_significant,
+                "bystander_discounted":     _is_bystander,
             })
 
     # Sort by absolute contribution

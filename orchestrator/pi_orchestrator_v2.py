@@ -93,6 +93,22 @@ def _run_quality_gate_tier4(prioritization_result: dict) -> list[str]:
     return issues
 
 
+def _strip_gps_annotation_bloat(gps_program_reversers: dict) -> dict:
+    """Strip convergent_genetic_targets_hypothesis from compound annotations before output serialization."""
+    stripped = {}
+    for prog, compounds in gps_program_reversers.items():
+        if isinstance(compounds, list):
+            clean = []
+            for c in compounds:
+                ann = c.get("annotation") or {}
+                safe_ann = {k: v for k, v in ann.items() if k != "convergent_genetic_targets_hypothesis"}
+                clean.append({**{k: v for k, v in c.items() if k != "annotation"}, "annotation": safe_ann})
+            stripped[prog] = clean
+        else:
+            stripped[prog] = compounds
+    return stripped
+
+
 def _build_final_output(pipeline_outputs: dict) -> dict:
     graph_output  = pipeline_outputs.get("graph_output", {})
     disease_query = pipeline_outputs.get("phenotype_result", {})
@@ -133,8 +149,9 @@ def _build_final_output(pipeline_outputs: dict) -> dict:
         "pipeline_warnings":  pipeline_warnings,
         "data_completeness":  data_completeness,
         # GPS compound screens — always present; empty list when GPS skipped
+        # Strip convergent_genetic_targets_hypothesis from annotations (O(N_targets) per compound → bloat).
         "gps_disease_state_reversers": chemistry.get("gps_disease_reversers") or [],
-        "gps_program_reversers":       chemistry.get("gps_program_reversers") or [],
+        "gps_program_reversers":       _strip_gps_annotation_bloat(chemistry.get("gps_program_reversers") or {}),
         "gps_priority_compounds":      chemistry.get("gps_priority_compounds") or [],
     }
 
@@ -526,15 +543,15 @@ def analyze_disease_v2(
     # =========================================================================
     print(f"\n{'='*60}\nTIER 1 — Phenomics: {disease_name}\n{'='*60}")
 
-    from agents.tier1_phenomics.phenotype_architect import run as _pa_run
-    from agents.tier1_phenomics.statistical_geneticist import run as _sg_run
+    from steps.tier1_phenomics.disease_query_builder import run as _pa_run
+    from steps.tier1_phenomics.gwas_anchor_validator import run as _sg_run
 
     t0 = time.time()
-    # disease_query["disease_key"] (e.g. "CAD", "AMD") is set by phenotype_architect
+    # disease_query["disease_key"] (e.g. "CAD", "AMD") is set by disease_query_builder
     # and propagated as-is through all tiers. Agents must read it from disease_query,
     # not re-derive it via get_disease_key() — single source of truth.
     disease_query = _pa_run(disease_name)
-    _log("COMPLETE", "phenotype_architect",
+    _log("COMPLETE", "disease_query_builder",
          f"efo_id={disease_query.get('efo_id')}  {time.time()-t0:.1f}s")
 
     if disease_query.get("stub_fallback"):
@@ -552,7 +569,7 @@ def analyze_disease_v2(
 
     t0 = time.time()
     genetics_result = _sg_run(disease_query)
-    _log("COMPLETE", "statistical_geneticist",
+    _log("COMPLETE", "gwas_anchor_validator",
          f"n_instruments={len(genetics_result.get('instruments', []))}  {time.time()-t0:.1f}s")
 
     pipeline_outputs["phenotype_result"] = disease_query
@@ -626,8 +643,8 @@ def analyze_disease_v2(
     # =========================================================================
     print(f"\n{'='*60}\nTIER 2 — Pathway: {len(gene_list)} genes\n{'='*60}")
 
-    from agents.tier2_pathway.perturbation_genomics_agent import run as _pga_run
-    from agents.tier2_pathway.regulatory_genomics_agent import run as _rga_run
+    from steps.tier2_pathway.beta_matrix_builder import run as _pga_run
+    from steps.tier2_pathway.eqtl_coloc_mapper import run as _rga_run
 
     t0 = time.time()
     # Independent: run Tier 2 agents in parallel (no shared mutable state).
@@ -636,10 +653,10 @@ def analyze_disease_v2(
         fut_reg  = pool.submit(_rga_run, gene_list, disease_query)
         beta_result       = fut_beta.result()
         regulatory_result = fut_reg.result()
-    _log("COMPLETE", "perturbation_genomics_agent",
+    _log("COMPLETE", "beta_matrix_builder",
          f"tier1={beta_result.get('n_tier1',0)}, virtual={beta_result.get('n_virtual',0)}  "
          f"{time.time()-t0:.1f}s")
-    _log("COMPLETE", "regulatory_genomics_agent",
+    _log("COMPLETE", "eqtl_coloc_mapper",
          f"tier2_upgrades={len(regulatory_result.get('tier2_upgrades', []))}")
 
     pipeline_outputs["beta_matrix_result"] = beta_result
@@ -672,12 +689,12 @@ def analyze_disease_v2(
     # =========================================================================
     print(f"\n{'='*60}\nTIER 3 — Causal Discovery\n{'='*60}")
 
-    from agents.tier3_causal.causal_discovery_agent import run as _cda_run
-    from agents.tier3_causal.kg_completion_agent import run as _kgc_run
+    from steps.tier3_causal.ota_gamma_calculator import run as _cda_run
+    from steps.tier3_causal.drug_target_graph_enricher import run as _kgc_run
 
     t0 = time.time()
     causal_result = _cda_run(beta_result, gamma_estimates, disease_query)
-    _log("COMPLETE", "causal_discovery_agent",
+    _log("COMPLETE", "ota_gamma_calculator",
          f"n_written={causal_result.get('n_edges_written',0)}  {time.time()-t0:.1f}s")
 
     # Write program→trait DrivesTrait edges (program nodes + γ edges)
@@ -699,7 +716,7 @@ def analyze_disease_v2(
 
     t0 = time.time()
     kg_result = _kgc_run(causal_result, disease_query)
-    _log("COMPLETE", "kg_completion_agent",
+    _log("COMPLETE", "drug_target_graph_enricher",
          f"pathways={kg_result.get('n_pathway_edges_added',0)}  {time.time()-t0:.1f}s")
 
     pipeline_outputs["causal_result"] = causal_result
@@ -748,9 +765,9 @@ def analyze_disease_v2(
     # =========================================================================
     print(f"\n{'='*60}\nTIER 4 — Translation\n{'='*60}")
 
-    from agents.tier4_translation.target_prioritization_agent import run as _tpa_run
-    from agents.tier4_translation.chemistry_agent import run as _chem_run
-    from agents.tier4_translation.clinical_trialist_agent import run as _ct_run
+    from steps.tier4_translation.target_ranker import run as _tpa_run
+    from steps.tier4_translation.gps_compound_screener import run as _chem_run
+    from steps.tier4_translation.trial_landscape_mapper import run as _ct_run
 
     t0 = time.time()
     # Build Tier 4 context once; passed via disease_query for agent reuse.
@@ -762,7 +779,7 @@ def analyze_disease_v2(
     prioritization_result = _tpa_run(causal_result, kg_result, disease_query)
     # Chemistry / GPS disease-program screens need program→trait γ; inject from orchestrator.
     prioritization_result["_gamma_estimates"] = gamma_estimates
-    _log("COMPLETE", "target_prioritization_agent",
+    _log("COMPLETE", "target_ranker",
          f"n_targets={len(prioritization_result.get('targets',[]))}  {time.time()-t0:.1f}s")
 
     # Gate ChEMBL annotation to post-Tier-3 gene whitelist (Phase G).
@@ -794,7 +811,7 @@ def analyze_disease_v2(
     except Exception as _conv_exc:
         all_warnings.append(f"GPS convergence failed (non-fatal): {_conv_exc}")
 
-    # No Tier4 feedback loop: ranking is owned by target_prioritization_agent (OTA-first).
+    # No Tier4 feedback loop: ranking is owned by target_ranker (OTA-first).
     pipeline_outputs["prioritization_result"] = prioritization_result
     pipeline_outputs["chemistry_result"]      = chemistry_result
     pipeline_outputs["trials_result"]         = clinical_result
@@ -833,7 +850,7 @@ def analyze_disease_v2(
     # =========================================================================
     print(f"\n{'='*60}\nTIER 5 — Output Assembly\n{'='*60}")
 
-    from agents.tier5_writer.scientific_writer_agent import run as _writer_run
+    from steps.tier5_writer.report_builder import run as _writer_run
 
     graph_output = _writer_run(
         phenotype_result      = disease_query,
@@ -922,10 +939,10 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     ckpt3_path = ckpt_dir / f"{_disease_slug}__tier3.json"
     ckpt4_path = ckpt_dir / f"{_disease_slug}__tier4.json"
 
-    from agents.tier4_translation.target_prioritization_agent import run as _tpa_run
-    from agents.tier4_translation.chemistry_agent import run as _chem_run
-    from agents.tier4_translation.clinical_trialist_agent import run as _ct_run
-    from agents.tier5_writer.scientific_writer_agent import run as _writer_run
+    from steps.tier4_translation.target_ranker import run as _tpa_run
+    from steps.tier4_translation.gps_compound_screener import run as _chem_run
+    from steps.tier4_translation.trial_landscape_mapper import run as _ct_run
+    from steps.tier5_writer.report_builder import run as _writer_run
 
     if ckpt3_path.exists():
         # Full Tier 4 re-run: re-ranks targets + re-runs GPS + writes report
@@ -950,7 +967,7 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
         }
         prioritization_result = _tpa_run(causal_result, kg_result, disease_query)
         prioritization_result["_gamma_estimates"] = gamma_estimates
-        _log("COMPLETE", "target_prioritization_agent",
+        _log("COMPLETE", "target_ranker",
              f"n_targets={len(prioritization_result.get('targets',[]))}  {_time.time()-t0:.1f}s")
 
     elif ckpt4_path.exists():
@@ -976,7 +993,7 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
         kg_result             = {}
 
         print(f"\n{'='*60}\nTIER 4 — Chemistry only (from tier4 checkpoint)\n{'='*60}")
-        _log("SKIP", "target_prioritization_agent",
+        _log("SKIP", "target_ranker",
              f"n_targets={len(prioritization_result.get('targets',[]))} (from checkpoint)")
 
     else:
@@ -1015,15 +1032,21 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     except Exception as _conv_exc:
         all_warnings.append(f"GPS convergence (tier4 path) failed (non-fatal): {_conv_exc}")
 
-    # Save updated tier4 checkpoint
+    # Save updated tier4 checkpoint (strip GPS annotation bloat before writing).
     try:
         ckpt4_path = ckpt_dir / f"{_disease_slug}__tier4.json"
+        _chem_for_ckpt = {
+            **chemistry_result,
+            "gps_program_reversers": _strip_gps_annotation_bloat(
+                chemistry_result.get("gps_program_reversers") or {}
+            ),
+        }
         with ckpt4_path.open("w") as _cf4:
             json.dump({
                 "run_id":                ckpt.get("run_id"),
                 "disease_name":          disease_name,
                 "prioritization_result": prioritization_result,
-                "chemistry_result":      chemistry_result,
+                "chemistry_result":      _chem_for_ckpt,
                 "trials_result":         clinical_result,
                 "phenotype_result":      disease_query,
             }, _cf4, indent=2, default=str)

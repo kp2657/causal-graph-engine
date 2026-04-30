@@ -244,7 +244,7 @@ def test_loo_field_added_to_gene_record():
     """
     After applying LOO wiring, gene_gamma records should contain 'loo_stable' field.
     """
-    # Simulate the gene record construction logic from causal_discovery_agent
+    # Simulate the gene record construction logic from ota_gamma_calculator
     # (mirroring the actual code path with a mock ota_gamma)
 
     _loo_discounts = {"CFH": 0.8, "VEGFA": 1.0}
