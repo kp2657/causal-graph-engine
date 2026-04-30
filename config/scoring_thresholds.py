@@ -216,9 +216,19 @@ FINGERPRINT_MIN_GENE_OVERLAP: int = 50
 # is too noisy to be meaningful given the bootstrap SE.
 
 USE_FINGERPRINT_BETA: bool = True
-# When True, `load_replogle_betas` and `_load_cached_signatures` prefer
-# `signatures_fingerprint.json.gz` over `signatures.json.gz` if the fingerprint
-# file exists. Set to False to revert to raw log2FC signatures (baseline mode).
+# When True, `load_replogle_betas` prefers `signatures_fingerprint.json.gz` for
+# GWAS-anchored genes and raw `signatures.json.gz` for non-GWAS nominees.
+# Set to False to revert to raw log2FC signatures everywhere (baseline mode).
+
+FINGERPRINT_SVD_COSINE_MIN: float = 0.30
+# Minimum cosine similarity between a non-GWAS perturbed gene's SVD loading vector
+# and the mean GWAS gene loading vector for the gene to be nominated as a
+# fingerprint-based candidate. Genes below this threshold co-vary in latent
+# directions unrelated to the GWAS signal and are not nominated.
+
+FINGERPRINT_MAX_NONGWAS_NOMINEES: int = 300
+# Maximum number of non-GWAS genes added to the candidate list via SVD cosine
+# nomination per run. Keeps the β matrix computation tractable.
 
 # ---------------------------------------------------------------------------
 # GPS disease signature — genetic credibility weighting

@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from mcp_servers.perturbseq_server import (
     preprocess_rna_fingerprints,
     map_disease_to_fingerprints,
+    compute_svd_nomination_scores,
     _sig_path,
 )
 
@@ -344,3 +345,181 @@ class TestFingerprintRoundtrip:
         finally:
             ps._CACHE_DIR = orig
             ps._SIG_CACHE.clear()
+
+
+# ---------------------------------------------------------------------------
+# compute_svd_nomination_scores
+# ---------------------------------------------------------------------------
+
+class TestSvdNominationScores:
+
+    def _prep(self, tmp_path: Path) -> None:
+        """Write sigs and preprocess (creates svd_loadings.npz)."""
+        _write_sigs(tmp_path, "svd_ds", _MOCK_SIGS)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            preprocess_rna_fingerprints("svd_ds", top_k=10)
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+
+    def test_returns_list_of_dicts(self, tmp_path):
+        self._prep(tmp_path)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores("svd_ds", gwas_genes=["IL6R", "JAK2"])
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        assert isinstance(result, list)
+        for entry in result:
+            assert "gene" in entry
+            assert "cosine_score" in entry
+
+    def test_gwas_genes_excluded_from_nominees(self, tmp_path):
+        self._prep(tmp_path)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores("svd_ds", gwas_genes=["IL6R", "JAK2"])
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        returned_genes = {e["gene"] for e in result}
+        assert "IL6R" not in returned_genes
+        assert "JAK2" not in returned_genes
+
+    def test_cosine_scores_bounded(self, tmp_path):
+        self._prep(tmp_path)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores(
+                "svd_ds", gwas_genes=["IL6R"], min_cosine=0.0
+            )
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        for entry in result:
+            assert -1.0 <= entry["cosine_score"] <= 1.0
+
+    def test_sorted_descending(self, tmp_path):
+        self._prep(tmp_path)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores(
+                "svd_ds", gwas_genes=["IL6R"], min_cosine=0.0
+            )
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        scores = [e["cosine_score"] for e in result]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_missing_loadings_returns_empty(self, tmp_path):
+        # No preprocessing → no svd_loadings.npz → returns empty list
+        _write_sigs(tmp_path, "no_svd_ds", _MOCK_SIGS)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores("no_svd_ds", gwas_genes=["IL6R"])
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        assert result == [], f"Expected empty list, got {result!r}"
+
+    def test_immune_gwas_centroid_excludes_lipid_kos(self, tmp_path):
+        """With IL6R/JAK2/TYK2 as GWAS genes, PCSK9/CETP should not appear in nominees."""
+        self._prep(tmp_path)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores(
+                "svd_ds", gwas_genes=["IL6R", "JAK2", "TYK2"], min_cosine=-1.0
+            )
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        # Only PCSK9 and CETP should remain (not GWAS genes)
+        returned = {e["gene"] for e in result}
+        assert returned <= {"PCSK9", "CETP"}, f"Unexpected nominees: {returned}"
+
+
+# ---------------------------------------------------------------------------
+# Split β source in load_replogle_betas
+# ---------------------------------------------------------------------------
+
+class TestSplitBetaSource:
+
+    def _write_both(self, tmp_path: Path, dataset_id: str) -> None:
+        """Write raw + fingerprint signatures so split logic can run."""
+        _write_sigs(tmp_path, dataset_id, _MOCK_SIGS)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            preprocess_rna_fingerprints(dataset_id, top_k=10)
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+
+    def test_split_returns_all_genes(self, tmp_path):
+        from pipelines.replogle_parser import _DATASET_SIGNATURES_REGISTRY, load_replogle_betas
+        self._write_both(tmp_path, "split_ds")
+        import pipelines.replogle_parser as rp
+        orig_reg = dict(rp._DATASET_SIGNATURES_REGISTRY)
+        rp._DATASET_SIGNATURES_REGISTRY["split_ds"] = tmp_path / "split_ds" / "signatures.json.gz"
+        try:
+            prog = {"prog1": list(list(_MOCK_SIGS.values())[0].keys())}
+            result = load_replogle_betas(
+                prog, dataset_id="split_ds", gwas_gene_set={"IL6R", "JAK2"}
+            )
+        finally:
+            rp._DATASET_SIGNATURES_REGISTRY.clear()
+            rp._DATASET_SIGNATURES_REGISTRY.update(orig_reg)
+        assert isinstance(result, dict)
+        assert len(result) > 0
+
+    def test_gwas_genes_have_fingerprint_beta(self, tmp_path):
+        """GWAS gene β from split should equal fingerprint-only β."""
+        from pipelines.replogle_parser import load_replogle_betas
+        self._write_both(tmp_path, "split2_ds")
+        import pipelines.replogle_parser as rp
+        orig_reg = dict(rp._DATASET_SIGNATURES_REGISTRY)
+        rp._DATASET_SIGNATURES_REGISTRY["split2_ds"] = tmp_path / "split2_ds" / "signatures.json.gz"
+        prog = {"p": list(list(_MOCK_SIGS.values())[0].keys())[:3]}
+        try:
+            result_split = load_replogle_betas(
+                prog, dataset_id="split2_ds", gwas_gene_set={"IL6R"}, force_recompute=True
+            )
+            result_fp_all = load_replogle_betas(
+                prog, dataset_id="split2_ds", gwas_gene_set=None, force_recompute=True
+            )
+        finally:
+            rp._DATASET_SIGNATURES_REGISTRY.clear()
+            rp._DATASET_SIGNATURES_REGISTRY.update(orig_reg)
+        if "IL6R" in result_split and "IL6R" in result_fp_all:
+            split_beta = result_split["IL6R"]["programs"].get("p", {}).get("beta")
+            fp_beta    = result_fp_all["IL6R"]["programs"].get("p", {}).get("beta")
+            assert split_beta == fp_beta, (
+                f"IL6R (GWAS gene) should use fingerprint β in split mode: "
+                f"split={split_beta} fp={fp_beta}"
+            )

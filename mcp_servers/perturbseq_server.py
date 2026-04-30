@@ -999,6 +999,15 @@ def preprocess_rna_fingerprints(
     fp_variant = f"fingerprint{'_' + source_variant if source_variant else ''}"
     _save_signatures(dataset_id, denoised, fp_variant)
 
+    # Save SVD perturbation loadings (Vt) for downstream nomination scoring.
+    # Vt shape: (k × n_perts); each column = a perturbed gene's latent coordinates.
+    # Only saved for the primary variant (source_variant="") — delta/Stim48hr share
+    # the same nomination space as the primary.
+    if not source_variant:
+        npz_path = _CACHE_DIR / dataset_id / "svd_loadings.npz"
+        _np.savez_compressed(str(npz_path), Vt=Vt, pert_names=_np.array(all_perts))
+        log.info("SVD loadings saved: %s (rank=%d, %d perts)", npz_path, k, n_perts)
+
     log.info(
         "RNA fingerprints saved: %s variant=%r — %d perts, %d genes, SVD rank=%d",
         dataset_id, fp_variant, n_perts, n_genes, k,
@@ -1011,7 +1020,90 @@ def preprocess_rna_fingerprints(
         "n_genes":          n_genes,
         "svd_rank":         k,
         "sig_path":         str(_sig_path(dataset_id, fp_variant)),
+        "svd_loadings_path": str(_CACHE_DIR / dataset_id / "svd_loadings.npz") if not source_variant else None,
     }
+
+
+def compute_svd_nomination_scores(
+    dataset_id: str,
+    gwas_genes: list[str] | set[str],
+    top_k: int | None = None,
+    min_cosine: float | None = None,
+) -> list[dict]:
+    """
+    Rank non-GWAS perturbed genes by cosine similarity to GWAS genes in SVD space.
+
+    After fingerprint preprocessing, each perturbed gene has a k-dimensional loading
+    vector in Vt (the right singular vectors of the centered gene × perturbation matrix).
+    Genes that co-vary with GWAS-anchored genes across perturbations occupy similar
+    positions in this latent space — they are mechanistically co-regulated and are
+    stronger disease-biology nominees than raw log2FC magnitude alone would suggest.
+
+    Args:
+        dataset_id:  Dataset to use (must have svd_loadings.npz from preprocess_rna_fingerprints)
+        gwas_genes:  Set of GWAS-anchored gene symbols (defines the reference centroid)
+        top_k:       Max nominees to return (default: FINGERPRINT_MAX_NONGWAS_NOMINEES)
+        min_cosine:  Minimum cosine score (default: FINGERPRINT_SVD_COSINE_MIN)
+
+    Returns:
+        List of {gene, cosine_score} sorted descending by score (non-GWAS only).
+        Empty list if SVD loadings not yet computed.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return []
+
+    from config.scoring_thresholds import FINGERPRINT_SVD_COSINE_MIN, FINGERPRINT_MAX_NONGWAS_NOMINEES
+
+    npz_path = _CACHE_DIR / dataset_id / "svd_loadings.npz"
+    if not npz_path.exists():
+        log.warning("SVD loadings not found for %s — run preprocess_rna_fingerprints first", dataset_id)
+        return []
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    Vt        = data["Vt"]           # (k × n_perts)
+    pert_names = list(data["pert_names"])  # perturbed gene symbols
+
+    gwas_upper  = {g.upper() for g in gwas_genes}
+    pert_upper  = [p.upper() for p in pert_names]
+
+    # (n_perts × k): each row = one gene's latent coordinates
+    V = Vt.T
+
+    # Mean loading vector of all GWAS genes present in the perturbation set
+    gwas_idx = [i for i, p in enumerate(pert_upper) if p in gwas_upper]
+    if not gwas_idx:
+        log.warning("No GWAS genes found in %s SVD loadings — cannot compute nomination scores", dataset_id)
+        return []
+
+    centroid     = V[gwas_idx].mean(axis=0)
+    centroid_norm = _np.linalg.norm(centroid)
+    if centroid_norm < 1e-8:
+        return []
+    centroid_hat = centroid / centroid_norm
+
+    _min_cos = min_cosine if min_cosine is not None else FINGERPRINT_SVD_COSINE_MIN
+    _max_k   = top_k      if top_k      is not None else FINGERPRINT_MAX_NONGWAS_NOMINEES
+
+    results: list[dict] = []
+    for i, (pname, pupper) in enumerate(zip(pert_names, pert_upper)):
+        if pupper in gwas_upper:
+            continue  # skip GWAS genes — they're already in the candidate list
+        v    = V[i]
+        norm = _np.linalg.norm(v)
+        if norm < 1e-8:
+            continue
+        cosine = float(_np.dot(centroid_hat, v / norm))
+        if cosine >= _min_cos:
+            results.append({"gene": pname, "cosine_score": round(cosine, 6)})
+
+    results.sort(key=lambda x: x["cosine_score"], reverse=True)
+    log.info(
+        "SVD nomination: %d non-GWAS candidates (cosine≥%.2f) for %s",
+        len(results), _min_cos, dataset_id,
+    )
+    return results[:_max_k]
 
 
 def map_disease_to_fingerprints(

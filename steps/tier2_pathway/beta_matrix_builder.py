@@ -206,6 +206,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 perturbseq_data = load_replogle_betas(
                     program_gene_sets=prog_gene_sets_list,
                     dataset_id=scperturb_dataset,
+                    gwas_gene_set=gwas_gene_set if gwas_gene_set else None,
                 )
             # Use the dataset ID as the cell_type token so _is_cell_type_matched can
             # look it up in _CELL_TYPE_MATCHED_DATASETS (e.g. "Schnitzler_GSE210681"
@@ -217,6 +218,33 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 f"Replogle h5ad not found for {scperturb_dataset}: {_h5ad_path}. "
                 "Run load_replogle_betas(auto_download=True) to download."
             )
+
+        # SVD cosine nomination: extend gene_list with non-GWAS perturb-seq genes
+        # that co-load with the GWAS centroid in latent SVD space.
+        if scperturb_dataset and gwas_gene_set and perturbseq_data is not None:
+            try:
+                from mcp_servers.perturbseq_server import compute_svd_nomination_scores
+                svd_nominees = compute_svd_nomination_scores(
+                    dataset_id=scperturb_dataset,
+                    gwas_genes=list(gwas_gene_set),
+                )
+                current_gene_set = set(gene_list)
+                added = 0
+                for nom in svd_nominees:
+                    g = nom["gene"]
+                    if g not in current_gene_set and g in perturbseq_data:
+                        gene_list = list(gene_list) + [g]
+                        current_gene_set.add(g)
+                        added += 1
+                if added:
+                    logger.info(
+                        "SVD nomination: added %d non-GWAS perturb-seq nominees (cosine ≥ %.2f)",
+                        added,
+                        nom.get("cosine_score", 0.0),
+                    )
+            except Exception as _svd_exc:
+                warnings.append(f"SVD nomination skipped: {_svd_exc}")
+
     except Exception as exc:
         warnings.append(f"Replogle h5ad pre-load skipped: {exc}")
 

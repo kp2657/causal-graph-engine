@@ -445,6 +445,7 @@ def load_replogle_betas(
     cache_path: Path | None = None,
     force_recompute: bool = False,
     auto_download: bool = True,
+    gwas_gene_set: "set[str] | None" = None,
 ) -> dict[str, dict]:
     """
     Main entry point: load/compute quantitative Perturb-seq β matrix.
@@ -458,6 +459,9 @@ def load_replogle_betas(
         cache_path:     Override cache path (bypasses auto-keying).
         force_recompute: Skip cache and recompute from h5ad.
         auto_download:  If True and h5ad not present, download from figshare.
+        gwas_gene_set:  When provided + USE_FINGERPRINT_BETA=True, GWAS genes use
+                        SVD-denoised fingerprint β and non-GWAS genes use raw β.
+                        Split maximises denoising benefit where signal is strongest.
 
     Returns:
         {gene: {"programs": {program_name: {beta, se, ci_lower, ci_upper}}}}
@@ -469,30 +473,74 @@ def load_replogle_betas(
     # --- Signatures-backed datasets (e.g. Schnitzler, CZI) skip h5ad entirely ---
     sig_path = _DATASET_SIGNATURES_REGISTRY.get(dataset_id or "")
     if sig_path is not None:
-        # Prefer SVD-denoised fingerprints when available and flag is set.
         try:
             from config.scoring_thresholds import USE_FINGERPRINT_BETA
-            _fp_path = sig_path.parent / "signatures_fingerprint.json.gz"
-            if USE_FINGERPRINT_BETA and _fp_path.exists():
-                logger.info("Using RNA fingerprint signatures: %s", _fp_path)
-                sig_path = _fp_path
         except Exception:
-            pass  # flag unavailable — fall through to raw signatures
+            USE_FINGERPRINT_BETA = False
 
-        if cache_path is None:
-            cache_path = _get_cache_path(dataset_id, program_gene_sets, sig_path)
-        if not force_recompute and cache_path.exists():
-            with open(cache_path) as f:
-                data = json.load(f)
-            logger.info("Cache hit (signatures): %s (%d genes)", cache_path, len(data))
-            return data
-        if not sig_path.exists():
-            raise FileNotFoundError(
-                f"Signatures file not found: {sig_path}. "
-                f"Run: python -m mcp_servers.perturbseq_server preprocess {dataset_id} <log2fc_path>"
+        _fp_path = sig_path.parent / "signatures_fingerprint.json.gz"
+        _use_split = USE_FINGERPRINT_BETA and _fp_path.exists() and gwas_gene_set
+
+        if _use_split:
+            # Split β source: GWAS genes → fingerprint (denoised), non-GWAS → raw
+            # Cache key must encode the split to avoid stale hits when gwas_gene_set changes.
+            _gwas_sorted = sorted(gwas_gene_set)
+            _gwas_hash = hashlib.md5("|".join(_gwas_sorted).encode()).hexdigest()[:8]
+            if cache_path is None:
+                _base_cache = _get_cache_path(dataset_id, program_gene_sets, sig_path)
+                cache_path = _base_cache.parent / f"{_base_cache.stem}_split{_gwas_hash}.json"
+            if not force_recompute and cache_path.exists():
+                with open(cache_path) as f:
+                    data = json.load(f)
+                logger.info("Cache hit (split-β): %s (%d genes)", cache_path, len(data))
+                return data
+            logger.info(
+                "Split β: %d GWAS genes → fingerprint; non-GWAS → raw (%s)",
+                len(gwas_gene_set), dataset_id,
             )
-        logger.info("Loading signatures: %s", sig_path)
-        betas = _load_from_signatures(sig_path, program_gene_sets)
+            betas_fp  = _load_from_signatures(_fp_path, program_gene_sets)
+            betas_raw = _load_from_signatures(sig_path, program_gene_sets)
+            gwas_upper = {g.upper() for g in gwas_gene_set}
+            merged: dict[str, dict] = {}
+            for gene, data in betas_raw.items():
+                merged[gene] = betas_fp.get(gene, data) if gene.upper() in gwas_upper else data
+            # Include any fingerprint-only genes that are GWAS genes
+            for gene, data in betas_fp.items():
+                if gene not in merged and gene.upper() in gwas_upper:
+                    merged[gene] = data
+            betas = merged
+            logger.info("Split β: %d total genes (%d raw, %d fp)", len(betas), len(betas_raw), len(betas_fp))
+        elif USE_FINGERPRINT_BETA and _fp_path.exists():
+            # No gwas_gene_set — apply fingerprint to all genes (original behaviour)
+            logger.info("Using RNA fingerprint signatures (all genes): %s", _fp_path)
+            effective_sig = _fp_path
+            if cache_path is None:
+                cache_path = _get_cache_path(dataset_id, program_gene_sets, effective_sig)
+            if not force_recompute and cache_path.exists():
+                with open(cache_path) as f:
+                    data = json.load(f)
+                logger.info("Cache hit (fingerprint): %s (%d genes)", cache_path, len(data))
+                return data
+            if not effective_sig.exists():
+                raise FileNotFoundError(f"Fingerprint file not found: {effective_sig}")
+            betas = _load_from_signatures(effective_sig, program_gene_sets)
+        else:
+            # Raw signatures path
+            if cache_path is None:
+                cache_path = _get_cache_path(dataset_id, program_gene_sets, sig_path)
+            if not force_recompute and cache_path.exists():
+                with open(cache_path) as f:
+                    data = json.load(f)
+                logger.info("Cache hit (signatures): %s (%d genes)", cache_path, len(data))
+                return data
+            if not sig_path.exists():
+                raise FileNotFoundError(
+                    f"Signatures file not found: {sig_path}. "
+                    f"Run: python -m mcp_servers.perturbseq_server preprocess {dataset_id} <log2fc_path>"
+                )
+            logger.info("Loading signatures: %s", sig_path)
+            betas = _load_from_signatures(sig_path, program_gene_sets)
+
         logger.info("β computed for %d perturbed genes (signatures)", len(betas))
         with open(cache_path, "w") as f:
             json.dump(betas, f)
