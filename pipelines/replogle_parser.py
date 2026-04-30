@@ -90,9 +90,10 @@ _DATASET_H5AD_REGISTRY: dict[str, dict] = {
 }
 
 # Datasets whose betas come from pre-computed signatures (not h5ad matrices).
-# Maps dataset_id → path to signatures.json.gz relative to _PERTURBSEQ_DIR.
+# Maps dataset_id → path to signatures.json.gz.
 _DATASET_SIGNATURES_REGISTRY: dict[str, Path] = {
-    "Schnitzler_GSE210681": _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular" / "signatures.json.gz",
+    "Schnitzler_GSE210681":  _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular"  / "signatures.json.gz",
+    "czi_2025_cd4t_perturb": _ROOT / "data" / "perturbseq" / "czi_2025_cd4t_perturb"   / "signatures.json.gz",
 }
 
 # Keep module-level path for backward compat (old callers that don't pass dataset_id)
@@ -465,9 +466,19 @@ def load_replogle_betas(
     Raises:
         FileNotFoundError: if h5ad file not present and auto_download=False.
     """
-    # --- Signatures-backed datasets (e.g. Schnitzler) skip h5ad entirely ---
+    # --- Signatures-backed datasets (e.g. Schnitzler, CZI) skip h5ad entirely ---
     sig_path = _DATASET_SIGNATURES_REGISTRY.get(dataset_id or "")
     if sig_path is not None:
+        # Prefer SVD-denoised fingerprints when available and flag is set.
+        try:
+            from config.scoring_thresholds import USE_FINGERPRINT_BETA
+            _fp_path = sig_path.parent / "signatures_fingerprint.json.gz"
+            if USE_FINGERPRINT_BETA and _fp_path.exists():
+                logger.info("Using RNA fingerprint signatures: %s", _fp_path)
+                sig_path = _fp_path
+        except Exception:
+            pass  # flag unavailable — fall through to raw signatures
+
         if cache_path is None:
             cache_path = _get_cache_path(dataset_id, program_gene_sets, sig_path)
         if not force_recompute and cache_path.exists():

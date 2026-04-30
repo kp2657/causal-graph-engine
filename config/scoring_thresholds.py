@@ -196,6 +196,31 @@ TIMEPOINT_ACTIVATION_BIAS_MIN: float = 1.5
 # enrichment; Stim8hr/Stim48hr clusters drive autoimmune disease association.
 
 # ---------------------------------------------------------------------------
+# RNA fingerprinting — SVD-denoised Perturb-seq β
+# ---------------------------------------------------------------------------
+
+FINGERPRINT_SVD_RANK: int = 30
+# Number of latent factors for truncated SVD denoising of the gene × perturbation
+# log2FC matrix. Matches the default k=30 in the RNA fingerprinting paper
+# (Elorbany et al. 2025, PMC12458102). Higher k retains more variance but less
+# denoising; lower k is smoother but may lose perturbation-specific signal.
+
+FINGERPRINT_N_BOOTSTRAP: int = 50
+# Bootstrap resampling iterations for disease-to-fingerprint correlation uncertainty.
+# Each iteration resamples 80% of shared genes; the SD of bootstrap correlations
+# is the SE used for z-score computation and uncertainty quantification.
+
+FINGERPRINT_MIN_GENE_OVERLAP: int = 50
+# Minimum shared genes required between the disease DE vector and a perturbation
+# fingerprint for correlation to be computed. Below this threshold the correlation
+# is too noisy to be meaningful given the bootstrap SE.
+
+USE_FINGERPRINT_BETA: bool = True
+# When True, `load_replogle_betas` and `_load_cached_signatures` prefer
+# `signatures_fingerprint.json.gz` over `signatures.json.gz` if the fingerprint
+# file exists. Set to False to revert to raw log2FC signatures (baseline mode).
+
+# ---------------------------------------------------------------------------
 # GPS disease signature — genetic credibility weighting
 # ---------------------------------------------------------------------------
 

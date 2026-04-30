@@ -920,6 +920,184 @@ def compute_cad_disease_regression(
     }
 
 
+# ---------------------------------------------------------------------------
+# RNA fingerprinting — SVD denoising + probabilistic disease matching
+# ---------------------------------------------------------------------------
+
+def preprocess_rna_fingerprints(
+    dataset_id: str,
+    source_variant: str = "",
+    top_k: int = 200,
+) -> dict:
+    """
+    Denoise Perturb-seq signatures via truncated SVD (RNA fingerprinting).
+
+    Implements the denoising stage of Elorbany et al. (2025, PMC12458102):
+    builds a gene × perturbation log2FC matrix, centers per-gene, applies
+    rank-k truncated SVD, and reconstructs denoised per-perturbation vectors.
+
+    Reads:  signatures{_source_variant}.json.gz
+    Writes: signatures_fingerprint{_source_variant if source_variant else ''}.json.gz
+
+    Args:
+        dataset_id:     Dataset to denoise (e.g. "schnitzler_cad_vascular")
+        source_variant: Variant of source signatures ("" = primary, "delta", "Stim48hr")
+        top_k:          Top genes by |denoised value| to retain per perturbation
+    """
+    try:
+        import numpy as _np
+        from sklearn.utils.extmath import randomized_svd
+    except ImportError as e:
+        return {"error": f"Missing dependency: {e}. Run: pip install scikit-learn numpy"}
+
+    from config.scoring_thresholds import FINGERPRINT_SVD_RANK
+
+    sigs = _load_cached_signatures(dataset_id, source_variant)
+    if not sigs:
+        return {"error": f"No signatures for {dataset_id!r} variant={source_variant!r}. Run preprocess first."}
+
+    # Build gene × perturbation matrix
+    all_genes = sorted({g for fc in sigs.values() for g in fc})
+    all_perts = sorted(sigs.keys())
+    n_genes, n_perts = len(all_genes), len(all_perts)
+    gene_idx = {g: i for i, g in enumerate(all_genes)}
+
+    M = _np.zeros((n_genes, n_perts), dtype=_np.float32)
+    for j, pert in enumerate(all_perts):
+        for g, v in sigs[pert].items():
+            if g in gene_idx:
+                M[gene_idx[g], j] = float(v)
+
+    # Center: subtract per-gene mean across perturbations to remove shared baseline
+    M -= M.mean(axis=1, keepdims=True)
+
+    # Truncated SVD: rank-k approximation captures perturbation-specific signal
+    k = min(FINGERPRINT_SVD_RANK, n_genes - 1, n_perts - 1)
+    U, S, Vt = randomized_svd(M, n_components=k, random_state=42)
+    M_denoised = (U * S) @ Vt  # (n_genes × n_perts)
+
+    # Extract denoised fingerprints — top_k genes by absolute denoised value
+    denoised: dict[str, dict[str, float]] = {}
+    for j, pert in enumerate(all_perts):
+        col = M_denoised[:, j]
+        top_idx = _np.argsort(_np.abs(col))[-top_k:]
+        denoised[pert] = {
+            all_genes[i]: round(float(col[i]), 6)
+            for i in top_idx
+            if abs(col[i]) > 1e-6
+        }
+
+    fp_variant = f"fingerprint{'_' + source_variant if source_variant else ''}"
+    _save_signatures(dataset_id, denoised, fp_variant)
+
+    log.info(
+        "RNA fingerprints saved: %s variant=%r — %d perts, %d genes, SVD rank=%d",
+        dataset_id, fp_variant, n_perts, n_genes, k,
+    )
+    return {
+        "dataset_id":       dataset_id,
+        "source_variant":   source_variant,
+        "fingerprint_variant": fp_variant,
+        "n_perturbations":  n_perts,
+        "n_genes":          n_genes,
+        "svd_rank":         k,
+        "sig_path":         str(_sig_path(dataset_id, fp_variant)),
+    }
+
+
+def map_disease_to_fingerprints(
+    disease_de_dict: dict[str, float],
+    dataset_id: str,
+    n_bootstrap: int | None = None,
+    source_variant: str = "",
+    min_gene_overlap: int | None = None,
+) -> dict:
+    """
+    Match a disease DE vector to Perturb-seq fingerprints via Pearson correlation.
+
+    Replaces CAD ridge regression (R²=1.0 overfitting) with a principled
+    probabilistic approach: correlation + bootstrap SE per perturbation.
+
+    Positive r  → KO mimics disease state (disease-promoting gene)
+    Negative r  → KO reverses disease state (therapeutic target candidate)
+
+    Args:
+        disease_de_dict: {gene_symbol: log2FC} for the disease vs healthy DE
+        dataset_id:      Perturb-seq dataset to match against
+        n_bootstrap:     Bootstrap iterations (default: FINGERPRINT_N_BOOTSTRAP)
+        source_variant:  Source variant of fingerprints ("" = primary)
+
+    Returns dict with top therapeutic KOs (most negative r) and top disease-mimics.
+    Saves full results to data/perturbseq/{dataset_id}/disease_fingerprint_match.json.
+    """
+    try:
+        import numpy as _np
+    except ImportError as e:
+        return {"error": f"Missing dependency: {e}"}
+
+    from config.scoring_thresholds import FINGERPRINT_MIN_GENE_OVERLAP, FINGERPRINT_N_BOOTSTRAP
+
+    fp_variant = f"fingerprint{'_' + source_variant if source_variant else ''}"
+    fingerprints = _load_cached_signatures(dataset_id, fp_variant)
+    if not fingerprints:
+        return {"error": f"No fingerprints for {dataset_id!r}. Run preprocess_rna_fingerprints first."}
+
+    n_boot = n_bootstrap if n_bootstrap is not None else FINGERPRINT_N_BOOTSTRAP
+    _min_overlap = min_gene_overlap if min_gene_overlap is not None else FINGERPRINT_MIN_GENE_OVERLAP
+    disease_genes = list(disease_de_dict.keys())
+
+    results: list[dict] = []
+    for pert, fp_dict in fingerprints.items():
+        shared = [g for g in disease_genes if g in fp_dict]
+        if len(shared) < _min_overlap:
+            continue
+        d = _np.array([disease_de_dict[g] for g in shared], dtype=_np.float64)
+        f = _np.array([fp_dict[g] for g in shared], dtype=_np.float64)
+        if _np.std(d) < 1e-8 or _np.std(f) < 1e-8:
+            continue
+        r = float(_np.corrcoef(d, f)[0, 1])
+
+        # Bootstrap SE — resample 80% of shared genes
+        rng = _np.random.default_rng(42)
+        n_shared = len(shared)
+        n_sample = max(int(n_shared * 0.8), 2)
+        boot_rs: list[float] = []
+        for _ in range(n_boot):
+            idx = rng.choice(n_shared, size=n_sample, replace=False)
+            if _np.std(d[idx]) < 1e-8 or _np.std(f[idx]) < 1e-8:
+                continue
+            boot_rs.append(float(_np.corrcoef(d[idx], f[idx])[0, 1]))
+        r_se = float(_np.std(boot_rs)) if boot_rs else float("nan")
+        z = r / r_se if r_se > 0 and _np.isfinite(r_se) else None
+
+        results.append({
+            "gene_ko":      pert,
+            "r":            round(r, 6),
+            "r_se":         round(r_se, 6) if _np.isfinite(r_se) else None,
+            "n_shared":     n_shared,
+            "z":            round(z, 4) if z is not None else None,
+        })
+
+    results.sort(key=lambda x: x["r"], reverse=True)
+
+    out_path = _CACHE_DIR / dataset_id / "disease_fingerprint_match.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        json.dump({"dataset_id": dataset_id, "n_matched": len(results), "results": results}, fh)
+
+    log.info(
+        "Disease fingerprint match: %d KOs matched for %s → %s",
+        len(results), dataset_id, out_path,
+    )
+    return {
+        "dataset_id":            dataset_id,
+        "n_perturbations_matched": len(results),
+        "top_therapeutic_kos":   sorted(results, key=lambda x: x["r"])[:10],
+        "top_disease_mimics":    results[:10],
+        "output_path":           str(out_path),
+    }
+
+
 def download_h5ad(dataset_id: str, dest_dir: str | Path | None = None) -> dict:
     """
     Download the h5ad for a dataset to dest_dir (default: data/perturbseq/{dataset_id}/).
