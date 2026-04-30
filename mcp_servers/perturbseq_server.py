@@ -190,48 +190,64 @@ _DATASET_REGISTRY: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 _DISEASE_DATASET_PRIORITY: dict[str, list[str]] = {
-    # CAD: Schnitzler 332 CAD-specific vascular > Natsume HAEC > genome-wide generic
-    "CAD":  ["schnitzler_cad_vascular", "natsume_2023_haec", "replogle_2022_k562"],
-    # SLE: CZI CD4+ T (genome-scale, primary cells) > K562 fallback
-    "SLE":  ["czi_2025_cd4t_perturb", "replogle_2022_k562"],
-    # RA: CZI CD4+ T (Th1/Th17 mechanism shared with SLE) > K562 fallback
-    "RA":   ["czi_2025_cd4t_perturb", "replogle_2022_k562"],
+    # CAD: Schnitzler 332 CAD-specific vascular > Natsume HAEC only.
+    # K562 removed: Zhu et al. (2025) Fig 6B shows K562 perturb-seq produces
+    # no enrichment for lymphocyte count LoF burden signals vs primary T cells;
+    # same logic applies to cardiac endothelial biology — cell-line mismatch
+    # adds noise, not signal.
+    "CAD":  ["schnitzler_cad_vascular", "natsume_2023_haec"],
+    # RA: CZI CD4+ T Stim8hr condition (Zhu et al. 2025 Fig 7: autoimmune enrichment
+    # in Stim8hr/Stim48hr clusters, not Rest; STAT3/IRF4/BATF RA circuit only
+    # visible at 8hr post-stimulation). K562 removed.
+    "RA":   ["czi_2025_cd4t_perturb"],
     # Generic: largest genome-wide screen first
     "GENERIC": ["replogle_2022_k562"],
 }
 
-# In-process signature cache: dataset_id → {gene: {downstream_gene: log2fc}}
+# In-process signature cache: "{dataset_id}:{variant}" → {gene: {downstream_gene: log2fc}}
+# variant="" means the default (primary condition) signatures.
 _SIG_CACHE: dict[str, dict[str, dict[str, float]]] = {}
 
 # ---------------------------------------------------------------------------
 # Signature cache I/O
 # ---------------------------------------------------------------------------
 
-def _sig_path(dataset_id: str) -> Path:
-    return _CACHE_DIR / dataset_id / "signatures.json.gz"
+def _sig_path(dataset_id: str, variant: str = "") -> Path:
+    """Return path to signatures file. variant="" → signatures.json.gz; else signatures_{variant}.json.gz."""
+    suffix = f"_{variant}" if variant else ""
+    return _CACHE_DIR / dataset_id / f"signatures{suffix}.json.gz"
 
 
-def _load_cached_signatures(dataset_id: str) -> dict[str, dict[str, float]] | None:
+def _cache_key(dataset_id: str, variant: str = "") -> str:
+    return f"{dataset_id}:{variant}" if variant else dataset_id
+
+
+def _load_cached_signatures(
+    dataset_id: str, variant: str = ""
+) -> dict[str, dict[str, float]] | None:
     """Load pre-computed signatures from disk. Returns None if not yet preprocessed."""
-    if dataset_id in _SIG_CACHE:
-        return _SIG_CACHE[dataset_id]
-    p = _sig_path(dataset_id)
+    ck = _cache_key(dataset_id, variant)
+    if ck in _SIG_CACHE:
+        return _SIG_CACHE[ck]
+    p = _sig_path(dataset_id, variant)
     if not p.exists():
         return None
     with gzip.open(p, "rt", encoding="utf-8") as f:
         data = json.load(f)
-    _SIG_CACHE[dataset_id] = data
+    _SIG_CACHE[ck] = data
     return data
 
 
-def _save_signatures(dataset_id: str, signatures: dict[str, dict[str, float]]) -> None:
+def _save_signatures(
+    dataset_id: str, signatures: dict[str, dict[str, float]], variant: str = ""
+) -> None:
     """Save pre-computed signatures to disk."""
-    p = _sig_path(dataset_id)
+    p = _sig_path(dataset_id, variant)
     p.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(p, "wt", encoding="utf-8") as f:
         json.dump(signatures, f)
-    _SIG_CACHE[dataset_id] = signatures
-    log.info("Saved %d gene signatures for %s → %s", len(signatures), dataset_id, p)
+    _SIG_CACHE[_cache_key(dataset_id, variant)] = signatures
+    log.info("Saved %d gene signatures for %s (variant=%r) → %s", len(signatures), dataset_id, variant, p)
 
 
 # ---------------------------------------------------------------------------
@@ -598,18 +614,309 @@ def preprocess_czi_de_stats(
         pairs.sort(key=lambda x: abs(x[1]), reverse=True)
         signatures[gene_sym] = dict(pairs[:top_k])
 
-    sig_path = _sig_path(dataset_id)
-    sig_path.parent.mkdir(parents=True, exist_ok=True)
-    with _gz.open(sig_path, "wt") as out:
-        json.dump(signatures, out)
+    # Save: Stim8hr is the primary condition → signatures.json.gz; others → signatures_{condition}.json.gz
+    variant = "" if condition == "Stim8hr" else condition
+    _save_signatures(dataset_id, signatures, variant=variant)
+    sig_path = _sig_path(dataset_id, variant=variant)
 
     log.info("Saved %d signatures to %s", len(signatures), sig_path)
     return {
         "dataset_id":        dataset_id,
         "condition_used":    condition,
+        "variant":           variant,
         "n_perturbed_genes": len(signatures),
         "n_cached_genes":    len(signatures),
         "sig_path":          str(sig_path),
+    }
+
+
+def preprocess_czi_delta_beta(
+    dataset_id: str,
+    h5ad_path: str | Path,
+    top_k: int = 200,
+    min_abs_log2fc: float = 0.1,
+) -> dict:
+    """
+    Compute δ-β signatures for CZI/Marson 2025: δ = Stim8hr − Rest log2FC.
+
+    δ-β isolates the TCR-stimulation-specific regulatory effect of each gene KO,
+    removing constitutive housekeeping perturbation noise present in both Rest and
+    Stim8hr. For RA/SLE autoimmune biology: Rest reflects basal T cell state
+    irrelevant to antigen-driven inflammation; Stim8hr captures the activation
+    response directly relevant to disease (Zhu et al. 2025 Fig 7A).
+
+    Saves output to signatures_delta.json.gz.
+
+    Args:
+        dataset_id:      Registry key (must be "czi_2025_cd4t_perturb")
+        h5ad_path:       Path to GWCD4i.DE_stats.h5ad
+        top_k:           Max downstream genes per perturbation to keep
+        min_abs_log2fc:  Minimum |δ log2FC| threshold
+    """
+    import gzip as _gz
+    try:
+        import anndata as ad
+    except ImportError:
+        return {"error": "anndata not installed; run: pip install anndata"}
+
+    path = Path(h5ad_path)
+    if not path.exists():
+        return {"error": f"File not found: {path}"}
+
+    log.info("Loading CZI h5ad for δ-β (Stim8hr − Rest): %s", path)
+    adata = ad.read_h5ad(str(path))
+
+    # Extract log2FC for Stim8hr and Rest
+    stim_mask = adata.obs.index.str.endswith("_Stim8hr")
+    rest_mask  = adata.obs.index.str.endswith("_Rest")
+
+    if stim_mask.sum() == 0 or rest_mask.sum() == 0:
+        available = sorted({idx.rsplit("_", 1)[-1] for idx in adata.obs.index})
+        return {"error": f"Missing Stim8hr or Rest condition. Available: {available}"}
+
+    log.info("Stim8hr: %d perturbations, Rest: %d perturbations", stim_mask.sum(), rest_mask.sum())
+
+    adata_stim = adata[stim_mask]
+    adata_rest  = adata[rest_mask]
+
+    import numpy as np
+
+    lfc_stim = adata_stim.layers["log_fc"]
+    lfc_rest  = adata_rest.layers["log_fc"]
+    if hasattr(lfc_stim, "toarray"):
+        lfc_stim = lfc_stim.toarray()
+    if hasattr(lfc_rest, "toarray"):
+        lfc_rest = lfc_rest.toarray()
+    lfc_stim = np.asarray(lfc_stim, dtype=np.float32)
+    lfc_rest  = np.asarray(lfc_rest,  dtype=np.float32)
+
+    var_symbols = list(adata.var["gene_name"] if "gene_name" in adata.var.columns else adata.var_names)
+
+    try:
+        from pipelines.static_lookups import get_lookups as _get_lookups
+        _lu = _get_lookups()
+        def _ensg_to_sym(ensg: str) -> str:
+            sym = _lu.get_symbol_from_ensembl(ensg)
+            return sym if sym else ensg
+    except Exception:
+        def _ensg_to_sym(ensg: str) -> str:
+            return ensg
+
+    # Build ENSG index for Rest rows so we can align with Stim8hr
+    rest_ensg_index: dict[str, int] = {}
+    for i, obs_id in enumerate(adata_rest.obs.index):
+        ensg = obs_id.rsplit("_", 1)[0]
+        rest_ensg_index[ensg] = i
+
+    signatures: dict[str, dict[str, float]] = {}
+    n_matched = 0
+
+    for i, obs_id in enumerate(adata_stim.obs.index):
+        ensg = obs_id.rsplit("_", 1)[0]
+        gene_sym = _ensg_to_sym(ensg)
+
+        rest_i = rest_ensg_index.get(ensg)
+        if rest_i is None:
+            continue  # gene not perturbed in Rest condition
+
+        n_matched += 1
+        delta = lfc_stim[i] - lfc_rest[rest_i]  # δ = Stim8hr − Rest
+
+        pairs = [(sym, float(d)) for sym, d in zip(var_symbols, delta)
+                 if abs(float(d)) >= min_abs_log2fc and d == d]
+        if not pairs:
+            continue
+        pairs.sort(key=lambda x: abs(x[1]), reverse=True)
+        signatures[gene_sym] = dict(pairs[:top_k])
+
+    log.info("δ-β: %d/%d genes matched Stim8hr↔Rest; %d with signatures",
+             n_matched, stim_mask.sum(), len(signatures))
+    _save_signatures(dataset_id, signatures, variant="delta")
+
+    return {
+        "dataset_id":        dataset_id,
+        "variant":           "delta",
+        "delta_formula":     "Stim8hr - Rest",
+        "n_perturbed_genes": stim_mask.sum(),
+        "n_matched_genes":   n_matched,
+        "n_cached_genes":    len(signatures),
+        "sig_path":          str(_sig_path(dataset_id, "delta")),
+    }
+
+
+def compute_cad_disease_regression(
+    h5ad_path: str | Path,
+    log2fc_matrix_path: str | Path,
+    output_path: str | Path | None = None,
+    top_k_genes: int = 500,
+    alpha: float = 1.0,
+) -> dict:
+    """
+    Fit ridge regression of CAD endothelial disease signature against Schnitzler perturbation matrix.
+
+    Computes MI vs normal DEGs from CAD_cardiac_endothelial_cell.h5ad, then fits:
+        signature_vector ~ Σ_r (w_r × log2fc_column_r)
+
+    where each column r is one perturbed gene's log2FC profile in Schnitzler.
+    The fitted weights w_r estimate how much gene r's perturbation contributes
+    to the MI disease state — analogous to Zhu et al. (2025) Fig 4A.
+
+    Saves per-gene regressor weights to
+    data/perturbseq/schnitzler_cad_vascular/cad_disease_regression.json.
+
+    Args:
+        h5ad_path:          Path to CAD_cardiac_endothelial_cell.h5ad
+        log2fc_matrix_path: Path to GSE210681_ALL_log2fcs.txt.gz
+        output_path:        Override output JSON path
+        top_k_genes:        Top DEGs by |log2FC| to use as signature (max 500)
+        alpha:              Ridge regularisation strength (L2 penalty)
+    """
+    try:
+        import anndata as ad
+        import numpy as _np
+        from sklearn.linear_model import Ridge
+        from sklearn.preprocessing import StandardScaler
+    except ImportError as e:
+        return {"error": f"Missing dependency: {e}. Run: pip install anndata scikit-learn"}
+
+    h5ad_path = Path(h5ad_path)
+    if not h5ad_path.exists():
+        return {"error": f"h5ad not found: {h5ad_path}"}
+
+    log.info("Loading CAD endothelial h5ad: %s", h5ad_path)
+    adata = ad.read_h5ad(str(h5ad_path))
+
+    # Compute MI vs normal differential expression
+    disease_col = "disease"
+    if disease_col not in adata.obs.columns:
+        return {"error": f"'disease' column not found in obs. Available: {list(adata.obs.columns)}"}
+
+    mi_mask     = adata.obs[disease_col] == "myocardial infarction"
+    normal_mask = adata.obs[disease_col] == "normal"
+
+    if mi_mask.sum() < 10 or normal_mask.sum() < 10:
+        return {"error": f"Too few cells: MI={mi_mask.sum()}, normal={normal_mask.sum()}"}
+
+    import scipy.sparse as _sp
+    X_h5ad = adata.X
+    if _sp.issparse(X_h5ad):
+        X_h5ad = X_h5ad.toarray()
+    X_h5ad = _np.asarray(X_h5ad, dtype=_np.float32)
+
+    mean_mi     = X_h5ad[mi_mask].mean(axis=0)
+    mean_normal = X_h5ad[normal_mask].mean(axis=0)
+    log2fc_disease = (mean_mi - mean_normal) / _np.log(2)  # pseudo-log2FC
+
+    # Gene symbol index from h5ad var
+    if "feature_name" in adata.var.columns:
+        gene_syms = list(adata.var["feature_name"])
+    elif "gene_name" in adata.var.columns:
+        gene_syms = list(adata.var["gene_name"])
+    else:
+        gene_syms = list(adata.var_names)
+
+    # Select top DEGs as disease signature
+    abs_lfc = _np.abs(log2fc_disease)
+    top_idx = _np.argsort(abs_lfc)[-top_k_genes:]
+    sig_genes = [gene_syms[i] for i in top_idx]
+    sig_vec   = {gene_syms[i]: float(log2fc_disease[i]) for i in top_idx}
+    log.info("CAD disease signature: %d genes (top %d by |log2FC|, MI vs normal)", len(sig_genes), top_k_genes)
+
+    # Load Schnitzler matrix and build design matrix (rows=genes, cols=perturbations)
+    import gzip as _gz, re
+    log2fc_path = Path(log2fc_matrix_path)
+    if not log2fc_path.exists():
+        return {"error": f"Schnitzler matrix not found: {log2fc_path}"}
+
+    log.info("Loading Schnitzler log2FC matrix: %s", log2fc_path)
+    opener = _gz.open(log2fc_path, "rt") if str(log2fc_path).endswith(".gz") else open(log2fc_path, "r")
+
+    row_gene_list: list[str] = []
+    pert_matrix_rows: list[list[float]] = []
+    pert_names: list[str] = []
+
+    def _canonical(name: str) -> str:
+        return re.sub(r"-\d+$", "", name)
+
+    with opener as fh:
+        header = fh.readline().rstrip("\n").split("\t")
+        pert_cols = header[2:]
+        canonical_perts = [_canonical(p) for p in pert_cols]
+        unique_perts_ordered = list(dict.fromkeys(canonical_perts))  # deduplicate preserving order
+        pert_names = unique_perts_ordered
+
+        # Per-row accumulator: gene → {pert → [values]} (multiple guides per pert)
+        _acc: dict[str, dict[str, list[float]]] = {}
+        for line in fh:
+            parts = line.rstrip("\n").split("\t")
+            if len(parts) < len(pert_cols) + 2:
+                continue
+            gene_field = parts[1]
+            gene_sym = gene_field.split(":")[0]
+            if not gene_sym or gene_sym not in sig_genes:
+                continue  # skip genes not in disease signature
+            if gene_sym not in _acc:
+                _acc[gene_sym] = {}
+            for i, val_str in enumerate(parts[2:2 + len(pert_cols)]):
+                try:
+                    val = float(val_str)
+                except ValueError:
+                    continue
+                if not _np.isfinite(val):
+                    continue
+                cp = canonical_perts[i]
+                _acc[gene_sym].setdefault(cp, []).append(val)
+
+    # Average multi-guide values and build (n_sig_genes × n_perts) matrix
+    sig_gene_order = [g for g in sig_genes if g in _acc]
+    if len(sig_gene_order) < 20:
+        return {"error": f"Only {len(sig_gene_order)}/{len(sig_genes)} disease signature genes found in Schnitzler matrix"}
+
+    log.info("Building design matrix: %d sig genes × %d perturbations", len(sig_gene_order), len(pert_names))
+    X_design = _np.zeros((len(sig_gene_order), len(pert_names)), dtype=_np.float32)
+    for row_i, g in enumerate(sig_gene_order):
+        for col_j, pname in enumerate(pert_names):
+            vals = _acc[g].get(pname, [])
+            if vals:
+                X_design[row_i, col_j] = float(_np.mean(vals))
+
+    # Response vector y: disease log2FC for each sig gene
+    y = _np.array([sig_vec[g] for g in sig_gene_order], dtype=_np.float32)
+
+    # Ridge regression: perturbation columns predict disease signature
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X_design)
+    ridge = Ridge(alpha=alpha, fit_intercept=True)
+    ridge.fit(X_scaled, y)
+
+    # Weights: positive = KO of this gene reverses the MI signature (down-regulates disease)
+    #          negative = KO amplifies the MI signature (disease-promoting gene)
+    weights = {pert_names[j]: round(float(ridge.coef_[j]), 6) for j in range(len(pert_names))}
+    r2 = float(ridge.score(X_scaled, y))
+    log.info("Ridge R²=%.3f over %d genes × %d perturbations", r2, len(sig_gene_order), len(pert_names))
+
+    out_path = Path(output_path) if output_path else (
+        _CACHE_DIR / "schnitzler_cad_vascular" / "cad_disease_regression.json"
+    )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump({
+            "r2":              r2,
+            "alpha":           alpha,
+            "n_sig_genes":     len(sig_gene_order),
+            "n_perturbations": len(pert_names),
+            "weights":         weights,
+        }, f)
+    log.info("CAD disease regression weights saved to %s", out_path)
+
+    return {
+        "r2":              round(r2, 4),
+        "alpha":           alpha,
+        "n_sig_genes":     len(sig_gene_order),
+        "n_perturbations": len(pert_names),
+        "top_positive":    sorted(weights.items(), key=lambda x: x[1], reverse=True)[:10],
+        "top_negative":    sorted(weights.items(), key=lambda x: x[1])[:10],
+        "output_path":     str(out_path),
     }
 
 
@@ -726,6 +1033,172 @@ def activate_dataset(
         result["raw_deleted"] = True
 
     return result
+
+
+# ---------------------------------------------------------------------------
+# Activation-stratified NMF: precompute per-program Stim8hr/Rest bias
+# ---------------------------------------------------------------------------
+
+def precompute_activation_biases(
+    dataset_id: str,
+    h5ad_path: str | Path,
+) -> dict:
+    """
+    Extract per-gene activation bias (Stim8hr / Rest n_regulators) from CZI varm.
+
+    The GWCD4i.DE_stats.h5ad varm contains `measured_genes_stats_Stim8hr` and
+    `measured_genes_stats_Rest`, each with `n_regulators` per measured gene.
+    We save {gene_symbol → {"n_reg_stim8hr": float, "n_reg_rest": float}} to
+    data/perturbseq/{dataset_id}/gene_activation_biases.json.
+
+    This is a one-time preprocessing step. The per-program bias is computed at
+    runtime in load_program_activation_biases() given NMF program gene sets.
+
+    Args:
+        dataset_id:  Registry key (must be "czi_2025_cd4t_perturb")
+        h5ad_path:   Path to GWCD4i.DE_stats.h5ad
+    """
+    try:
+        import anndata as ad
+    except ImportError:
+        return {"error": "anndata not installed; run: pip install anndata"}
+
+    path = Path(h5ad_path)
+    if not path.exists():
+        return {"error": f"File not found: {path}"}
+
+    log.info("Loading CZI h5ad for activation bias computation: %s", path)
+    adata = ad.read_h5ad(str(path))
+
+    varm = adata.varm
+    if "measured_genes_stats_Stim8hr" not in varm or "measured_genes_stats_Rest" not in varm:
+        available = list(varm.keys())
+        return {"error": f"varm missing activation stats. Available: {available}"}
+
+    stim_stats = varm["measured_genes_stats_Stim8hr"]
+    rest_stats  = varm["measured_genes_stats_Rest"]
+
+    # varm entries are DataFrames or numpy structured arrays with column "n_regulators"
+    import numpy as _np, pandas as _pd
+
+    def _extract_n_reg(stats_obj) -> _np.ndarray | None:
+        if isinstance(stats_obj, _pd.DataFrame):
+            return stats_obj["n_regulators"].values if "n_regulators" in stats_obj.columns else None
+        if hasattr(stats_obj, "dtype") and "n_regulators" in stats_obj.dtype.names:
+            return stats_obj["n_regulators"]
+        if hasattr(stats_obj, "__getitem__"):
+            try:
+                return _np.asarray(stats_obj["n_regulators"])
+            except Exception:
+                pass
+        # Fallback: try column 0
+        if hasattr(stats_obj, "shape") and len(stats_obj.shape) == 2:
+            return stats_obj[:, 0]
+        return None
+
+    n_reg_stim = _extract_n_reg(stim_stats)
+    n_reg_rest  = _extract_n_reg(rest_stats)
+
+    if n_reg_stim is None or n_reg_rest is None:
+        return {"error": "Could not extract n_regulators from varm stats"}
+
+    var_symbols = list(adata.var["gene_name"] if "gene_name" in adata.var.columns else adata.var_names)
+
+    biases: dict[str, dict] = {}
+    for i, sym in enumerate(var_symbols):
+        stim_val = float(n_reg_stim[i]) if i < len(n_reg_stim) else 0.0
+        rest_val  = float(n_reg_rest[i])  if i < len(n_reg_rest)  else 0.0
+        biases[sym] = {"n_reg_stim8hr": stim_val, "n_reg_rest": rest_val}
+
+    out_path = _CACHE_DIR / dataset_id / "gene_activation_biases.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(biases, f)
+
+    log.info("Saved activation biases for %d genes → %s", len(biases), out_path)
+    return {
+        "dataset_id":  dataset_id,
+        "n_genes":     len(biases),
+        "output_path": str(out_path),
+    }
+
+
+# In-process cache for gene activation biases
+_ACTIVATION_BIAS_CACHE: dict[str, dict[str, dict]] = {}
+
+
+def load_program_activation_biases(
+    dataset_id: str,
+    program_gene_sets: dict[str, list[str] | set[str]],
+) -> dict[str, float] | None:
+    """
+    Compute per-program activation bias from precomputed gene-level varm data.
+
+    activation_bias_P = mean(n_reg_Stim8hr_g for g ∈ P) / mean(n_reg_Rest_g for g ∈ P)
+
+    Programs with activation_bias < TIMEPOINT_ACTIVATION_BIAS_MIN (1.5) are
+    Rest-dominant and will be discounted in compute_ota_gamma.
+
+    Returns None if gene_activation_biases.json has not been precomputed.
+    """
+    global _ACTIVATION_BIAS_CACHE
+
+    if dataset_id not in _ACTIVATION_BIAS_CACHE:
+        cache_path = _CACHE_DIR / dataset_id / "gene_activation_biases.json"
+        if not cache_path.exists():
+            return None
+        with open(cache_path) as f:
+            _ACTIVATION_BIAS_CACHE[dataset_id] = json.load(f)
+
+    gene_biases = _ACTIVATION_BIAS_CACHE[dataset_id]
+
+    program_biases: dict[str, float] = {}
+    for prog, gene_set in program_gene_sets.items():
+        stim_vals, rest_vals = [], []
+        for g in gene_set:
+            gb = gene_biases.get(g) or gene_biases.get(g.upper())
+            if gb:
+                stim_vals.append(gb["n_reg_stim8hr"])
+                rest_vals.append(gb["n_reg_rest"])
+        if len(stim_vals) >= 3:  # need at least 3 genes with varm data
+            mean_stim = sum(stim_vals) / len(stim_vals)
+            mean_rest  = sum(rest_vals)  / len(rest_vals)
+            if mean_rest > 0:
+                program_biases[prog] = round(mean_stim / mean_rest, 3)
+            elif mean_stim > 0:
+                program_biases[prog] = 99.0  # pure Stim8hr — maximally activated
+            else:
+                program_biases[prog] = 1.0   # no regulators in either condition
+
+    return program_biases if program_biases else None
+
+
+# ---------------------------------------------------------------------------
+# Variant-aware program beta helper (for cross-timepoint concordance checks)
+# ---------------------------------------------------------------------------
+
+def get_program_beta_from_variant(
+    gene_symbol: str,
+    program_gene_set: list[str] | set[str],
+    dataset_id: str,
+    variant: str,
+) -> float | None:
+    """
+    Compute program beta from a specific signature variant (e.g. "Stim48hr", "delta").
+
+    Used by ota_beta_estimation to check cross-timepoint concordance without
+    exposing variant logic to callers.
+
+    Returns None if the variant signatures are not cached or gene not found.
+    """
+    sigs = _load_cached_signatures(dataset_id, variant=variant)
+    if sigs is None:
+        return None
+    gene = gene_symbol.upper()
+    sig = sigs.get(gene) or sigs.get(gene.lower())
+    if sig is None:
+        return None
+    return _compute_program_beta(sig, set(program_gene_set))
 
 
 # ---------------------------------------------------------------------------

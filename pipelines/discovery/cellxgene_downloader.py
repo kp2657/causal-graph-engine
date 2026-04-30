@@ -39,40 +39,6 @@ DISEASE_CELLXGENE_MAP: dict[str, dict] = {
             "CD4-positive, alpha-beta T cell": "rheumatoid arthritis",
         },
     },
-    "SLE": {
-        # CELLxGENE verified labels 2026-04-24: pDC confirmed; "B cell" → use naive B cell
-        "cell_types":  ["plasmacytoid dendritic cell", "naive B cell", "classical monocyte",
-                        "naive thymus-derived CD4-positive, alpha-beta T cell"],
-        "tissues":     ["blood"],
-        "description": "SLE: pDC interferon programs (CellxGENE 436154da) + B cell + monocyte",
-        "priority_cell": "plasmacytoid dendritic cell",
-        "max_cells":   30_000,
-        "stratified_disease_hints": {
-            "plasmacytoid dendritic cell": "systemic lupus erythematosus",
-        },
-    },
-    "T2D": {
-        "cell_types":  ["pancreatic beta cell", "hepatocyte", "adipocyte"],
-        "tissues":     ["pancreas", "liver", "adipose tissue"],
-        "description": "T2D: beta cell UPR + hepatocyte metabolic programs",
-        "priority_cell": "pancreatic beta cell",
-        "max_cells":   30_000,
-    },
-    "DED": {
-        # Ocular surface cells for state-space embedding. Corneal/conjunctival cells
-        # carry the secretory-mucin and glycocalyx programs altered in DED. T cells
-        # drive the inflammatory signal but CELLxGENE conjunctival data is scarce;
-        # use corneal epithelial + CD4+ T as joint context.
-        "cell_types":  ["corneal epithelial cell", "conjunctival cell",
-                        "naive thymus-derived CD4-positive, alpha-beta T cell"],
-        "tissues":     ["eye", "cornea", "conjunctiva", "blood"],
-        "description": "DED: corneal/conjunctival epithelial programs + T cell inflammatory axis",
-        "priority_cell": "corneal epithelial cell",
-        "max_cells":   30_000,
-        "stratified_disease_hints": {
-            "corneal epithelial cell": "dry eye syndrome",
-        },
-    },
     "CAD": {
         # priority_cell = cardiac endothelial cell — matches GSE210681 (Schnitzler 2023) which
         # is predominantly HAEC (Human Aortic Endothelial Cells). Using endothelial h5ad

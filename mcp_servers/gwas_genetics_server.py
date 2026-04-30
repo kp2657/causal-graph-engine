@@ -1470,7 +1470,7 @@ def get_gene_max_pip_for_trait(gene_symbol: str, efo_id: str) -> dict:
 # ---------------------------------------------------------------------------
 _BURDEN_CACHE: dict[str, dict[str, dict]] = {}  # phenocode -> {GENE_UPPER: best_row}
 _BURDEN_PHENOCODE_MAP: dict[str, str] = {
-    "CAD": "I9_CAD", "SLE": "M13_SLELUPUS", "DED": "H7_KCSYN",
+    "CAD": "I9_CAD",
 }
 from models.disease_registry import get_disease_key as _get_disease_key
 _BURDEN_GCS_BASE = "https://storage.googleapis.com/finngen-public-data-r12/burdentest"

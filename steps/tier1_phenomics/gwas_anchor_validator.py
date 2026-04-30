@@ -21,11 +21,6 @@ _ANCHOR_GENE_EXPECTATIONS_BY_DISEASE: dict[str, dict[str, dict]] = {
         "HMGCR": {"direction": "positive", "tissue": "Liver",      "note": "Expression → LDL pathway (GTEx Liver eQTL)"},
         "IL6R":  {"direction": "negative", "tissue": "Whole_Blood","note": "rs2228145 → reduced IL-6R signaling → lower CAD"},
     },
-    "SLE": {
-        "TNFSF13B": {"direction": "positive", "tissue": "Whole_Blood", "note": "BAFF/BLyS elevated in SLE; belimumab target"},
-        "IFNAR1":   {"direction": "positive", "tissue": "Whole_Blood", "note": "Type I IFN receptor; anifrolumab target (approved 2021)"},
-        "IRF5":     {"direction": "positive", "tissue": "Whole_Blood", "note": "Transcription factor; rs2004640 coding variant associated with SLE"},
-    },
     "RA": {
         "PTPN22": {"direction": "positive", "tissue": "Whole_Blood", "note": "R620W gain-of-function raises T cell activation threshold; strongest non-HLA RA locus"},
         "IL6R":   {"direction": "positive", "tissue": "Whole_Blood", "note": "IL-6 receptor drives synovitis; tocilizumab (approved 2010) blocks it"},

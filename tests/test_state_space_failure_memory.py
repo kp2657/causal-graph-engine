@@ -25,11 +25,6 @@ class TestBuildFailureRecords:
         for r in records:
             assert isinstance(r, FailureRecord)
 
-    def test_sle_returns_nonempty_list(self):
-        from pipelines.state_space.failure_memory import build_failure_records
-        records = build_failure_records("SLE", include_ct=False)
-        assert len(records) > 0
-
     def test_unknown_disease_returns_empty(self):
         from pipelines.state_space.failure_memory import build_failure_records
         records = build_failure_records("UNKNOWN_XYZ", include_ct=False)
@@ -51,7 +46,7 @@ class TestBuildFailureRecords:
 
     def test_evidence_strength_in_zero_one(self):
         from pipelines.state_space.failure_memory import build_failure_records
-        for disease in ("SLE", "CAD"):
+        for disease in ("CAD",):
             for r in build_failure_records(disease, include_ct=False):
                 assert 0.0 <= r.evidence_strength <= 1.0
 

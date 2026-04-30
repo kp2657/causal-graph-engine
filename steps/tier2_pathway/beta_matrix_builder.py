@@ -552,17 +552,37 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # ------------------------------------------------------------------
     state_space = _maybe_run_state_space(disease_key, warnings)
 
+    # ------------------------------------------------------------------
+    # Activation-stratified NMF (RA/SLE only): compute per-program
+    # Stim8hr/Rest bias from CZI varm data for use in compute_ota_gamma.
+    # Only available after precompute_activation_biases() is run offline.
+    # ------------------------------------------------------------------
+    program_activation_biases: dict[str, float] | None = None
+    if disease_key == "RA":
+        try:
+            from mcp_servers.perturbseq_server import load_program_activation_biases
+            _pg_sets_list = {pid: list(gset) for pid, gset in program_gene_sets.items() if gset}
+            program_activation_biases = load_program_activation_biases(
+                "czi_2025_cd4t_perturb", _pg_sets_list
+            )
+            if program_activation_biases:
+                logger.info("Loaded activation biases for %d programs (disease=%s)",
+                            len(program_activation_biases), disease_key)
+        except Exception as _ab_exc:
+            logger.debug("Activation biases not available: %s", _ab_exc)
+
     return {
-        "genes":                  gene_list,
-        "programs":               program_ids,
-        "beta_matrix":            beta_matrix,
-        "evidence_tier_per_gene": evidence_tier_per_gene,
-        "n_tier1":                n_tier1,
-        "n_tier2":                n_tier2,
-        "n_tier3":                n_tier3,
-        "n_virtual":              n_virtual,
-        "warnings":               warnings,
-        "state_space":            state_space,
+        "genes":                      gene_list,
+        "programs":                   program_ids,
+        "beta_matrix":                beta_matrix,
+        "evidence_tier_per_gene":     evidence_tier_per_gene,
+        "n_tier1":                    n_tier1,
+        "n_tier2":                    n_tier2,
+        "n_tier3":                    n_tier3,
+        "n_virtual":                  n_virtual,
+        "warnings":                   warnings,
+        "state_space":                state_space,
+        "program_activation_biases":  program_activation_biases,
     }
 
 

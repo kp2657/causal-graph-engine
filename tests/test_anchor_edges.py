@@ -338,15 +338,15 @@ def test_write_program_gamma_edges_server_wrapper(tmp_path, monkeypatch):
     monkeypatch.setattr(_srv, "_get_db_for_key", lambda _key: db)
 
     gamma_estimates = {
-        "SLE_NMF_P01": {
-            "SLE": {"gamma": 0.33, "gamma_se": 0.07, "evidence_tier": "Tier2_Convergent",
-                    "data_source": "OT_L2G_enrichment"},
+        "RA_NMF_P01": {
+            "RA": {"gamma": 0.33, "gamma_se": 0.07, "evidence_tier": "Tier2_Convergent",
+                   "data_source": "OT_L2G_enrichment"},
         },
     }
 
     result = _srv.write_program_gamma_edges(
-        gamma_estimates, disease="systemic lupus erythematosus",
-        efo_id="EFO_0002690", cell_type="CD4_T_cell",
+        gamma_estimates, disease="rheumatoid arthritis",
+        efo_id="EFO_0000685", cell_type="CD4_T_cell",
     )
     db.close()
 

@@ -540,14 +540,9 @@ _DISEASE_H5AD_SUBDIRS: dict[str, list[str]] = {
     "coronary_art": ["CAD"],
     "coronary_artery": ["CAD"],
     "cad": ["CAD"],
-    "systemic_lupus": ["SLE"],
-    "lupus": ["SLE"],
-    "sle": ["SLE"],
     "rheumatoid": ["RA"],
     "rheumatoid_arthritis": ["RA"],
     "ra": ["RA"],
-    "dry_eye": ["DED"],
-    "ded": ["DED"],
 }
 
 
@@ -582,7 +577,7 @@ def _build_sig_from_h5ad(
 
     def _add_subdir(subdir: Path) -> None:
         # CAD: Schnitzler GSE210681 is HAEC → cardiac_endothelial h5ad preferred over SMC.
-        # SLE/DED: CD4+ T cell h5ad preferred (matches CZI Perturb-seq β source).
+        # RA: CD4+ T cell h5ad preferred (matches CZI Perturb-seq β source).
         candidates.extend(p for p in sorted(subdir.glob("*cardiac_endothelial*.h5ad"))
                           if "latent_cache" not in p.name and "state_cache" not in p.name)
         candidates.extend(p for p in sorted(subdir.glob("*CD4*.h5ad"))

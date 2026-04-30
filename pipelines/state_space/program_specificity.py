@@ -51,23 +51,8 @@ _CAD_DISEASE_LABELS = {
     "acute myocardial infarction",
     "chronic ischemic heart disease",
 }
-_SLE_DISEASE_LABELS = {
-    "systemic lupus erythematosus",
-    "lupus erythematosus",
-    "lupus nephritis",
-    "neuropsychiatric lupus",
-}
-_DED_DISEASE_LABELS = {
-    "dry eye syndrome",
-    "dry eye disease",
-    "keratoconjunctivitis sicca",
-    "aqueous-deficient dry eye",
-    "evaporative dry eye",
-}
 _DISEASE_LABEL_MAP: dict[str, set[str]] = {
     "CAD": _CAD_DISEASE_LABELS,
-    "SLE": _SLE_DISEASE_LABELS,
-    "DED": _DED_DISEASE_LABELS,
 }
 _HEALTHY_LABELS = {"normal", "healthy", "control", "none"}
 

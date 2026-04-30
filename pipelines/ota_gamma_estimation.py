@@ -25,7 +25,10 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.evidence import GeneTraitAssociation
-from config.scoring_thresholds import SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P
+from config.scoring_thresholds import (
+    SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P,
+    TIMEPOINT_ACTIVATION_BIAS_MIN,
+)
 
 # Minimum mean Open Targets L2G score to accept as genetic evidence for γ estimation.
 # L2G (Locus-to-Gene; Mountjoy et al., Nature Genetics 2021) scores represent the
@@ -208,6 +211,7 @@ def compute_ota_gamma(
     beta_estimates: dict[str, dict],
     gamma_estimates: dict[str, dict],
     skip_programs: frozenset[str] | None = None,
+    program_activation_biases: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute the Ota composite γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait}).
@@ -220,6 +224,11 @@ def compute_ota_gamma(
         skip_programs:    Optional frozenset of program IDs to exclude from the sum.
                           Pass HALLMARK_PROGRAM_IDS | {"__protein_channel__"} to
                           restrict the OTA sum to cNMF + state-transition programs only.
+        program_activation_biases: Optional dict {program → activation_bias}. Programs
+                          with activation_bias < TIMEPOINT_ACTIVATION_BIAS_MIN (1.5)
+                          are Rest-dominant and discounted by SLDSC_BYSTANDER_WEIGHT (0.30)
+                          per Zhu et al. (2025) Fig 7A: Rest-dominant regulator clusters
+                          show no RA/SLE/T1D heritability enrichment.
 
     Returns:
         {
@@ -293,6 +302,18 @@ def compute_ota_gamma(
             and _tau_p is not None and float(_tau_p) < SLDSC_TAU_SIGNIFICANT_P
         )
 
+        # Activation-stratified NMF: programs with Stim8hr/Rest activation_bias < 1.5
+        # are Rest-dominant. Zhu et al. (2025) Fig 7A: these clusters are not enriched
+        # for RA/SLE/T1D heritability. Discount by SLDSC_BYSTANDER_WEIGHT (0.30) when
+        # activation data is available and program is Rest-dominant.
+        _activation_bias = (
+            program_activation_biases.get(program) if program_activation_biases else None
+        )
+        _activation_discounted = False
+        if _activation_bias is not None and float(_activation_bias) < TIMEPOINT_ACTIVATION_BIAS_MIN:
+            gamma_weight *= SLDSC_BYSTANDER_WEIGHT
+            _activation_discounted = True
+
         contribution = beta_val * gamma_val * gamma_weight
         ota_gamma += contribution
         tiers_used.append(beta_info.get("evidence_tier", "unknown") if isinstance(beta_info, dict) else "unknown")
@@ -309,6 +330,8 @@ def compute_ota_gamma(
                 "tau":                      round(_tau, 4) if _tau is not None else None,
                 "heritability_significant": _heritability_significant,
                 "bystander_discounted":     _is_bystander,
+                "activation_bias":          round(float(_activation_bias), 3) if _activation_bias is not None else None,
+                "activation_discounted":    _activation_discounted,
             })
 
     # Sort by absolute contribution
@@ -471,6 +494,7 @@ def compute_ota_gamma_with_uncertainty(
     gamma_estimates: dict[str, dict],
     genebayes_result: dict | None = None,
     skip_programs: frozenset[str] | None = None,
+    program_activation_biases: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute Ota composite γ with 95% CI and optional GeneBayes grounding.
@@ -497,7 +521,8 @@ def compute_ota_gamma_with_uncertainty(
     }
 
     base = compute_ota_gamma(gene, trait, beta_estimates, gamma_estimates,
-                             skip_programs=skip_programs)
+                             skip_programs=skip_programs,
+                             program_activation_biases=program_activation_biases)
 
     variance = 0.0
     for prog, beta_info in beta_estimates.items():

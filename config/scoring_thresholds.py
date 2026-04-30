@@ -178,6 +178,24 @@ SLDSC_TAU_SIGNIFICANT_P: float = 0.05
 # Used to annotate program contributions in the OTA sum output.
 
 # ---------------------------------------------------------------------------
+# Multi-timepoint Perturb-seq — condition-specific β quality
+# ---------------------------------------------------------------------------
+
+TIMEPOINT_CONCORDANCE_SIGMA_FACTOR: float = 0.82
+# beta_sigma multiplier when Stim8hr and Stim48hr perturbation effects show
+# concordant sign for the same NMF program. Same-assay concordance is weaker
+# evidence than GWAS/eQTL concordance (0.75), hence the milder 0.82 reward.
+# Zhu et al. (2025): regulator-burden correlations are enriched in both Stim8hr
+# and Stim48hr, supporting concordant effects as a quality signal.
+
+TIMEPOINT_ACTIVATION_BIAS_MIN: float = 1.5
+# Minimum ratio of (Stim8hr n_regulators) / (Rest n_regulators), weighted by
+# NMF program gene loadings, for a program to count as activation-enriched.
+# Programs below this threshold are discounted by SLDSC_BYSTANDER_WEIGHT (0.30):
+# Zhu et al. (2025) Fig 7A: Rest-dominant regulator clusters show no RA/SLE/T1D
+# enrichment; Stim8hr/Stim48hr clusters drive autoimmune disease association.
+
+# ---------------------------------------------------------------------------
 # GPS disease signature — genetic credibility weighting
 # ---------------------------------------------------------------------------
 

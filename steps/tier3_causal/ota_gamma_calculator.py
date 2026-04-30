@@ -66,6 +66,7 @@ def run(
     beta_matrix  = beta_matrix_result.get("beta_matrix", {})
     tier_per_gene = beta_matrix_result.get("evidence_tier_per_gene", {})
     programs     = beta_matrix_result.get("programs", [])
+    program_activation_biases: dict[str, float] | None = beta_matrix_result.get("program_activation_biases")
     # Program membership from Tier 2 eqtl_coloc_mapper (may be empty).
     # Used by `_build_fallback_top_programs` when the OT-genetic fallback fires
     # and `n_programs_contributing == 0` — see line ~225.
@@ -230,6 +231,7 @@ def run(
                     gamma_estimates=trait_gammas,
                     genebayes_result=gb_result,
                     skip_programs=_OTA_SKIP_PROGRAMS,
+                    program_activation_biases=program_activation_biases,
                 )
                 ota_gamma_raw = ota_result.get("ota_gamma")
                 ota_gamma = float('nan') if ota_gamma_raw is None else float(ota_gamma_raw)

@@ -312,7 +312,6 @@ _UKB_WES_BURDEN_STUDY_PREFIX = "UKBIOBANK_WES_"
 # These are approximate — OT uses EFO trait IDs as study handles
 _DISEASE_BURDEN_EFO: dict[str, str] = {
     "CAD":  "EFO_0001645",   # coronary artery disease
-    "SLE":  "EFO_0002690",   # systemic lupus erythematosus
     "RA":   "EFO_0000685",   # rheumatoid arthritis
 }
 

@@ -62,8 +62,8 @@ class TestRegistry:
                 assert ds_id in _DATASET_REGISTRY, \
                     f"{disease} priority references unknown dataset: {ds_id}"
 
-    def test_all_diseases_covered(self):
-        for disease in ("CAD", "AMD", "RA", "T2D", "AD", "SLE"):
+    def test_active_diseases_covered(self):
+        for disease in ("CAD", "RA", "GENERIC"):
             assert disease in _DISEASE_DATASET_PRIORITY
 
     def test_cad_vascular_first(self):
@@ -71,14 +71,8 @@ class TestRegistry:
         cad_priority = _DISEASE_DATASET_PRIORITY["CAD"]
         assert cad_priority[0] == "schnitzler_cad_vascular"
 
-    def test_amd_has_priority_dataset(self):
-        amd_priority = _DISEASE_DATASET_PRIORITY["AMD"]
-        assert len(amd_priority) > 0
-
-    def test_replogle_k562_in_all_priorities(self):
-        for disease, priority in _DISEASE_DATASET_PRIORITY.items():
-            assert "replogle_2022_k562" in priority, \
-                f"replogle_2022_k562 missing from {disease} priority (needed as ultimate fallback)"
+    def test_generic_has_replogle_k562(self):
+        assert "replogle_2022_k562" in _DISEASE_DATASET_PRIORITY["GENERIC"]
 
     def test_n_genes_positive(self):
         for ds_id, meta in _DATASET_REGISTRY.items():
@@ -105,7 +99,7 @@ class TestSelectDataset:
         assert result is not None
 
     def test_cached_dataset_selected_preferentially(self, tmp_path):
-        # Create a fake cached signature for replogle (not natsume)
+        # Create a fake cached signature for replogle (not natsume_2023_rpe)
         fake_cache = tmp_path / "replogle_2022_k562" / "signatures.json.gz"
         fake_cache.parent.mkdir(parents=True)
         with gzip.open(fake_cache, "wt") as f:
@@ -116,8 +110,8 @@ class TestSelectDataset:
             orig_cache_dir = ps._CACHE_DIR
             ps._CACHE_DIR = tmp_path
             try:
-                result = _select_dataset("CAD", None)
-                # natsume not cached, replogle is → should return replogle
+                result = _select_dataset("GENERIC", None)
+                # replogle is cached → should be selected
                 assert result == "replogle_2022_k562"
             finally:
                 ps._CACHE_DIR = orig_cache_dir
@@ -263,8 +257,8 @@ class TestListPerturbseqDatasets:
     def test_disease_filter_returns_priority_subset(self):
         result = list_perturbseq_datasets("CAD")
         ids = [r["dataset_id"] for r in result["datasets"]]
+        assert "schnitzler_cad_vascular" in ids
         assert "natsume_2023_haec" in ids
-        assert "replogle_2022_k562" in ids
 
     def test_cached_field_is_bool(self):
         result = list_perturbseq_datasets()

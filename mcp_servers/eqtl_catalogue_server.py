@@ -84,10 +84,6 @@ _SCEQTL_STUDIES = {
 DISEASE_SC_EQTL_CELL_TYPES: dict[str, list[str]] = {
     "CAD":  ["monocyte", "macrophage"],
     "RA":   ["CD4", "B cell", "monocyte"],
-    "T2D":  ["monocyte"],            # pancreatic beta cells not in OneK1K
-    "MS":   ["CD4", "monocyte"],
-    "T1D":  ["CD4", "B cell"],
-    "SLE":  ["plasmacytoid", "B cell", "CD4", "monocyte"],
 }
 
 # Disease → relevant pQTL proteins (gene symbol → protein label in eQTL Catalogue)

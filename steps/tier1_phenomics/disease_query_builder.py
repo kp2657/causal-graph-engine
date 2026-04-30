@@ -17,7 +17,6 @@ from models.disease_registry import get_disease_key as _get_disease_key
 # EFO → ICD-10 mapping for common diseases
 EFO_ICD10_MAP: dict[str, list[str]] = {
     "EFO_0001645": ["I20", "I21", "I22", "I23", "I24", "I25"],  # CAD
-    "EFO_0002690": ["M32"],                                      # SLE
     "EFO_0000685": ["M05", "M06"],                               # RA
 }
 
@@ -26,9 +25,6 @@ DISEASE_EFO_MAP: dict[str, str] = {
     "coronary artery disease":            "EFO_0001645",
     "cad":                                "EFO_0001645",
     "ischemic heart disease":             "EFO_0001645",
-    "systemic lupus erythematosus":       "EFO_0002690",
-    "lupus":                              "EFO_0002690",
-    "sle":                                "EFO_0002690",
     "rheumatoid arthritis":               "EFO_0000685",
     "ra":                                 "EFO_0000685",
     "seropositive rheumatoid arthritis":  "EFO_0000685",
@@ -37,7 +33,6 @@ DISEASE_EFO_MAP: dict[str, str] = {
 # Disease → modifier types (which evidence types are relevant)
 DISEASE_MODIFIER_MAP: dict[str, list[str]] = {
     "EFO_0001645": ["germline", "somatic_chip", "drug"],  # CAD: CHIP + germline strong
-    "EFO_0002690": ["germline", "drug"],                  # SLE
     "EFO_0000685": ["germline", "drug"],                  # RA
 }
 
@@ -70,7 +65,6 @@ def run(disease_name: str) -> dict:
     # Known primary OpenGWAS study IDs (fallback when live lookup fails)
     _KNOWN_GWAS_IDS: dict[str, str] = {
         "EFO_0001645": "ieu-a-7",              # CAD — CARDIoGRAMplusC4D
-        "EFO_0002690": "ebi-a-GCST003156",     # SLE — Bentham 2015
         "EFO_0000685": "ebi-a-GCST002318",     # RA — Okada 2014 ~100k samples
     }
 

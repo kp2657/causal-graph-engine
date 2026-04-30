@@ -63,7 +63,7 @@ from models.evidence import ProgramBetaMatrix
 from config.scoring_thresholds import (
     COLOC_H4_MIN, MR_PQTL_P_VALUE_MAX,
     EQTL_GWAS_DIRECTION_SIGMA_FACTOR, EQTL_GWAS_DIRECTION_COLOC_MIN,
-    WES_CODING_MECHANISM_P,
+    WES_CODING_MECHANISM_P, TIMEPOINT_CONCORDANCE_SIGMA_FACTOR,
 )
 
 
@@ -113,14 +113,10 @@ _CELL_TYPE_MATCHED_DATASETS: dict[str, set[str]] = {
     "CAD":  {"schnitzler_cad_vascular", "natsume_2023_haec",
              "HCASMC", "HAEC", "HCASMC_HAEC",
              "Schnitzler_GSE210681", "GSE210681"},
-    # RA: CZI CD4+ T is now the primary match (Th1/Th17); K562 fallback
-    "RA":   {"czi_2025_cd4t_perturb", "replogle_2022_k562", "K562", "k562"},
-    # SLE: CZI CD4+ T primary human cells is best match; K562 fallback
-    "SLE":  {"czi_2025_cd4t_perturb", "papalexi_2021_thp1", "replogle_2022_k562", "K562", "k562"},
-    # DED: shares CZI CD4+ T source with SLE (Th17/Th1 inflammatory mechanism)
-    "DED":  {"czi_2025_cd4t_perturb", "replogle_2022_k562", "K562", "k562"},
-    # T2D: no pancreas match available; K562 accepted as best proxy for now
-    "T2D":  {"replogle_2022_k562", "K562", "k562"},
+    # RA: CZI CD4+ T primary human cells (Stim8hr condition per Zhu et al. 2025 Fig 7A).
+    # K562 removed: Zhu et al. (2025) Fig 6B shows K562 yields no enrichment for
+    # lymphocyte count LoF burden signals vs primary CD4+ T cells.
+    "RA":   {"czi_2025_cd4t_perturb", "primary_CD4_T"},
 }
 
 # K562 is the catch-all fallback cell type identifier
@@ -134,9 +130,7 @@ def _is_cell_type_matched(cell_type: str, disease: str | None) -> bool:
     disease_upper = disease.upper().replace("-", "").replace(" ", "_")
     # Normalise common disease aliases
     _alias = {"CORONARY_ARTERY_DISEASE": "CAD",
-               "RHEUMATOID_ARTHRITIS": "RA", "SYSTEMIC_LUPUS_ERYTHEMATOSUS": "SLE",
-               "DRY_EYE_DISEASE": "DED", "DRY_EYE_SYNDROME": "DED",
-               "TYPE_2_DIABETES": "T2D"}
+               "RHEUMATOID_ARTHRITIS": "RA"}
     disease_key = _alias.get(disease_upper, disease_upper)
     matched = _CELL_TYPE_MATCHED_DATASETS.get(disease_key)
     if matched is None:
@@ -251,6 +245,29 @@ def _eqtl_gwas_direction_concordant(
     if abs(float(eqtl_nes)) < 1e-10 or abs(float(gwas_beta)) < 1e-10:
         return None
     return math.copysign(1.0, float(eqtl_nes)) == math.copysign(1.0, float(gwas_beta))
+
+
+# ---------------------------------------------------------------------------
+# Helper: cross-timepoint Perturb-seq concordance (Stim8hr vs Stim48hr)
+# ---------------------------------------------------------------------------
+
+def _timepoint_concordant(
+    beta_8hr: float | None,
+    beta_48hr: float | None,
+) -> bool:
+    """
+    Return True if Stim8hr and Stim48hr program betas agree in sign.
+
+    Same-assay cross-condition concordance: weaker than GWAS/eQTL concordance
+    (0.75 sigma factor) but still informative — Zhu et al. (2025) show that
+    regulator-burden correlations are enriched in both Stim8hr and Stim48hr
+    regulator clusters for autoimmune diseases.
+    """
+    if beta_8hr is None or beta_48hr is None:
+        return False
+    if abs(beta_8hr) < 1e-10 or abs(beta_48hr) < 1e-10:
+        return False
+    return (beta_8hr * beta_48hr) > 0
 
 
 def _coding_mechanism_gate(burden_data: dict | None) -> bool:
@@ -997,6 +1014,27 @@ def estimate_beta(
                             "beta_sigma widened to 0.60."
                         ],
                     }
+        # Cross-timepoint concordance check for CZI CD4+ T data (RA/SLE).
+        # Stim8hr is primary; check if Stim48hr agrees in sign for this program.
+        # Concordance → tighten beta_sigma by TIMEPOINT_CONCORDANCE_SIGMA_FACTOR (0.82).
+        _ds_used = beta.get("dataset_id", "") or cell_type
+        if disease in {"RA"} and _ds_used == "czi_2025_cd4t_perturb" and program_gene_set:
+            try:
+                from mcp_servers.perturbseq_server import get_program_beta_from_variant
+                _beta_48hr = get_program_beta_from_variant(
+                    gene, list(program_gene_set), "czi_2025_cd4t_perturb", "Stim48hr"
+                )
+                if _timepoint_concordant(beta.get("beta"), _beta_48hr):
+                    _sigma = float(beta.get("beta_sigma") or 0.5)
+                    beta = {
+                        **beta,
+                        "beta_sigma":           round(_sigma * TIMEPOINT_CONCORDANCE_SIGMA_FACTOR, 4),
+                        "timepoint_concordant": True,
+                        "beta_48hr":            round(float(_beta_48hr), 4) if _beta_48hr else None,
+                    }
+            except Exception:
+                pass  # Stim48hr not yet preprocessed — skip silently
+
         return {**beta, "gene": gene, "program": program, "tier_used": 1}
 
     # Tier 2p — pQTL-MR (protein-level instrument; UKB-PPP / INTERVAL / deCODE)

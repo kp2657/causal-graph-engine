@@ -314,7 +314,7 @@ class TestEqtlCatalogueServerHelpers(unittest.TestCase):
 
     def test_disease_cell_type_map_coverage(self):
         from mcp_servers.eqtl_catalogue_server import DISEASE_SC_EQTL_CELL_TYPES
-        required = {"CAD", "RA", "T2D", "MS", "T1D", "SLE"}
+        required = {"CAD", "RA"}
         self.assertTrue(required.issubset(set(DISEASE_SC_EQTL_CELL_TYPES.keys())))
 
     def test_pqtl_key_genes_cad(self):
@@ -354,7 +354,7 @@ class TestUkbWesServerHelpers(unittest.TestCase):
 
     def test_disease_burden_efo_coverage(self):
         from mcp_servers.ukb_wes_server import _DISEASE_BURDEN_EFO
-        required = {"CAD", "SLE"}
+        required = {"CAD", "RA"}
         self.assertTrue(required.issubset(set(_DISEASE_BURDEN_EFO.keys())))
 
     def test_get_burden_direction_returns_none_on_failure(self):
