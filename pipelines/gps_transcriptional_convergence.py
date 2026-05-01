@@ -39,13 +39,13 @@ def compute_gps_genetic_convergence(
     """
     # ------------------------------------------------------------------
     # Build compound_programs: compound_id → {program_id: |z_rges|}
-    # For program reversers: collect programs where |z_rges| >= min_z_rges
-    # For disease reversers: they reversed the full disease signature —
-    #   use all programs equally (uniform weight = 1.0)
+    # Only program reversers get entries here — disease reversers reversed the
+    # full signature and cannot be attributed to a specific program, so they
+    # receive no convergence hypothesis (avoids degenerate uniform-weight scores).
     # ------------------------------------------------------------------
     compound_programs: dict[str, dict[str, float]] = {}
 
-    # Program reversers: compound appears in specific programs
+    # Program reversers: compound appears in a specific program with known z_rges
     for prog_id, hits in program_reversers.items():
         for hit in hits:
             cid = hit.get("compound_id", "")
@@ -56,25 +56,12 @@ def compute_gps_genetic_convergence(
                 continue
             if cid not in compound_programs:
                 compound_programs[cid] = {}
-            # Keep the max z_rges if the compound appears in multiple programs
             existing = compound_programs[cid].get(prog_id, 0.0)
             compound_programs[cid][prog_id] = max(existing, z)
 
-    # Disease reversers: uniform weight across all programs that appear in anchors
-    all_anchor_programs: set[str] = set()
-    for anchor in genetic_anchors:
-        tp = anchor.get("top_programs") or {}
-        if isinstance(tp, dict):
-            all_anchor_programs.update(tp.keys())
-
-    for hit in disease_reversers:
-        cid = hit.get("compound_id", "")
-        if not cid:
-            continue
-        # Disease reversers don't have per-program z_rges — use uniform weight 1.0
-        # If already in compound_programs (also a program reverser), don't overwrite
-        if cid not in compound_programs:
-            compound_programs[cid] = {prog: 1.0 for prog in all_anchor_programs}
+    # Disease reversers: phenotypic hits — no per-program z_rges available.
+    # Uniform program weights are degenerate (identical for every compound).
+    # These compounds are annotated as "no_convergence_hypothesis" elsewhere.
 
     # ------------------------------------------------------------------
     # Build anchor_programs: gene → {program_id: |weight|}
@@ -90,8 +77,12 @@ def compute_gps_genetic_convergence(
         anchor_programs[gene] = {prog: abs(float(w)) for prog, w in tp.items() if w is not None}
 
     # ------------------------------------------------------------------
-    # Compute convergence scores for all compound × anchor pairs
+    # Compute convergence scores for compound × anchor pairs.
+    # score = Σ_P (z_rges_P × anchor_weight_P)  [unnormalized sum, not mean]
+    # Dividing by n_shared suppressed multi-program evidence; summing rewards it.
+    # Threshold replaced by top_n_per_compound to avoid scale-sensitivity.
     # ------------------------------------------------------------------
+    top_n_per_compound = 30
     result: dict[str, list[dict]] = {}
 
     for cid, comp_progs in compound_programs.items():
@@ -107,19 +98,18 @@ def compute_gps_genetic_convergence(
 
             n_shared = len(shared)
             score_sum = sum(comp_progs[p] * anc_progs[p] for p in shared)
-            convergence_score = score_sum / (n_shared + 1e-8)
 
-            if convergence_score >= min_convergence_score:
+            if score_sum > 0:
                 convergent.append({
                     "gene":              gene,
-                    "convergence_score": round(convergence_score, 4),
+                    "convergence_score": round(score_sum, 4),
                     "shared_programs":   sorted(shared),
                     "n_shared":          n_shared,
                 })
 
         if convergent:
             convergent.sort(key=lambda x: -x["convergence_score"])
-            result[cid] = convergent
+            result[cid] = convergent[:top_n_per_compound]
 
     log.debug(
         "GPS transcriptional convergence: %d/%d compounds have convergent anchors",

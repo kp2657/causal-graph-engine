@@ -88,9 +88,10 @@ def test_convergence_no_overlap():
 
 def test_convergence_score_formula():
     """
-    Convergence score = sum(z × w) / n_shared
+    Convergence score = sum(z_P × w_P) across shared programs (unnormalized).
     CMP1 on P1 (z=2.0), P2 (z=4.0); GENE_A on P1 (w=0.5), P2 (w=1.0)
-    score = (2.0*0.5 + 4.0*1.0) / 2 = (1.0 + 4.0) / 2 = 2.5
+    score = 2.0*0.5 + 4.0*1.0 = 5.0
+    Unnormalized sum rewards multi-program evidence without penalising n_shared.
     """
     program_reversers = {
         "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0)],
@@ -108,18 +109,19 @@ def test_convergence_score_formula():
 
     assert "CMP1" in result
     score = result["CMP1"][0]["convergence_score"]
-    expected = (2.0 * 0.5 + 4.0 * 1.0) / 2
+    expected = 2.0 * 0.5 + 4.0 * 1.0   # = 5.0
     assert abs(score - expected) < 1e-3
 
 
 # ---------------------------------------------------------------------------
-# Test 4: disease reverser (no program specificity) still gets convergence
+# Test 4: disease reversers have no per-program z_rges → no convergence hypothesis
 # ---------------------------------------------------------------------------
 
-def test_disease_reverser_gets_convergence():
+def test_disease_reverser_gets_no_convergence():
     """
-    Disease reversers have no per-program z_rges. They should still receive
-    convergence annotation using uniform weight = 1.0 across all anchor programs.
+    Disease reversers reversed the full disease signature but cannot be attributed
+    to a specific program. Uniform program weights are identical for every compound,
+    producing degenerate scores. They correctly receive no convergence hypothesis.
     """
     disease_reversers = [_make_disease_reverser("CMP_D")]
     anchors = [_make_anchor("GENE_B", {"P1": 0.7, "P2": 0.3})]
@@ -132,11 +134,8 @@ def test_disease_reverser_gets_convergence():
         min_convergence_score=0.0,
     )
 
-    assert "CMP_D" in result
-    assert len(result["CMP_D"]) == 1
-    assert result["CMP_D"][0]["gene"] == "GENE_B"
-    # Both P1 and P2 should be shared (disease reverser gets all anchor programs)
-    assert result["CMP_D"][0]["n_shared"] == 2
+    # Disease-only reversers get no compound_programs entry → not in result
+    assert "CMP_D" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +143,11 @@ def test_disease_reverser_gets_convergence():
 # ---------------------------------------------------------------------------
 
 def test_annotate_adds_field():
-    """After annotation, reverser dicts have 'convergent_genetic_targets_hypothesis' key."""
+    """
+    After annotation:
+    - Program reversers get 'convergent_genetic_targets_hypothesis' populated with hits.
+    - Disease reversers get the key set to [] (no per-program z_rges → no hypothesis).
+    """
     disease_reversers = [_make_disease_reverser("CMP_A")]
     program_reversers = {
         "P1": [_make_program_reverser("CMP_B", "P1", z_rges=2.5)],
@@ -157,13 +160,15 @@ def test_annotate_adds_field():
         genetic_anchors=anchors,
     )
 
-    # Disease reverser should have the key
+    # Disease reverser: key must exist, list is empty (phenotypic hit, unresolved mechanism)
     assert "annotation" in dr_out[0]
     assert "convergent_genetic_targets_hypothesis" in dr_out[0]["annotation"]
+    assert dr_out[0]["annotation"]["convergent_genetic_targets_hypothesis"] == []
 
-    # Program reverser should have the key
+    # Program reverser: key exists and contains GENE_C
     assert "annotation" in pr_out["P1"][0]
-    assert "convergent_genetic_targets_hypothesis" in pr_out["P1"][0]["annotation"]
+    targets = pr_out["P1"][0]["annotation"]["convergent_genetic_targets_hypothesis"]
+    assert any(t["gene"] == "GENE_C" for t in targets)
 
 
 # ---------------------------------------------------------------------------
