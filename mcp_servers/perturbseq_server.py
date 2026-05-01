@@ -1067,7 +1067,7 @@ def compute_svd_nomination_scores(
     except ImportError:
         return []
 
-    from config.scoring_thresholds import FINGERPRINT_SVD_COSINE_MIN, FINGERPRINT_MAX_NONGWAS_NOMINEES
+    from config.scoring_thresholds import FINGERPRINT_SVD_COSINE_MIN
 
     npz_path = _npz_path(dataset_id)
     if not npz_path.exists():
@@ -1097,7 +1097,8 @@ def compute_svd_nomination_scores(
     centroid_hat = centroid / centroid_norm
 
     _min_cos = min_cosine if min_cosine is not None else FINGERPRINT_SVD_COSINE_MIN
-    _max_k   = top_k      if top_k      is not None else FINGERPRINT_MAX_NONGWAS_NOMINEES
+    # top_k retained as an optional override for tests; default None = no cap
+    # (the cosine threshold is the principled gate — a count cap is size-dependent)
 
     results: list[dict] = []
     for i, (pname, pupper) in enumerate(zip(pert_names, pert_upper)):
@@ -1116,7 +1117,7 @@ def compute_svd_nomination_scores(
         "SVD nomination: %d non-GWAS candidates (cosine≥%.2f) for %s",
         len(results), _min_cos, dataset_id,
     )
-    return results[:_max_k]
+    return results[:top_k] if top_k is not None else results
 
 
 def map_disease_to_fingerprints(

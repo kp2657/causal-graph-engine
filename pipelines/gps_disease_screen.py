@@ -360,50 +360,9 @@ def run_gps_disease_screens(
     # This ordering avoids os.fork() while httpx threads are alive (fork-safety).
     # ------------------------------------------------------------------
 
-    # Annotate disease-state reversers (deferred from screen step above).
-    if disease_reversers:
-        if target_gene_whitelist is not None:
-            disease_reversers = [
-                h for h in disease_reversers
-                if not h.get("putative_targets")
-                or any(t in target_gene_whitelist for t in (h.get("putative_targets") or []))
-            ]
-        if disease_reversers:
-            log.info("GPS: annotating %d disease-state reversers via PubChem + ChEMBL",
-                     len(disease_reversers))
-            disease_reversers = annotate_gps_compounds(disease_reversers)
-
-    all_prog_hits: list[dict] = [h for hits in program_reversers.values() for h in hits]
-    if all_prog_hits:
-        seen_ids: set[str] = set()
-        unique_prog_hits: list[dict] = []
-        for h in all_prog_hits:
-            cid = h.get("compound_id", "")
-            if cid not in seen_ids:
-                seen_ids.add(cid)
-                unique_prog_hits.append(h)
-        log.info(
-            "GPS annotating %d unique program compounds (%d total across %d programs) "
-            "via PubChem + ChEMBL",
-            len(unique_prog_hits), len(all_prog_hits), len(program_reversers),
-        )
-        if target_gene_whitelist is not None:
-            unique_prog_hits = [
-                h for h in unique_prog_hits
-                if not h.get("putative_targets")
-                or any(t in target_gene_whitelist for t in (h.get("putative_targets") or []))
-            ]
-        annotated_unique = annotate_gps_compounds(unique_prog_hits)
-        ann_by_id: dict[str, dict] = {
-            a.get("annotation", {}).get("compound_id", a.get("compound_id", "")): a.get("annotation", {})
-            for a in annotated_unique
-        }
-        # Backfill annotation into all hits (including duplicates across programs)
-        for prog_id, hits in program_reversers.items():
-            program_reversers[prog_id] = [
-                {**h, "annotation": ann_by_id.get(h.get("compound_id", ""), {})}
-                for h in hits
-            ]
+    # ChEMBL/PubChem target annotation dropped — returns low-signal for novel
+    # catalog compounds and costs ~2 min per run. SMILES/MW lookup retained
+    # only in gps_convergence for priority compounds.
 
     # ------------------------------------------------------------------
     # Transcriptional convergence annotation: for each reverser, find

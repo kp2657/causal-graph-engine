@@ -431,23 +431,82 @@ def _parse_gps_output(
     for i, r in enumerate(results, 1):
         r["rank"] = i
 
-    # Z_RGES threshold — governs when GPS output is z-scored against permuted null
+    # Z_RGES threshold — governs when GPS output is z-scored against permuted null.
+    # Primary path: data-driven step-off detection (largest gap ≥ GPS_Z_STEPOFF_MIN_RATIO
+    # × median gap in signal region). Falls back to floor z_threshold if no gap found.
     if has_z_rges and z_threshold is not None:
-        above_threshold = [r for r in results if r["rges"] < -z_threshold]
+        from config.scoring_thresholds import GPS_Z_STEPOFF_MIN_RATIO
+        z_vals = [r["rges"] for r in results]
+        stepoff = _find_z_stepoff(z_vals, floor_z=z_threshold, min_ratio=GPS_Z_STEPOFF_MIN_RATIO)
+        if stepoff is not None:
+            effective_cutoff = stepoff
+            log.info(
+                "GPS Z_RGES step-off detected at %.2f (floor=%.1f, ratio=%.1f): "
+                "using data-driven boundary",
+                effective_cutoff, z_threshold, GPS_Z_STEPOFF_MIN_RATIO,
+            )
+        else:
+            effective_cutoff = z_threshold
+            log.info(
+                "GPS Z_RGES no step-off found; applying floor threshold %.1f",
+                effective_cutoff,
+            )
+        above_threshold = [r for r in results if r["rges"] < -effective_cutoff]
         if len(above_threshold) >= 3:
             log.info(
-                "GPS Z_RGES cutoff: %d/%d compounds pass Z_RGES < -%.1f",
-                len(above_threshold), len(results), z_threshold,
+                "GPS Z_RGES cutoff: %d/%d compounds pass Z_RGES < -%.2f",
+                len(above_threshold), len(results), effective_cutoff,
             )
             return above_threshold
         else:
             log.info(
-                "GPS Z_RGES cutoff: only %d compounds pass Z_RGES < -%.1f "
+                "GPS Z_RGES cutoff: only %d compounds pass Z_RGES < -%.2f "
                 "(BGRD may have too few perms); falling back to top_%d",
-                len(above_threshold), z_threshold, top_n,
+                len(above_threshold), effective_cutoff, top_n,
             )
 
     return results[:top_n]
+
+
+def _find_z_stepoff(
+    z_scores: list[float],
+    floor_z: float = 2.0,
+    min_ratio: float = 3.0,
+) -> float | None:
+    """
+    Find the natural signal/noise boundary in a sorted Z_RGES distribution.
+
+    Looks for the largest gap between consecutive Z values in the signal region
+    (|Z| > floor_z). Accepts a gap as a step-off boundary if it is ≥ min_ratio
+    times the median inter-compound gap across the whole signal region.
+
+    Returns the absolute Z value at the gap midpoint (as a positive threshold),
+    or None if no clear step-off is found.
+    """
+    import statistics
+
+    # Work with absolute values; only consider the signal region
+    signal = sorted([abs(z) for z in z_scores if abs(z) > floor_z], reverse=True)
+    if len(signal) < 4:
+        return None
+
+    gaps = [signal[i] - signal[i + 1] for i in range(len(signal) - 1)]
+    if not gaps:
+        return None
+
+    median_gap = statistics.median(gaps)
+    if median_gap <= 0:
+        return None
+
+    max_gap_idx = max(range(len(gaps)), key=lambda i: gaps[i])
+    max_gap = gaps[max_gap_idx]
+
+    if max_gap < min_ratio * median_gap:
+        return None
+
+    # Threshold = midpoint of the gap (values left of gap are signal)
+    threshold = (signal[max_gap_idx] + signal[max_gap_idx + 1]) / 2.0
+    return threshold
 
 
 def _pick_col(headers: list[str], candidates: list[str]) -> str | None:

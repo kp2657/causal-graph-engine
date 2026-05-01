@@ -226,9 +226,20 @@ FINGERPRINT_SVD_COSINE_MIN: float = 0.30
 # fingerprint-based candidate. Genes below this threshold co-vary in latent
 # directions unrelated to the GWAS signal and are not nominated.
 
-FINGERPRINT_MAX_NONGWAS_NOMINEES: int = 300
-# Maximum number of non-GWAS genes added to the candidate list via SVD cosine
-# nomination per run. Keeps the β matrix computation tractable.
+FINGERPRINT_DISEASE_R_THRESHOLD: float = 0.20
+# Minimum |r| required for a Perturb-seq KO to be nominated as a disease-fingerprint
+# candidate. Only KOs with r ≤ −FINGERPRINT_DISEASE_R_THRESHOLD (i.e. KO anti-correlates
+# with the disease DEG profile) pass the floor gate. After this gate, nominees are
+# further capped at FINGERPRINT_MAX_FP_NOMINEES (top-N by most negative r) to prevent
+# the smooth r distribution from flooding the gene list.
+# RA calibration: IL6R r=−0.241 passes at 0.20; DHODH r=−0.137 / TYK2 r=−0.168 do not
+# but are recovered via SVD cosine path (cosine ≥ 0.30 in GWAS centroid space).
+
+FINGERPRINT_MAX_FP_NOMINEES: int = 200
+# Hard cap on the number of disease-fingerprint nominees added per run (after r floor gate).
+# The r distribution is smooth with no natural gap, so a top-N cap prevents the fingerprint
+# path from dominating the gene list. 200 adds O(200) functionally-driven reversal candidates
+# on top of O(50–450) SVD cosine nominees. Genes are taken in order of most negative r.
 
 USE_SVD_GENE_NOMINATION: bool = True
 # When True, the orchestrator replaces the full Perturb-seq union (all KO genes)
@@ -336,14 +347,22 @@ GPS_Z_RGES_DEFAULT: float = 3.5
 # The threshold governs the z-scored path; GPS_MAX_HITS is only the non-z-scored fallback cap.
 # Source: [GPS] — connectivity-map approach; Z-threshold selection is application-specific.
 
-GPS_Z_RGES_PROGRAM: float = 2.0
-# Z_RGES threshold for program-level GPS screens (lower than disease-state threshold).
-# Program signatures are smaller (~50–200 genes vs ~500 for disease-state), producing
-# fewer reverters per screen. 2.0σ balances sensitivity vs. noise for program screens.
+GPS_Z_RGES_PROGRAM: float = 3.5
+# Z_RGES threshold for program-level GPS screens. Matched to GPS_Z_RGES_DEFAULT (3.5σ):
+# the BGRD permutation normalises for signature size, so Z-scores are comparable across
+# disease-state and program screens. 2.0σ produced ~4,149 hits (19.6% of the LINCS
+# library) — no discriminative power. 3.5σ gives O(10–100) hits per program.
 
 GPS_MAX_HITS: int = 500
 # Safety cap for the non-z-scored GPS fallback path (top_n by |RGES|).
 # Not applied when GPS output contains Z_RGES column — threshold governs in that case.
+
+GPS_Z_STEPOFF_MIN_RATIO: float = 3.0
+# Gap-detection sensitivity for the Z_RGES step-off threshold.
+# The step-off is the largest gap in the sorted Z distribution.
+# A gap is accepted as a real signal/noise boundary only when it is at least
+# GPS_Z_STEPOFF_MIN_RATIO × the median inter-compound gap.
+# Larger values = stricter (fewer hits); 3.0 requires the gap to be 3× typical spacing.
 
 GPS_BGRD_MIN_GENES: int = 500
 # Minimum signature genes for BGRD elbow-trim. GPS sets n_permutations=n_sig_genes;

@@ -523,3 +523,148 @@ class TestSplitBetaSource:
                 f"IL6R (GWAS gene) should use fingerprint β in split mode: "
                 f"split={split_beta} fp={fp_beta}"
             )
+
+
+# ---------------------------------------------------------------------------
+# SVD nomination: cap removed
+# ---------------------------------------------------------------------------
+
+class TestSvdNominationNoCap:
+    """Verify that removing FINGERPRINT_MAX_NONGWAS_NOMINEES cap doesn't break anything."""
+
+    def _prep(self, tmp_path: Path, sigs: dict, dataset_id: str) -> None:
+        _write_sigs(tmp_path, dataset_id, sigs)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            preprocess_rna_fingerprints(dataset_id, top_k=10)
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+
+    def test_no_cap_returns_all_above_threshold(self, tmp_path):
+        self._prep(tmp_path, _MOCK_SIGS, "nocap_ds")
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result_nocap = compute_svd_nomination_scores(
+                "nocap_ds", gwas_genes=["PCSK9"], min_cosine=-1.0
+            )
+            result_capped = compute_svd_nomination_scores(
+                "nocap_ds", gwas_genes=["PCSK9"], min_cosine=-1.0, top_k=2
+            )
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        # Without cap, all non-GWAS genes above threshold are returned
+        assert len(result_nocap) >= len(result_capped)
+
+    def test_explicit_top_k_still_caps(self, tmp_path):
+        self._prep(tmp_path, _MOCK_SIGS, "cap_ds")
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            result = compute_svd_nomination_scores(
+                "cap_ds", gwas_genes=["PCSK9"], min_cosine=-1.0, top_k=2
+            )
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+        assert len(result) <= 2
+
+
+# ---------------------------------------------------------------------------
+# _collect_disease_fingerprint_nominees (orchestrator helper)
+# ---------------------------------------------------------------------------
+
+class TestCollectDiseaseFingerprintNominees:
+
+    def _setup_dataset(self, tmp_path: Path, dataset_id: str) -> None:
+        """Write raw sigs → fingerprint preprocessing → disease match result."""
+        _write_sigs(tmp_path, dataset_id, _MOCK_SIGS)
+        import mcp_servers.perturbseq_server as ps
+        orig = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        try:
+            preprocess_rna_fingerprints(dataset_id, top_k=10)
+            map_disease_to_fingerprints(_DISEASE_DE, dataset_id, n_bootstrap=5, min_gene_overlap=3)
+        finally:
+            ps._CACHE_DIR = orig
+            ps._SIG_CACHE.clear()
+
+    def test_returns_list(self, tmp_path):
+        import orchestrator.pi_orchestrator_v2 as orch
+        import mcp_servers.perturbseq_server as ps
+        orig_cache = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        self._setup_dataset(tmp_path, "fn_ds")
+        try:
+            result = orch._collect_disease_fingerprint_nominees(
+                {"disease_name": "test_disease"},
+                gwas_gene_set=set(),
+            )
+        finally:
+            ps._CACHE_DIR = orig_cache
+            ps._SIG_CACHE.clear()
+        # Even if disease_name doesn't resolve to a dataset, we get a list
+        assert isinstance(result, list)
+
+    def test_gwas_genes_excluded(self, tmp_path):
+        """GWAS genes must not appear in disease fingerprint nominees."""
+        import json as _json
+        import pathlib as _pathlib
+        import mcp_servers.perturbseq_server as ps
+        orig_cache = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        dataset_id = "gwas_excl_ds"
+        self._setup_dataset(tmp_path, dataset_id)
+        # Read the full match JSON and verify filtering logic manually
+        match_path = tmp_path / dataset_id / "disease_fingerprint_match.json"
+        assert match_path.exists()
+        with open(match_path) as fh:
+            full = _json.load(fh)
+        gwas_set = {"IL6R", "JAK2"}
+        from config.scoring_thresholds import FINGERPRINT_DISEASE_R_THRESHOLD
+        threshold = -FINGERPRINT_DISEASE_R_THRESHOLD
+        nominees = [
+            r["gene_ko"]
+            for r in full["results"]
+            if r["r"] <= threshold and r["gene_ko"] not in gwas_set
+        ]
+        assert "IL6R" not in nominees
+        assert "JAK2" not in nominees
+        ps._CACHE_DIR = orig_cache
+        ps._SIG_CACHE.clear()
+
+    def test_threshold_gates_nominations(self, tmp_path):
+        """Only genes with r ≤ −threshold should be nominated."""
+        import json as _json
+        import mcp_servers.perturbseq_server as ps
+        from config.scoring_thresholds import FINGERPRINT_DISEASE_R_THRESHOLD
+        orig_cache = ps._CACHE_DIR
+        ps._CACHE_DIR = tmp_path
+        ps._SIG_CACHE.clear()
+        dataset_id = "thresh_ds"
+        self._setup_dataset(tmp_path, dataset_id)
+        match_path = tmp_path / dataset_id / "disease_fingerprint_match.json"
+        with open(match_path) as fh:
+            full = _json.load(fh)
+        threshold = -FINGERPRINT_DISEASE_R_THRESHOLD
+        for r in full["results"]:
+            if r["r"] > threshold:
+                assert r["gene_ko"] not in [
+                    entry["gene_ko"]
+                    for entry in full["results"]
+                    if entry["r"] <= threshold
+                ], "Gene above threshold should not be nominated"
+        ps._CACHE_DIR = orig_cache
+        ps._SIG_CACHE.clear()

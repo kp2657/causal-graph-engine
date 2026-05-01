@@ -466,6 +466,86 @@ def _collect_perturbseq_genes(disease_query: dict) -> list[str]:
         return []
 
 
+def _collect_disease_fingerprint_nominees(
+    disease_query: dict,
+    gwas_gene_set: set[str],
+) -> list[str]:
+    """
+    Return Perturb-seq genes whose KO anti-correlates with the disease DEG profile.
+
+    Complements SVD cosine nomination (genetic-architecture proximity) with functional
+    reversal: genes whose knockout transcriptionally reverses the disease state are
+    therapeutic candidates even if they don't strongly co-load with GWAS anchors.
+
+    Uses map_disease_to_fingerprints (Pearson r) on the full h5ad DEG vector.
+    Nominees must satisfy r ≤ −FINGERPRINT_DISEASE_R_THRESHOLD.
+    """
+    disease_name = (disease_query.get("disease_name") or "").lower()
+    dataset_id: str | None = None
+    try:
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        short_key = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name, "")
+        if short_key and short_key in DISEASE_CELL_TYPE_MAP:
+            dataset_id = DISEASE_CELL_TYPE_MAP[short_key].get("scperturb_dataset")
+    except Exception:
+        pass
+
+    if not dataset_id:
+        return []
+
+    try:
+        import json as _json
+        import pathlib as _pathlib
+        from config.scoring_thresholds import FINGERPRINT_DISEASE_R_THRESHOLD, FINGERPRINT_MAX_FP_NOMINEES
+
+        # Cache: reuse existing match JSON if present — map_disease_to_fingerprints is
+        # expensive (~1 min for 11k KOs) and the result is stable across runs.
+        from mcp_servers.perturbseq_server import _CACHE_DIR
+        cached_path = _pathlib.Path(_CACHE_DIR) / dataset_id / "disease_fingerprint_match.json"
+        if cached_path.exists():
+            with open(cached_path) as fh:
+                full = _json.load(fh)
+            _log("FINGERPRINT_CACHE", "_collect_disease_fingerprint_nominees",
+                 f"loaded {full.get('n_matched', '?')} matched KOs from cache ({dataset_id})")
+        else:
+            from pipelines.gps_disease_screen import _build_sig_from_h5ad
+            from mcp_servers.perturbseq_server import map_disease_to_fingerprints
+
+            disease_de = _build_sig_from_h5ad(disease_query, gps_genes=None, elbow_trim=False)
+            if not disease_de:
+                _log("FINGERPRINT_NOM_FAIL", "_collect_disease_fingerprint_nominees",
+                     "no h5ad DEG available")
+                return []
+
+            match = map_disease_to_fingerprints(disease_de, dataset_id)
+            if "error" in match:
+                _log("FINGERPRINT_NOM_FAIL", "_collect_disease_fingerprint_nominees", match["error"])
+                return []
+
+            with open(match["output_path"]) as fh:
+                full = _json.load(fh)
+
+        # r floor gate, then top-N cap (r distribution is smooth — no natural gap)
+        threshold = -FINGERPRINT_DISEASE_R_THRESHOLD
+        # results are sorted r descending (most positive first); reverse for most negative
+        by_r = sorted(full["results"], key=lambda x: x["r"])
+        passed_floor = [
+            r["gene_ko"]
+            for r in by_r
+            if r["r"] <= threshold and r["gene_ko"] not in gwas_gene_set
+        ]
+        nominees = passed_floor[:FINGERPRINT_MAX_FP_NOMINEES]
+        _log(
+            "FINGERPRINT_NOM",
+            "_collect_disease_fingerprint_nominees",
+            f"{len(nominees)} disease-fingerprint nominees (r≤{threshold:.2f}, top-{FINGERPRINT_MAX_FP_NOMINEES}) from {dataset_id}",
+        )
+        return nominees
+    except Exception as exc:
+        _log("FINGERPRINT_NOM_FAIL", "_collect_disease_fingerprint_nominees", str(exc))
+        return []
+
+
 def _collect_svd_nominees(disease_query: dict, gwas_gene_list: list[str]) -> list[str]:
     """
     Return non-GWAS Perturb-seq genes nominated by SVD cosine similarity.
@@ -627,23 +707,39 @@ def analyze_disease_v2(
     gene_list, gwas_ot_scores, ot_disease_targets_cache = _collect_gene_list(disease_query, genetics_result)
     gwas_gene_list = list(gene_list)
 
-    # Non-GWAS Perturb-seq nominees: SVD cosine-gated (USE_SVD_GENE_NOMINATION=True,
-    # default) or full KO union (False, legacy behaviour).
-    # SVD gate: only non-GWAS genes co-regulated with the GWAS centroid in latent
-    # SVD space (cosine ≥ FINGERPRINT_SVD_COSINE_MIN) enter the pipeline.  This
-    # collapses ~2000 perturb-seq-only mechanistic candidates to ~50 principled
-    # nominees, keeping the target list interpretable.
+    # Non-GWAS Perturb-seq nominees: two complementary nomination paths, then union.
+    #
+    # Path 1 — SVD cosine (USE_SVD_GENE_NOMINATION=True, default):
+    #   Genes co-regulated with GWAS anchors in truncated SVD space (genetic-architecture
+    #   proximity). Gate: cosine ≥ FINGERPRINT_SVD_COSINE_MIN. No count cap — the
+    #   cosine threshold is the principled selector.
+    #
+    # Path 2 — Disease fingerprint (always active when Path 1 is active):
+    #   Genes whose KO anti-correlates with the disease DEG profile (functional reversal).
+    #   Gate: Pearson r ≤ −FINGERPRINT_DISEASE_R_THRESHOLD. Recovers known targets
+    #   that co-load weakly with GWAS anchors (e.g. IL6R in RA).
+    #
+    # Legacy fallback (USE_SVD_GENE_NOMINATION=False): full Perturb-seq union.
     try:
         from config.scoring_thresholds import USE_SVD_GENE_NOMINATION
     except Exception:
         USE_SVD_GENE_NOMINATION = False
 
     if USE_SVD_GENE_NOMINATION:
-        perturb_only_genes = _collect_svd_nominees(disease_query, gwas_gene_list)
-        _log("SVD_UNION", "gene_list",
-             f"added {len(perturb_only_genes)} SVD-nominated non-GWAS genes "
-             f"(total {len(gwas_gene_list) + len(perturb_only_genes)}: "
-             f"{len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} SVD nominees)")
+        gwas_set = set(gwas_gene_list)
+        svd_nominees = _collect_svd_nominees(disease_query, gwas_gene_list)
+        svd_set = set(svd_nominees)
+        fp_nominees = _collect_disease_fingerprint_nominees(disease_query, gwas_set)
+        fp_novel = [g for g in fp_nominees if g not in gwas_set and g not in svd_set]
+        perturb_only_genes = svd_nominees + fp_novel
+        _log(
+            "NOMINATION_UNION",
+            "gene_list",
+            f"{len(svd_nominees)} SVD + {len(fp_novel)} fingerprint-novel = "
+            f"{len(perturb_only_genes)} non-GWAS nominees "
+            f"(total {len(gwas_gene_list) + len(perturb_only_genes)}: "
+            f"{len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} nominated)",
+        )
     else:
         perturb_genes = _collect_perturbseq_genes(disease_query)
         perturb_only_genes = [g for g in perturb_genes if g not in gwas_gene_list]
