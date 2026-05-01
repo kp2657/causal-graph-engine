@@ -1,28 +1,24 @@
 """
-Long-island Manhattan plot — transcriptional fingerprint landscape.
+Long-island multi-panel plot — transcriptional fingerprint landscape.
 
-Modelled on Grabski/Satija RNA fingerprinting (bioRxiv 2025).
+Panel 0  — Disease state: all KOs, y = fingerprint_r (KO vs disease DEG).
+Panel 1…N — One per NMF program with ≥MIN_PROG_TARGETS OTA genes:
+             background grey, program OTA genes highlighted,
+             GPS program reversers placed at convergence-target x-position.
 
-X-axis: ALL gene KOs in the Perturb-seq library, ordered by hierarchical
-        clustering of their 30-dim SVD fingerprint vectors, weighted by each
-        dimension's correlation with disease fingerprint_r.  Genes that modify
-        disease via the same transcriptional axes cluster together.
+X-axis (shared): all Perturb-seq KOs ordered by disease-weighted hierarchical
+clustering of 30-dim SVD fingerprints.  Genes that modify the disease via the
+same transcriptional axes cluster together (islands).
 
-Y-axis: fingerprint r — Pearson r of each gene's KO profile vs the disease
-        DEG vector.  Negative = KO reverses disease state (therapeutic).
-        Positive = KO mimics disease.
-
-Visual structure:
-  - Background dots colored by k-means cluster; blue = therapeutic island,
-    red = disease-amplifying island, grey = neutral
-  - Cluster regions shaded at low opacity to make islands pop
-  - Cluster boundaries marked; top OTA gene per island annotated
-  - OTA targets overlaid as colored circles (by NMF program), Tier1 larger
-  - GPS compounds shown as ranked bar chart (no false x-axis placement)
+GPS compound placement in program panels:
+  x = score-weighted mean x-position of the compound's convergence target genes
+  y = mean fingerprint_r of those targets
+  This is now valid: convergence targets are gene-specific (fixed score bug).
 
 Usage:
     python outputs/plot_long_island.py --disease ra
     python outputs/plot_long_island.py --disease cad
+    python outputs/plot_long_island.py --disease ra --n_islands 14
 """
 from __future__ import annotations
 
@@ -31,8 +27,14 @@ import json
 import pathlib
 import sys
 import math
+from collections import defaultdict
 
 import numpy as np
+
+# Allow running as `python outputs/plot_long_island.py` from project root
+_PROJECT_ROOT = pathlib.Path(__file__).parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 _DISEASE_CONFIG = {
     "ra": {
@@ -54,14 +56,16 @@ _PROG_PALETTE = [
     "#00695C","#4527A0","#F57F17","#37474F","#AD1457",
 ]
 
+MIN_PROG_TARGETS = 10   # minimum OTA genes with fingerprint_r to render a program panel
+
+
 # ─── loaders ──────────────────────────────────────────────────────────────────
 
 def _load_ck(slug: str) -> dict:
     p = pathlib.Path(f"data/checkpoints/{slug}__tier4.json")
     if not p.exists():
         sys.exit(f"Tier-4 checkpoint not found: {p}")
-    with open(p) as f:
-        return json.load(f)
+    return json.load(open(p))
 
 
 def _load_t3(slug: str) -> dict:
@@ -69,17 +73,16 @@ def _load_t3(slug: str) -> dict:
     return json.load(open(p)) if p.exists() else {}
 
 
-def _load_svd(dataset_id: str) -> tuple[np.ndarray, np.ndarray]:
+def _load_svd(dataset_id: str) -> tuple[np.ndarray, list[str]]:
     d = np.load(f"data/perturbseq/{dataset_id}/svd_loadings.npz")
-    return d["Vt"].T, d["pert_names"]   # (n_genes, 30), (n_genes,)
+    return d["Vt"].T, list(d["pert_names"])
 
 
 def _load_fp_r(dataset_id: str) -> dict[str, float]:
     p = pathlib.Path(f"data/perturbseq/{dataset_id}/disease_fingerprint_match.json")
     if not p.exists():
         return {}
-    with open(p) as f:
-        d = json.load(f)
+    d = json.load(open(p))
     return {e["gene_ko"]: e["r"] for e in d["results"]}
 
 
@@ -99,67 +102,159 @@ def _prog_gamma(t3: dict, disease_key: str) -> dict[str, float]:
 
 # ─── disease-weighted clustering ──────────────────────────────────────────────
 
-def _disease_weighted_fingerprints(fp: np.ndarray, all_r: np.ndarray) -> np.ndarray:
+def _build_layout(fp: np.ndarray, all_r: np.ndarray,
+                  n_islands: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Scale each SVD dimension by |Pearson r(dimension loadings, fingerprint_r)|.
-    Emphasises axes that co-vary with disease outcome; suppresses noise dimensions.
+    Returns (x_pos, xi_to_cluster, link_Z).
+    x_pos[i] = x-axis position of gene i.
     """
+    from scipy.cluster.hierarchy import linkage, leaves_list, fcluster
+    from scipy.spatial.distance import pdist
+
+    # Weight SVD dims by correlation with fingerprint_r
     fp_w = fp.copy()
     valid = ~np.isnan(all_r)
-    if valid.sum() < 4:
-        return fp_w
-    dim_weights = np.zeros(fp.shape[1])
-    for k in range(fp.shape[1]):
-        x = fp[valid, k]; y = all_r[valid]
-        xm, ym = x - x.mean(), y - y.mean()
-        denom = np.sqrt((xm**2).sum() * (ym**2).sum())
-        dim_weights[k] = abs(xm @ ym / denom) if denom > 1e-12 else 0.0
-    w_sum = dim_weights.sum()
-    if w_sum > 1e-12:
-        dim_weights = dim_weights / w_sum * fp.shape[1]
-    return fp_w * dim_weights[np.newaxis, :]
+    if valid.sum() >= 4:
+        dw = np.zeros(fp.shape[1])
+        for k in range(fp.shape[1]):
+            x = fp[valid, k]; y = all_r[valid]
+            xm, ym = x - x.mean(), y - y.mean()
+            den = np.sqrt((xm**2).sum() * (ym**2).sum())
+            dw[k] = abs(xm @ ym / den) if den > 1e-12 else 0.0
+        ws = dw.sum()
+        if ws > 1e-12:
+            dw = dw / ws * fp.shape[1]
+        fp_w *= dw[np.newaxis, :]
 
-
-def _cluster_order(fp_w: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Ward linkage on cosine distance of disease-weighted fingerprints.
-    Returns (order, linkage_Z).
-    """
-    from scipy.cluster.hierarchy import linkage, leaves_list
-    from scipy.spatial.distance import pdist
     norms = np.linalg.norm(fp_w, axis=1, keepdims=True)
     norms[norms == 0] = 1.0
     fp_norm = fp_w / norms
-    dists = pdist(fp_norm, metric="cosine")
-    Z = linkage(dists, method="ward")
-    return leaves_list(Z), Z
+
+    dists  = pdist(fp_norm, metric="cosine")
+    Z      = linkage(dists, method="ward")
+    order  = leaves_list(Z)
+    labels = fcluster(Z, n_islands, criterion="maxclust")
+
+    x_pos = np.empty(len(order), dtype=int)
+    x_pos[order] = np.arange(len(order))
+
+    # xi_to_cluster[xi] = cluster label
+    xi_to_cluster = np.empty(len(order), dtype=int)
+    for i in range(len(order)):
+        xi_to_cluster[x_pos[i]] = labels[i]
+
+    return x_pos, xi_to_cluster, Z, labels
 
 
-def _assign_clusters(Z: np.ndarray, n_clusters: int) -> np.ndarray:
-    from scipy.cluster.hierarchy import fcluster
-    return fcluster(Z, n_clusters, criterion="maxclust")
+# ─── cluster metadata ─────────────────────────────────────────────────────────
 
-
-# ─── island colour map ────────────────────────────────────────────────────────
-
-def _island_color(mean_r: float, alpha: float = 1.0) -> str:
-    """
-    Map mean cluster r to a colour:
-      mean_r <= -0.15  → blue  (strong therapeutic)
-      mean_r >= +0.15  → red   (strong disease-amplifying)
-      in-between        → grey
-    Returns hex string.
-    """
-    import matplotlib.colors as mcolors
+def _island_color(mean_r: float) -> str:
+    import matplotlib.colors as mc
     if mean_r <= -0.15:
         t = min(1.0, abs(mean_r) / 0.4)
-        r, g, b = 0.13 + (1-t)*0.60, 0.47 + (1-t)*0.30, 0.71 + (1-t)*0.20
+        rgb = (0.13 + (1-t)*0.60, 0.47 + (1-t)*0.30, 0.71 + (1-t)*0.20)
     elif mean_r >= 0.15:
         t = min(1.0, mean_r / 0.4)
-        r, g, b = 0.80 + t*0.10, 0.20 - t*0.10, 0.20 - t*0.10
+        rgb = (0.80 + t*0.10, 0.20 - t*0.10, 0.20 - t*0.10)
     else:
-        r, g, b = 0.75, 0.75, 0.75
-    return mcolors.to_hex((r, g, b))
+        rgb = (0.75, 0.75, 0.75)
+    return mc.to_hex(rgb)
+
+
+def _build_cluster_meta(n_genes, fp_names, labels, x_pos, all_r, ota_genes):
+    import numpy as np
+    cluster_xi:  dict[int, list[int]]           = defaultdict(list)
+    cluster_r:   dict[int, list[float]]         = defaultdict(list)
+    cluster_ota: dict[int, list[tuple[str,float]]] = defaultdict(list)
+
+    for i in range(n_genes):
+        c = labels[i]; xi = x_pos[i]; r = all_r[i]
+        cluster_xi[c].append(xi)
+        if not math.isnan(r):
+            cluster_r[c].append(r)
+        if fp_names[i] in ota_genes and not math.isnan(r):
+            cluster_ota[c].append((fp_names[i], r))
+
+    meta: dict[int, dict] = {}
+    for c in cluster_xi:
+        xs     = cluster_xi[c]
+        mean_r = float(np.mean(cluster_r.get(c, [0.0])))
+        top_ota = sorted(cluster_ota.get(c, []), key=lambda t: t[1])
+        meta[c] = {
+            "x_min":   min(xs), "x_max": max(xs),
+            "x_mid":   (min(xs) + max(xs)) / 2,
+            "mean_r":  mean_r,
+            "top_ota": top_ota[0][0] if top_ota else None,
+            "color":   _island_color(mean_r),
+        }
+    return meta
+
+
+# ─── helpers for a single panel ───────────────────────────────────────────────
+
+def _draw_islands(ax, cluster_meta):
+    """Shade cluster regions and draw boundary hairlines."""
+    import matplotlib.colors as mc, numpy as np
+    for c, meta in cluster_meta.items():
+        rgb  = np.array(mc.to_rgb(meta["color"]))
+        grey = np.array([0.97, 0.97, 0.97])
+        shade = tuple(0.18 * rgb + 0.82 * grey)
+        ax.axvspan(meta["x_min"] - 0.5, meta["x_max"] + 0.5,
+                   color=shade, alpha=1.0, zorder=0, linewidth=0)
+        ax.axvline(meta["x_max"] + 0.5, color="#CCCCCC", lw=0.4,
+                   ls="-", zorder=1, alpha=0.6)
+
+
+def _draw_background(ax, all_xi, all_r, bg_mask, bg_colors):
+    ax.scatter(all_xi[bg_mask], all_r[bg_mask],
+               c=[bg_colors[i] for i in range(len(all_xi)) if bg_mask[i]],
+               s=3, alpha=0.45, linewidths=0, zorder=2, rasterized=True)
+
+
+def _make_bg_colors(n_genes, labels, cluster_meta, is_ota):
+    import matplotlib.colors as mc, numpy as np
+    bg_colors = []
+    for i in range(n_genes):
+        if is_ota[i]:
+            bg_colors.append(None)
+            continue
+        c   = labels[i]
+        rgb = np.array(mc.to_rgb(cluster_meta[c]["color"]))
+        grey = np.array([0.92, 0.92, 0.92])
+        bg_colors.append(tuple(0.35 * rgb + 0.65 * grey))
+    return bg_colors
+
+
+def _draw_island_labels(ax, cluster_meta, labeled_genes, n_genes,
+                        y_bot=-0.88, y_top=0.88):
+    """Annotate therapeutic / disease-amplifying cluster midpoints."""
+    for c, meta in cluster_meta.items():
+        if abs(meta["mean_r"]) < 0.10 or meta["top_ota"] is None:
+            continue
+        if meta["top_ota"] in labeled_genes:
+            continue
+        y_lbl  = y_bot if meta["mean_r"] < 0 else y_top
+        va     = "bottom" if meta["mean_r"] < 0 else "top"
+        col_lb = "#1A237E" if meta["mean_r"] < 0 else "#B71C1C"
+        ax.text(meta["x_mid"], y_lbl,
+                f"{meta['top_ota']}\n(r={meta['mean_r']:+.2f})",
+                ha="center", va=va, fontsize=4.8, color=col_lb,
+                fontweight="bold", zorder=6,
+                bbox=dict(boxstyle="round,pad=0.12", fc="white", ec=col_lb,
+                          alpha=0.80, linewidth=0.5))
+
+
+def _style_ax(ax, n_genes, ylabel, title="", yticks=True):
+    ax.axhline(0, color="#888888", lw=0.7, ls="--", zorder=3)
+    ax.set_ylabel(ylabel, fontsize=8)
+    ax.set_ylim(-1.05, 1.05)
+    ax.set_xlim(-80, n_genes + 80)
+    ax.set_facecolor("white")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.set_xticks([])
+    if title:
+        ax.set_title(title, fontsize=8, fontweight="bold", pad=3)
 
 
 # ─── main ─────────────────────────────────────────────────────────────────────
@@ -172,14 +267,13 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
     import matplotlib.patches as mpatches
     from matplotlib.lines import Line2D
     from matplotlib.gridspec import GridSpec
-    import matplotlib.colors as mcolors
+    from scipy.cluster.hierarchy import fcluster
 
     cfg = _DISEASE_CONFIG[disease_key]
     ck  = _load_ck(cfg["slug"])
     t3  = _load_t3(cfg["slug"])
 
     targets     = ck["prioritization_result"]["targets"]
-    pheno       = ck.get("phenotype_result", {})
     chem        = ck.get("chemistry_result", {})
     known       = cfg["known"]
     prog_gammas = _prog_gamma(t3, disease_key)
@@ -194,270 +288,237 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
     prog_color = {p: _PROG_PALETTE[i % len(_PROG_PALETTE)] for i, p in enumerate(all_progs)}
     ota_genes: dict[str, dict] = {t["target_gene"]: t for t in targets}
 
-    disease_rev    = chem.get("gps_disease_reversers", []) or []
-    prog_rev_dict  = chem.get("gps_program_reversers",  {}) or {}
-    screened_progs = [p for p in all_progs if prog_rev_dict.get(p)]
+    disease_rev   = chem.get("gps_disease_reversers", []) or []
+    prog_rev_dict = chem.get("gps_program_reversers", {}) or {}
 
-    # ── Load SVD fingerprints and cluster ─────────────────────────────────────
+    # ── Load SVD + fingerprint r ──────────────────────────────────────────────
     print(f"Loading SVD fingerprints for {cfg['dataset_id']}…")
     fp_mat, fp_names = _load_svd(cfg["dataset_id"])
     fp_r_all         = _load_fp_r(cfg["dataset_id"])
+    name_to_idx      = {n: i for i, n in enumerate(fp_names)}
 
     n_genes = len(fp_names)
     all_r   = np.array([fp_r_all.get(fp_names[i], float("nan")) for i in range(n_genes)])
 
-    print(f"  {n_genes} KOs × {fp_mat.shape[1]} SVD dims")
-    print(f"  Building disease-weighted fingerprints…")
-    fp_w            = _disease_weighted_fingerprints(fp_mat, all_r)
-    order, link_Z   = _cluster_order(fp_w)
-    cluster_labels  = _assign_clusters(link_Z, n_islands)
+    # ── Build layout (cluster order, labels) ──────────────────────────────────
+    print("  Building disease-weighted clustering…")
+    x_pos, xi_to_cluster, link_Z, cluster_labels = _build_layout(fp_mat, all_r, n_islands)
+    name_to_xi  = {name: x_pos[i] for i, name in enumerate(fp_names)}
+    all_xi      = np.array([x_pos[i] for i in range(n_genes)])
+    is_ota      = np.array([fp_names[i] in ota_genes for i in range(n_genes)])
+    is_known    = np.array([fp_names[i] in known for i in range(n_genes)])
 
-    x_pos = np.empty(n_genes, dtype=int)
-    x_pos[order] = np.arange(len(order))
-    name_to_xi = {name: x_pos[i] for i, name in enumerate(fp_names)}
+    cluster_meta = _build_cluster_meta(n_genes, fp_names, cluster_labels, x_pos, all_r, ota_genes)
+    bg_colors    = _make_bg_colors(n_genes, cluster_labels, cluster_meta, is_ota)
+    bg_mask      = ~is_ota & ~np.isnan(all_r)
 
-    all_xi   = np.array([x_pos[i] for i in range(n_genes)])
-    is_ota   = np.array([fp_names[i] in ota_genes for i in range(n_genes)])
-    is_known = np.array([fp_names[i] in known      for i in range(n_genes)])
+    # ── Compute GPS convergence (re-run to get per-compound target x-positions) ─
+    from pipelines.gps_transcriptional_convergence import compute_gps_genetic_convergence
+    conv_map = compute_gps_genetic_convergence(
+        disease_reversers=disease_rev,
+        program_reversers=prog_rev_dict,
+        genetic_anchors=targets,
+        min_z_rges=1.5,
+        min_convergence_score=0.0,
+    )
 
-    # ── Per-cluster metadata ──────────────────────────────────────────────────
-    # After ordering, cluster_labels[order[j]] tells us which island x-position j belongs to.
-    # Build: xi → cluster, cluster → {x_range, mean_r, top_ota_gene}
-    xi_to_cluster = np.empty(n_genes, dtype=int)
-    for i in range(n_genes):
-        xi_to_cluster[x_pos[i]] = cluster_labels[i]
+    def _gps_x_y(compound_id: str) -> tuple[float | None, float | None]:
+        """
+        x = score-weighted mean x-position of convergence targets in Perturb-seq library.
+        y = mean fingerprint_r of targets that have a measured r value.
+        Returns (None, None) if no targets are in the library.
+        """
+        ctargets = conv_map.get(compound_id, [])
+        hits = [(t["gene"], t["convergence_score"])
+                for t in ctargets if t["gene"] in name_to_xi]
+        if not hits:
+            return None, None
+        total_w = sum(s for _, s in hits)
+        if total_w <= 0:
+            return None, None
+        x = sum(name_to_xi[g] * s for g, s in hits) / total_w
+        # y: mean over only those targets that have a fingerprint_r measurement
+        r_vals = [fp_r_all[g] for g, _ in hits if g in fp_r_all]
+        y = float(np.mean(r_vals)) if r_vals else None
+        return x, y
 
-    cluster_xi: dict[int, list[int]] = {}
-    cluster_r:  dict[int, list[float]] = {}
-    cluster_ota: dict[int, list[tuple[str, float]]] = {}
-    for i in range(n_genes):
-        c  = cluster_labels[i]
-        xi = x_pos[i]
-        r  = all_r[i]
-        cluster_xi.setdefault(c, []).append(xi)
-        if not math.isnan(r):
-            cluster_r.setdefault(c, []).append(r)
-        if is_ota[i] and not math.isnan(r):
-            cluster_ota.setdefault(c, []).append((fp_names[i], r))
+    # ── Determine program panels (≥MIN_PROG_TARGETS OTA genes with fp_r) ──────
+    prog_ota_with_r: dict[str, list[tuple[str, float]]] = {}
+    for t in targets:
+        prog = _dom_prog(t)
+        gene = t["target_gene"]
+        if prog and gene in fp_r_all:
+            prog_ota_with_r.setdefault(prog, []).append((gene, fp_r_all[gene]))
 
-    cluster_meta: dict[int, dict] = {}
-    for c in cluster_xi:
-        xs       = cluster_xi[c]
-        mean_r   = float(np.mean(cluster_r.get(c, [0.0])))
-        x_min, x_max = min(xs), max(xs)
-        # Top OTA gene by |r|
-        ota_sorted = sorted(cluster_ota.get(c, []), key=lambda t: t[1])
-        top_ota    = ota_sorted[0][0] if ota_sorted else None
-        cluster_meta[c] = {
-            "x_min":   x_min, "x_max": x_max,
-            "x_mid":   (x_min + x_max) / 2,
-            "mean_r":  mean_r,
-            "n":       len(xs),
-            "top_ota": top_ota,
-            "color":   _island_color(mean_r),
-        }
-
-    # Per-gene dot colour for background: island colour at low saturation
-    bg_colors = []
-    for i in range(n_genes):
-        if is_ota[i]:
-            bg_colors.append(None)
-            continue
-        c = cluster_labels[i]
-        base = cluster_meta[c]["color"]
-        # Desaturate and lighten by blending toward #EEEEEE
-        import matplotlib.colors as mc
-        rgb = np.array(mc.to_rgb(base))
-        grey = np.array([0.92, 0.92, 0.92])
-        blended = 0.40 * rgb + 0.60 * grey
-        bg_colors.append(tuple(blended))
+    show_progs = [p for p in all_progs
+                  if len(prog_ota_with_r.get(p, [])) >= MIN_PROG_TARGETS]
 
     # ── Layout ────────────────────────────────────────────────────────────────
-    has_gps = bool(disease_rev or any(prog_rev_dict.values()))
-    fig = plt.figure(figsize=(20, 10 if has_gps else 6.5))
-    gs  = GridSpec(
-        2 if has_gps else 1, 1, figure=fig,
-        hspace=0.38,
-        height_ratios=[4, 2] if has_gps else [1],
-    )
-    ax_main = fig.add_subplot(gs[0])
+    n_panels = 1 + len(show_progs)
+    # Disease panel taller; program panels shorter
+    h_ratios = [3.5] + [2.0] * len(show_progs)
+    fig_h    = 4.5 + 2.5 * len(show_progs)
+    fig = plt.figure(figsize=(22, fig_h))
+    gs  = GridSpec(n_panels, 1, figure=fig, hspace=0.45,
+                   height_ratios=h_ratios)
 
-    # ── Island shading (behind everything) ───────────────────────────────────
-    for c, meta in cluster_meta.items():
-        col = meta["color"]
-        import matplotlib.colors as mc
-        rgb = np.array(mc.to_rgb(col))
-        grey = np.array([0.97, 0.97, 0.97])
-        shade = tuple(0.18 * rgb + 0.82 * grey)
-        ax_main.axvspan(meta["x_min"] - 0.5, meta["x_max"] + 0.5,
-                        color=shade, alpha=1.0, zorder=0, linewidth=0)
-        # Cluster boundary hairline
-        ax_main.axvline(meta["x_max"] + 0.5, color="#CCCCCC", lw=0.4,
-                        ls="-", zorder=1, alpha=0.7)
+    # ═════════════════════════════════════════════════════════════════════════
+    # Panel 0: Disease state — full KO landscape
+    # ═════════════════════════════════════════════════════════════════════════
+    ax0 = fig.add_subplot(gs[0])
+    _draw_islands(ax0, cluster_meta)
+    _draw_background(ax0, all_xi, all_r, bg_mask, bg_colors)
 
-    # ── Background library dots (coloured by island) ──────────────────────────
-    bg_mask = ~is_ota & ~np.isnan(all_r)
-    bg_c_arr = [bg_colors[i] for i in range(n_genes) if bg_mask[i]]
-    ax_main.scatter(
-        all_xi[bg_mask], all_r[bg_mask],
-        c=bg_c_arr, s=4, alpha=0.55, linewidths=0, zorder=2, rasterized=True,
-    )
-
-    # ── OTA target genes (coloured by NMF program) ───────────────────────────
+    # OTA targets
     for i in range(n_genes):
         if not is_ota[i] or math.isnan(all_r[i]):
             continue
-        gene = fp_names[i]
-        t    = ota_genes[gene]
+        t    = ota_genes[fp_names[i]]
         prog = _dom_prog(t)
         col  = prog_color.get(prog, "#9E9E9E")
-        tier = t.get("dominant_tier", "")
-        size = 70 if tier == "Tier1_Interventional" else 26
-        ec   = "#B71C1C" if gene in known else "white"
-        ew   = 1.8 if gene in known else 0.5
-        ax_main.scatter(all_xi[i], all_r[i], c=col, s=size,
-                        edgecolors=ec, linewidths=ew, alpha=0.93, zorder=4)
+        size = 65 if t.get("dominant_tier", "") == "Tier1_Interventional" else 24
+        ec   = "#B71C1C" if is_known[i] else "white"
+        ew   = 1.8       if is_known[i] else 0.4
+        ax0.scatter(all_xi[i], all_r[i], c=col, s=size,
+                    edgecolors=ec, linewidths=ew, alpha=0.93, zorder=4)
 
-    # ── Gene labels: known + top 15% OTA by |r| ──────────────────────────────
-    ota_r_vals = sorted(
-        [(all_r[i], i) for i in range(n_genes) if is_ota[i] and not math.isnan(all_r[i])],
-        key=lambda x: abs(x[0])
-    )
-    thresh_idx = max(1, int(len(ota_r_vals) * 0.85))
-    r_threshold_label = abs(ota_r_vals[thresh_idx][0]) if ota_r_vals else 0.0
-
+    # Labels: known + top-15% OTA by |r|
+    ota_rv = sorted([(abs(all_r[i]), i) for i in range(n_genes)
+                     if is_ota[i] and not math.isnan(all_r[i])])
+    thresh = ota_rv[max(0, int(len(ota_rv)*0.85))][0] if ota_rv else 0.0
     labeled: set[str] = set()
     for i in range(n_genes):
         if not is_ota[i] or math.isnan(all_r[i]):
             continue
         gene = fp_names[i]
-        if gene in known or abs(all_r[i]) >= r_threshold_label:
-            if gene not in labeled:
-                col = "#B71C1C" if gene in known else "#222222"
-                fw  = "bold"   if gene in known else "normal"
-                va  = "bottom" if all_r[i] >= 0 else "top"
-                dy  = 0.020 if all_r[i] >= 0 else -0.020
-                ax_main.annotate(gene, (all_xi[i], all_r[i] + dy),
-                                 ha="center", va=va,
-                                 fontsize=5.5, color=col, fontweight=fw, zorder=6)
-                labeled.add(gene)
+        if is_known[i] or abs(all_r[i]) >= thresh:
+            col = "#B71C1C" if is_known[i] else "#222222"
+            fw  = "bold"   if is_known[i] else "normal"
+            va  = "bottom" if all_r[i] >= 0 else "top"
+            dy  = 0.020    if all_r[i] >= 0 else -0.020
+            ax0.annotate(gene, (all_xi[i], all_r[i]+dy),
+                         ha="center", va=va, fontsize=5.5,
+                         color=col, fontweight=fw, zorder=6)
+            labeled.add(gene)
 
-    # ── Island labels: annotate top OTA gene at cluster midpoint ─────────────
-    # Only annotate clusters with clear therapeutic or disease signal (|mean_r| > 0.10)
-    for c, meta in cluster_meta.items():
-        if abs(meta["mean_r"]) < 0.10 or meta["top_ota"] is None:
-            continue
-        if meta["top_ota"] in labeled:
-            continue
-        y_label = -0.88 if meta["mean_r"] < 0 else 0.88
-        va      = "bottom" if meta["mean_r"] < 0 else "top"
-        col_lbl = "#1A237E" if meta["mean_r"] < 0 else "#B71C1C"
-        ax_main.text(
-            meta["x_mid"], y_label,
-            f"{meta['top_ota']}\n(r={meta['mean_r']:+.2f})",
-            ha="center", va=va, fontsize=5, color=col_lbl,
-            fontweight="bold", zorder=6,
-            bbox=dict(boxstyle="round,pad=0.15", fc="white", ec=col_lbl,
-                      alpha=0.75, linewidth=0.6),
-        )
+    _draw_island_labels(ax0, cluster_meta, labeled, n_genes)
 
-    # ── Axes ─────────────────────────────────────────────────────────────────
-    ax_main.axhline(0, color="#888888", lw=0.8, ls="--", zorder=3)
-    ax_main.set_ylabel("Fingerprint r\n(KO profile vs disease DEG)", fontsize=9)
-    ax_main.set_ylim(-1.05, 1.05)
-    ax_main.set_xlim(-80, n_genes + 80)
-    ax_main.set_facecolor("white")
-    ax_main.spines["top"].set_visible(False)
-    ax_main.spines["right"].set_visible(False)
-    ax_main.set_xticks([])
+    ax0.text(100, -1.01, "← KO reverses disease (therapeutic)",
+             fontsize=7, color="#1A237E", va="bottom", fontweight="bold")
+    ax0.text(100,  0.99, "KO amplifies disease →",
+             fontsize=7, color="#B71C1C", va="top", fontweight="bold")
 
-    ax_main.text(100, -1.01, "← KO reverses disease (therapeutic)",
-                 fontsize=7, color="#1A237E", va="bottom", fontweight="bold")
-    ax_main.text(100,  0.99, "KO amplifies disease →",
-                 fontsize=7, color="#B71C1C", va="top", fontweight="bold")
+    n_with_r = sum(1 for i in range(n_genes) if is_ota[i] and not math.isnan(all_r[i]))
+    _style_ax(ax0, n_genes,
+              ylabel="Fingerprint r\n(KO vs disease DEG)",
+              title=(f"{cfg['label']}  ·  disease state\n"
+                     f"{n_genes:,} KOs · {n_islands} islands · "
+                     f"{sum(is_ota)} OTA targets ({n_with_r} with fingerprint r)"))
 
-    n_ota_with_r = sum(1 for i in range(n_genes) if is_ota[i] and not math.isnan(all_r[i]))
-    ax_main.set_title(
-        f"{cfg['label']}  —  long island plot\n"
-        f"{n_genes:,} KOs · x = disease-weighted fingerprint clustering "
-        f"({n_islands} islands) · {sum(is_ota)} OTA targets ({n_ota_with_r} with fingerprint r)",
-        fontsize=10, fontweight="bold",
-    )
-
-    # ── Legend ────────────────────────────────────────────────────────────────
+    # Legend for panel 0
     prog_h = [mpatches.Patch(color=prog_color[p],
                               label=f"{p.split('_')[-1]} γ={prog_gammas.get(p,0):+.2f}")
               for p in all_progs]
     misc_h = [
-        mpatches.Patch(color=_island_color(-0.25), alpha=0.6,
-                       label="Therapeutic island (blue)"),
-        mpatches.Patch(color=_island_color(+0.25), alpha=0.6,
-                       label="Disease island (red)"),
+        mpatches.Patch(color=_island_color(-0.25), alpha=0.6, label="Therapeutic island"),
+        mpatches.Patch(color=_island_color(+0.25), alpha=0.6, label="Disease island"),
         Line2D([0],[0], marker="o", color="w", markerfacecolor="#AAAAAA",
-               markersize=5, label="Perturb-seq library (island-coloured)"),
+               markersize=5, label="Perturb-seq library"),
         Line2D([0],[0], marker="o", color="w", markerfacecolor="#1565C0",
                markersize=8, label="OTA target (large=Tier1)"),
         mpatches.Patch(facecolor="none", edgecolor="#B71C1C", linewidth=1.8,
-                       label="Validated drug target"),
+                       label="Validated target"),
+        Line2D([0],[0], marker="*", color="w", markerfacecolor="#FFC107",
+               markersize=11, label="GPS reverser (program panel)"),
     ]
-    ax_main.legend(handles=prog_h + misc_h, loc="upper right",
-                   fontsize=6, ncol=3, framealpha=0.92)
+    ax0.legend(handles=prog_h + misc_h, loc="upper right",
+               fontsize=5.8, ncol=3, framealpha=0.92)
 
-    # ── GPS compound panel ────────────────────────────────────────────────────
-    if has_gps:
-        ax_gps = fig.add_subplot(gs[1])
+    # ═════════════════════════════════════════════════════════════════════════
+    # Panels 1…N: One per NMF program
+    # ═════════════════════════════════════════════════════════════════════════
+    for pi, prog in enumerate(show_progs):
+        ax = fig.add_subplot(gs[1 + pi], sharex=ax0)
+        pcol  = prog_color.get(prog, "#555555")
+        pname = prog.split("_")[-1]
+        gamma = prog_gammas.get(prog, float("nan"))
 
-        gps_rows: list[tuple[str, float, str, str]] = []
-        for c in disease_rev:
-            cid = c.get("compound_id", "?")
+        _draw_islands(ax, cluster_meta)
+
+        # Background: all KOs at their landscape positions but faint grey
+        ax.scatter(all_xi[bg_mask], all_r[bg_mask],
+                   c="#DDDDDD", s=2, alpha=0.30, linewidths=0,
+                   zorder=2, rasterized=True)
+
+        # Program OTA genes
+        prog_genes = prog_ota_with_r.get(prog, [])
+        prog_gene_set = {g for g, _ in prog_genes}
+        labeled_prog: set[str] = set()
+        rv_prog = sorted([(abs(r), g) for g, r in prog_genes])
+        thresh_prog = rv_prog[max(0, int(len(rv_prog)*0.80))][0] if rv_prog else 0.0
+
+        for gene, r in prog_genes:
+            if gene not in name_to_xi:
+                continue
+            xi = name_to_xi[gene]
+            t  = ota_genes.get(gene, {})
+            size = 55 if t.get("dominant_tier", "") == "Tier1_Interventional" else 22
+            ec   = "#B71C1C" if gene in known else "white"
+            ew   = 1.6       if gene in known else 0.4
+            ax.scatter(xi, r, c=pcol, s=size,
+                       edgecolors=ec, linewidths=ew, alpha=0.92, zorder=4)
+            if gene in known or abs(r) >= thresh_prog:
+                va = "bottom" if r >= 0 else "top"
+                dy = 0.018 if r >= 0 else -0.018
+                ax.annotate(gene, (xi, r+dy), ha="center", va=va,
+                            fontsize=5, color="#222222", zorder=6)
+                labeled_prog.add(gene)
+
+        # GPS program reversers: place at convergence-target centroid
+        gps_hits = prog_rev_dict.get(prog, []) or []
+        placed: list[tuple[float, float, float]] = []  # (x, y, z)
+        for c in gps_hits:
+            cid = c.get("compound_id", "")
             z   = c.get("z_rges", c.get("rges", 0.0))
-            gps_rows.append((cid[:16], z, "#FFC107", "disease reversal"))
+            gx, gy = _gps_x_y(cid)
+            if gx is not None and gy is not None:
+                placed.append((gx, gy, z))
 
-        for prog, hits in prog_rev_dict.items():
-            pcol  = prog_color.get(prog, "#555555")
-            pname = prog.split("_")[-1]
-            for c in (hits or []):
-                cid = c.get("compound_id", "?")
-                z   = c.get("z_rges", c.get("rges", 0.0))
-                gps_rows.append((cid[:16], z, pcol, pname))
+        if placed:
+            gxs = np.array([p[0] for p in placed])
+            gys = np.array([p[1] for p in placed])
+            gzs = np.array([p[2] for p in placed])
+            sz  = np.clip(np.abs(gzs) * 20, 40, 200)
+            ax.scatter(gxs, gys, c="#FFC107", s=sz, marker="*",
+                       edgecolors="#E65100", linewidths=0.8,
+                       alpha=0.95, zorder=7,
+                       label=f"{len(placed)} GPS reversers")
+            # Label the strongest GPS hit
+            best = int(np.argmin(gzs))
+            ax.annotate(f"z={gzs[best]:.1f}", (gxs[best], gys[best]+0.04),
+                        ha="center", va="bottom", fontsize=4.8,
+                        color="#E65100", fontweight="bold", zorder=8)
 
-        seen_cids: dict[str, tuple] = {}
-        for row in gps_rows:
-            existing = seen_cids.get(row[0])
-            if existing is None or row[1] < existing[1]:
-                seen_cids[row[0]] = row
-        gps_rows = sorted(seen_cids.values(), key=lambda r: r[1])
+        gamma_str = f"γ={gamma:+.2f}" if not math.isnan(gamma) else ""
+        n_placed  = len(placed)
+        gps_str   = f" · {n_placed}/{len(gps_hits)} GPS hits placed" if gps_hits else ""
+        _style_ax(ax, n_genes,
+                  ylabel=f"Fingerprint r\n(KO vs disease DEG)",
+                  title=f"{prog}  {gamma_str}  ·  {len(prog_genes)} OTA targets{gps_str}")
 
-        labels_gps = [r[0] for r in gps_rows]
-        zvals      = [r[1] for r in gps_rows]
-        colors_gps = [r[2] for r in gps_rows]
+        if placed:
+            ax.legend(fontsize=6, loc="upper right", framealpha=0.85)
 
-        y_pos = range(len(gps_rows))
-        ax_gps.barh(list(y_pos), [abs(z) for z in zvals],
-                    color=colors_gps, edgecolor="white", linewidth=0.4, alpha=0.88)
-        ax_gps.set_yticks(list(y_pos))
-        ax_gps.set_yticklabels(labels_gps, fontsize=5.5)
-        ax_gps.invert_yaxis()
-        ax_gps.set_xlabel("|Z_RGES|  (target-emulation reversal score)", fontsize=8)
-        ax_gps.set_title(
-            "GPS compound reversers  (ranked by reversal strength)\n"
-            "Note: compounds lack measured transcriptional profiles — "
-            "x-axis placement in gene landscape is undefined",
-            fontsize=8, color="#555555",
-        )
-        ax_gps.spines["top"].set_visible(False)
-        ax_gps.spines["right"].set_visible(False)
-        ax_gps.set_facecolor("#FAFAFA")
-        ax_gps.axvline(2.0, color="#888888", lw=0.6, ls="--", alpha=0.5)
-
-        cat_labels = {"disease reversal": "#FFC107"}
-        for prog in screened_progs:
-            cat_labels[prog.split("_")[-1]] = prog_color.get(prog, "#555555")
-        cat_h = [mpatches.Patch(color=c, label=lbl) for lbl, c in cat_labels.items()]
-        ax_gps.legend(handles=cat_h, fontsize=6, loc="lower right")
+    # ── X-axis label on bottom panel ──────────────────────────────────────────
+    last_ax = ax if show_progs else ax0
+    last_ax.set_xlabel(
+        "Gene KOs  ·  x = disease-weighted fingerprint clustering  "
+        "(← therapeutic islands   |   disease islands →)",
+        fontsize=8,
+    )
 
     plt.savefig(out_path or f"outputs/long_island_{disease_key}.png",
-                dpi=180, bbox_inches="tight")
+                dpi=160, bbox_inches="tight")
     print(f"Saved → {out_path or f'outputs/long_island_{disease_key}.png'}")
 
 
