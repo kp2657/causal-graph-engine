@@ -61,7 +61,11 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     )
     from mcp_servers.perturbseq_server import get_perturbseq_signature
     from pipelines.ota_beta_estimation import estimate_beta
-    from pipelines.cnmf_programs import get_programs_for_disease, run_cnmf_pipeline
+    from pipelines.cnmf_programs import (
+        get_programs_for_disease,
+        get_svd_programs_for_disease,
+        run_cnmf_pipeline,
+    )
     from graph.schema import DISEASE_CELL_TYPE_MAP
 
     # h5ad paths for NMF auto-trigger (keyed by perturb_seq_source)
@@ -72,29 +76,71 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         "schnitzler_cad_vascular": str(_base / "data/cellxgene/CAD/CAD_cardiac_endothelial_cell.h5ad"),
     }
 
-    # Use discovery-aware program source: cNMF on disk → MSigDB Hallmark → hardcoded
     disease_key_for_programs = disease_query.get("disease_key") or ""
-    programs_info = get_programs_for_disease(disease_key_for_programs) if disease_key_for_programs \
-        else get_programs_for_disease("")
-    raw_programs = programs_info.get("programs", [])
+    # gwas_gene_set is injected by the orchestrator; used for GWAS-aligned SVD program ranking.
+    gwas_gene_set_for_programs: set[str] = set(disease_query.get("gwas_genes", []))
 
-    # Auto-trigger NMF when cache is missing
-    if not raw_programs and disease_key_for_programs:
-        cell_type = programs_info.get("cell_type", "")
-        h5ad_path = _CNMF_H5AD_MAP.get(cell_type, "")
-        if h5ad_path and Path(h5ad_path).exists():
-            logger.info("No program cache for %s; running cNMF on %s (cell_type=%s)",
-                        disease_key_for_programs, Path(h5ad_path).name, cell_type)
-            nmf_result = run_cnmf_pipeline(
-                h5ad_path=h5ad_path,
-                cell_type=cell_type,
-                output_dir=str(_base / "data/cnmf_programs"),
+    # Disease DE vector from scRNA-seq h5ad: {gene: log2FC(disease vs healthy)}.
+    # Computed once here; passed to SVD program scorer for joint GWAS + DE alignment.
+    # genome-wide (elbow_trim=False) so all SVD component gene sets are covered.
+    de_vector_for_programs: dict[str, float] | None = None
+    try:
+        from pipelines.gps_disease_screen import _build_sig_from_h5ad
+        _de = _build_sig_from_h5ad(disease_query, gps_genes=None, elbow_trim=False)
+        if _de:
+            de_vector_for_programs = _de
+            logger.info(
+                "Disease DE vector loaded: %d genes for SVD program alignment (%s)",
+                len(_de), disease_key_for_programs,
             )
-            raw_programs = nmf_result.get("programs", [])
-            programs_info = nmf_result
-        else:
-            logger.warning("No NMF cache and no h5ad for cell_type=%r; continuing with empty program set",
-                           cell_type)
+    except Exception as _de_exc:
+        logger.debug("DE vector unavailable for SVD alignment: %s", _de_exc)
+
+    # Program source priority:
+    # 1. GWAS + DE aligned SVD — programs ranked by gwas_t × de_pearson;
+    #    island axes and program colors converge; genetic north star + disease
+    #    transcriptional grounding both satisfied
+    # 2. cNMF from disease-specific h5ad (scRNA-seq NMF — separate from Perturb-seq space)
+    # 3. MSigDB Hallmark fallback
+    raw_programs: list = []
+    programs_info: dict = {}
+    if disease_key_for_programs:
+        svd_info = get_svd_programs_for_disease(
+            disease_key_for_programs,
+            gwas_genes=gwas_gene_set_for_programs or None,
+            de_vector=de_vector_for_programs,
+        )
+        if svd_info.get("programs"):
+            programs_info = svd_info
+            raw_programs  = svd_info["programs"]
+            logger.info(
+                "Using %d SVD-component programs for %s (source=%s)",
+                len(raw_programs), disease_key_for_programs, svd_info.get("source"),
+            )
+
+    # Fallback: cNMF on disk → auto-trigger NMF → MSigDB
+    if not raw_programs:
+        programs_info = get_programs_for_disease(disease_key_for_programs) if disease_key_for_programs \
+            else get_programs_for_disease("")
+        raw_programs = programs_info.get("programs", [])
+
+        if not raw_programs and disease_key_for_programs:
+            cell_type = programs_info.get("cell_type", "")
+            h5ad_path = _CNMF_H5AD_MAP.get(cell_type, "")
+            if h5ad_path and Path(h5ad_path).exists():
+                logger.info("No program cache for %s; running cNMF on %s (cell_type=%s)",
+                            disease_key_for_programs, Path(h5ad_path).name, cell_type)
+                nmf_result = run_cnmf_pipeline(
+                    h5ad_path=h5ad_path,
+                    cell_type=cell_type,
+                    output_dir=str(_base / "data/cnmf_programs"),
+                )
+                raw_programs = nmf_result.get("programs", [])
+                programs_info = nmf_result
+            else:
+                logger.warning("No NMF cache and no h5ad for cell_type=%r; continuing with empty program set",
+                               cell_type)
+
 
     # raw_programs is a list of strings (program names) from the registry
     program_ids = [
@@ -201,13 +247,34 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 )
 
         if _h5ad_path and _h5ad_path.exists():
-            prog_gene_sets_list = {pid: list(gset) for pid, gset in program_gene_sets.items()}
-            if any(prog_gene_sets_list.values()):
-                perturbseq_data = load_replogle_betas(
-                    program_gene_sets=prog_gene_sets_list,
-                    dataset_id=scperturb_dataset,
-                    gwas_gene_set=gwas_gene_set if gwas_gene_set else None,
-                )
+            # SVD programs: use z-scored Vt values as β (bypasses NES saturation cap).
+            # For each SVD component c, β = (Vt[c,g] - mean_c) / std_c, giving ±1-2
+            # scale per gene with component-specific differentiation.  For non-SVD
+            # programs (NMF, MSigDB), fall back to NES via load_replogle_betas.
+            _is_svd = programs_info.get("source", "").startswith("SVD_")
+            if _is_svd and scperturb_dataset:
+                try:
+                    from mcp_servers.perturbseq_server import load_svd_vt_betas_zscored
+                    disease_key_for_vt = disease_key_for_programs or disease_key or ""
+                    perturbseq_data = load_svd_vt_betas_zscored(
+                        scperturb_dataset, disease_key_for_vt
+                    )
+                    logger.info(
+                        "SVD z-scored Vt betas loaded: %d perturbed genes (%s)",
+                        len(perturbseq_data), scperturb_dataset,
+                    )
+                except Exception as _vt_exc:
+                    warnings.append(f"SVD Vt-z load failed, falling back to NES: {_vt_exc}")
+                    _is_svd = False  # fall through to NES path
+
+            if not _is_svd:
+                prog_gene_sets_list = {pid: list(gset) for pid, gset in program_gene_sets.items()}
+                if any(prog_gene_sets_list.values()):
+                    perturbseq_data = load_replogle_betas(
+                        program_gene_sets=prog_gene_sets_list,
+                        dataset_id=scperturb_dataset,
+                        gwas_gene_set=gwas_gene_set if gwas_gene_set else None,
+                    )
             # Use the dataset ID as the cell_type token so _is_cell_type_matched can
             # look it up in _CELL_TYPE_MATCHED_DATASETS (e.g. "Schnitzler_GSE210681"
             # for CAD, "replogle_2022_rpe1" for AMD).
@@ -459,17 +526,18 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             except Exception as exc:
                 warnings.append(f"{gene}: UKB WES burden pre-fetch failed: {exc}")
 
-        # --------------------------------------------------------------
-        # Main β estimation via 4-tier fallback (Tier1 → Tier2 → ... )
-        # estimate_beta now receives eqtl_data and program_loading so
-        # Tier 2 (eQTL-MR) activates when Tier 1 data is absent.
-        # --------------------------------------------------------------
+        # Vt-direct fast path was removed: Vt values (~0.01) are 10-20x smaller
+        # than NES betas (~0.3-0.8), causing OTA gamma to collapse below ranking
+        # thresholds. NES computed by load_replogle_betas against SVD component
+        # gene sets (top-|U_scaled[:,c]| genes) gives the correct scale.
         tier = "provisional_virtual"
         best_tier_rank = _TIER_RANK["provisional_virtual"]
+
         try:
             any_filled = False
             for pid in program_ids:
-                # Extract gene loading for this (gene, program) pair
+
+                # Standard path: extract gene loading for this (gene, program) pair
                 loadings_info = program_loadings_cache.get(pid, {})
                 loading: float | None = None
                 for g in loadings_info.get("top_genes", []):

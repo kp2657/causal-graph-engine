@@ -183,7 +183,7 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     """
     from pipelines.ota_gamma_estimation import estimate_gamma
     from mcp_servers.burden_perturb_server import get_program_gene_loadings
-    from pipelines.cnmf_programs import get_programs_for_disease
+    from pipelines.cnmf_programs import get_programs_for_disease, get_svd_programs_for_disease
     from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
 
     disease_name = disease_query.get("disease_name", "coronary artery disease")
@@ -191,8 +191,15 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     short_name   = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), disease_name.upper())
     traits       = DISEASE_TRAIT_MAP.get(short_name, [short_name])
 
-    # Use discovery-aware program source: cNMF on disk → MSigDB Hallmark → hardcoded fallback
-    programs_info = get_programs_for_disease(short_name)
+    # Program source: SVD components preferred (same names as beta_matrix_builder uses),
+    # falling back to NMF when SVD not available. Critical: beta and gamma must use
+    # the same program IDs — mismatched names → β × γ sum = 0 for every gene.
+    gwas_genes_for_gamma = set(disease_query.get("gwas_genes", []))
+    svd_info    = get_svd_programs_for_disease(short_name, gwas_genes=gwas_genes_for_gamma or None)
+    if svd_info.get("programs"):
+        programs_info = svd_info
+    else:
+        programs_info = get_programs_for_disease(short_name)
     raw_programs  = programs_info.get("programs", [])
     program_names = [
         p if isinstance(p, str) else (p.get("program_id") or p.get("name", ""))
@@ -225,22 +232,6 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     # NMF program genes are RPE-specific and absent from OT L2G credible sets, but the
     # real AMD GWAS genes (CFH, ARMS2, C3...) do overlap with program gene sets.
     precomputed_ot_scores: dict[str, float] = disease_query.get("ot_genetic_scores") or {}
-
-    # h5ad-based program gamma fallback: mean(log2FC of program genes in disease vs normal).
-    # Applied when both OT L2G and precomputed OT score overlap fail. Covers cell-type-
-    # specific programs (e.g. AMD RPE NMF programs) whose genes have no GWAS credible sets
-    # but ARE differentially expressed in disease — providing a transcriptomic γ proxy.
-    h5ad_disease_sig: dict[str, float] = {}
-    try:
-        from pipelines.gps_disease_screen import _build_sig_from_h5ad
-        # elbow_trim=False: return all ~18k DEGs for program γ overlap.
-        # GPS screen uses a separate trimmed call; here we need genome-wide
-        # coverage so cNMF program genes (30 RPE-specific genes each) can match.
-        _h5ad_sig = _build_sig_from_h5ad(disease_query, gps_genes=None, elbow_trim=False)
-        if _h5ad_sig:
-            h5ad_disease_sig = _h5ad_sig
-    except Exception:
-        pass
 
     work = [(prog, trait) for prog in program_names for trait in traits]
 
@@ -300,37 +291,6 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
                         ),
                     }
 
-            # Fallback 2: h5ad DEG-based gamma — mean log2FC of program genes in disease vs normal.
-            # Positive mean → program upregulated in disease → risk program (γ > 0).
-            # This covers cell-type-specific programs (e.g. AMD RPE NMF) whose genes are absent
-            # from GWAS credible sets but are differentially expressed in disease.
-            if h5ad_disease_sig:
-                matched_h5ad = {g: h5ad_disease_sig[g] for g in prog_genes if g in h5ad_disease_sig}
-                if len(matched_h5ad) >= 3:
-                    mean_lfc = sum(matched_h5ad.values()) / len(matched_h5ad)
-                    # Scale: 0.25 cap (down from 0.8).  h5ad DEG overlap fires for programs
-                    # that are differentially expressed but not GWAS-supported — capping at 0.25
-                    # prevents Perturb-seq essential-gene artefacts from dominating the OTA rank.
-                    # Programs with real GWAS support already fire Fallback 1 (OT overlap, ~0.4–0.5)
-                    # which is higher than this cap, so GWAS-anchored programs are unaffected.
-                    gamma_val = round(min(abs(mean_lfc), 0.25), 4)
-                    if gamma_val >= 0.01:  # filter near-zero noise (mean_lfc < 0.01)
-                        # Sign: positive mean_lfc = risk (upregulated in disease)
-                        signed_gamma = gamma_val if mean_lfc >= 0 else -gamma_val
-                        return prog, trait, {
-                            "gamma":             signed_gamma,
-                            "gamma_se":          round(gamma_val * 0.4, 4),
-                            "evidence_tier":     "Tier3_Provisional",
-                            "gamma_source_type": "h5ad_deg",
-                            "data_source":       f"h5ad_DEG_mean_lfc_{len(matched_h5ad)}_genes",
-                            "program":           prog,
-                            "trait":             trait,
-                            "note":              (
-                                f"Gamma from mean log2FC ({mean_lfc:+.3f}) of {len(matched_h5ad)} "
-                                "program genes in disease vs normal h5ad (full DEG, no elbow trim). "
-                                "Transcriptomic — not GWAS-derived."
-                            ),
-                        }
         except Exception:
             pass
         # Return None (unknown, not zero) so compute_ota_gamma skips this

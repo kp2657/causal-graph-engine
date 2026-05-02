@@ -22,7 +22,6 @@ from steps.tier3_causal.causal_filters import (
     _mechanistic_necessity_filter,
     _extract_beta_for_program,
     _extract_gamma_for_trait,
-    _build_fallback_top_programs,
     _pareto_cutoff,
     _wes_concordance_check,
     _HOUSEKEEPING_PREFIXES,
@@ -67,9 +66,6 @@ def run(
     tier_per_gene = beta_matrix_result.get("evidence_tier_per_gene", {})
     programs     = beta_matrix_result.get("programs", [])
     program_activation_biases: dict[str, float] | None = beta_matrix_result.get("program_activation_biases")
-    # Program membership from Tier 2 eqtl_coloc_mapper (may be empty).
-    # Used by `_build_fallback_top_programs` when the OT-genetic fallback fires
-    # and `n_programs_contributing == 0` — see line ~225.
     gene_program_overlap: dict[str, list[str]] = disease_query.get("gene_program_overlap") or {}
     warnings: list[str] = []
 
@@ -217,7 +213,7 @@ def run(
                     else:
                         g_val = 0.0
                     if g_val is None:
-                        trait_gammas[prog] = {"gamma": None, "evidence_tier": "provisional_virtual"}
+                        trait_gammas[prog] = {"gamma": None, "evidence_tier": "no_evidence"}
                     elif isinstance(g_val, (int, float)):
                         trait_gammas[prog] = {"gamma": float(g_val), "evidence_tier": "Tier3_Provisional"}
                     elif isinstance(g_val, dict):
@@ -331,10 +327,10 @@ def run(
             edges_rejected.append(rec)
             continue
 
-        # Do not write pure virtual edges — genes without Perturb-seq β
-        # score low and are filtered here; this is the accepted limitation
-        # of the Ota et al. β×γ framework.
-        if dominant_tier == "provisional_virtual":
+        # Genes with no Perturb-seq β have no causal mechanism in the OTA framework.
+        # Catches both "no_perturb_data" (tiers_used empty) and "provisional_virtual"
+        # (β estimated without h5ad perturbation data).
+        if dominant_tier in ("no_perturb_data", "provisional_virtual"):
             edges_rejected.append(rec)
             continue
 
@@ -357,7 +353,7 @@ def run(
     causal_edge_dicts: list[dict] = []
     _VALID_TIERS = frozenset({
         "Tier1_Interventional", "Tier2_Convergent",
-        "Tier3_Provisional", "moderate_transferred", "moderate_grn", "provisional_virtual",
+        "Tier3_Provisional", "moderate_transferred", "moderate_grn",
     })
     for rec in edges_to_write:
         tier = rec.get("tier") or rec.get("dominant_tier") or "Tier3_Provisional"
@@ -687,7 +683,7 @@ def run(
                 "ota_gamma_ci_lower": r.get("ota_gamma_ci_lower"),
                 "ota_gamma_ci_upper": r.get("ota_gamma_ci_upper"),
                 "tier":               r["tier"],
-                "dominant_tier":      r.get("dominant_tier", r.get("tier", "provisional_virtual")),
+                "dominant_tier":      r.get("dominant_tier", r.get("tier", "no_perturb_data")),
                 "programs":           r.get("top_programs", []),
                 "therapeutic_redirection_result": (
                     tr_results[r["gene"]].get("therapeutic_redirection_result")
@@ -742,8 +738,8 @@ def run(
             {
                 "gene":      r["gene"],
                 "ot_l2g":    float(_ot_scores_for_gwas.get(r["gene"], 0.0)),
-                "tier":      r.get("tier", "provisional_virtual"),
-                "dominant_tier": r.get("dominant_tier", "provisional_virtual"),
+                "tier":      r.get("tier", "no_perturb_data"),
+                "dominant_tier": r.get("dominant_tier", "no_perturb_data"),
             }
             for r in _gwas_anchored[:50]
         ],

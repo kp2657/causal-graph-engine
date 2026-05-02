@@ -48,11 +48,51 @@ correct the downstream disease phenotype.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
+import json
 import logging
+import pathlib
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# GPS result cache — keyed on SHA-256 of sorted (gene, value) signature pairs.
+# Avoids Docker re-runs when the input signature is unchanged across pipeline
+# runs.  Cache lives at data/gps_cache/{hash}.json.gz; invalidated only when
+# the signature changes (different disease DEG or program loadings).
+# ---------------------------------------------------------------------------
+_GPS_CACHE_DIR = pathlib.Path("data/gps_cache")
+
+
+def _sig_hash(sig: dict[str, float]) -> str:
+    content = json.dumps(sorted(sig.items()), separators=(",", ":"))
+    return hashlib.sha256(content.encode()).hexdigest()[:20]
+
+
+def _load_gps_cache(sig: dict[str, float]) -> list[dict] | None:
+    p = _GPS_CACHE_DIR / f"{_sig_hash(sig)}.json.gz"
+    if not p.exists():
+        return None
+    try:
+        with gzip.open(p, "rt") as f:
+            result = json.load(f)
+        log.debug("GPS cache hit: %s", p.name)
+        return result
+    except Exception as exc:
+        log.debug("GPS cache read failed (ignored): %s", exc)
+        return None
+
+
+def _save_gps_cache(sig: dict[str, float], hits: list[dict]) -> None:
+    _GPS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    p = _GPS_CACHE_DIR / f"{_sig_hash(sig)}.json.gz"
+    try:
+        with gzip.open(p, "wt") as f:
+            json.dump(hits, f)
+    except Exception as exc:
+        log.debug("GPS cache write failed (ignored): %s", exc)
 
 from config.scoring_thresholds import (  # noqa: E402
     GPS_MIN_DISEASE_SIG_GENES,
@@ -178,46 +218,30 @@ def run_gps_disease_screens(
     # afterwards (ThreadPoolExecutor), so annotation can safely follow.
     # NOTE: annotation deferred until after all Docker screens to avoid
     # os.fork() while httpx annotation threads are running (fork-safety, macOS).
-    disease_screen_ran = False
     if disease_sig_n >= _MIN_DISEASE_SIG_GENES:
         log.info("GPS disease reversal: %d-gene signature for %s", disease_sig_n, disease_name)
-        disease_reversers = screen_disease_for_reversers(
-            disease_sig,
-            label=f"{disease_key}_disease_state",
-            library=library,
-            top_n=top_n_compounds,
-            z_threshold=z_threshold,
-            max_hits=max_hits,
-        )
+        _cached = _load_gps_cache(disease_sig)
+        if _cached is not None:
+            disease_reversers = _cached
+            log.info("GPS disease_state loaded from cache: %d reversers", len(disease_reversers))
+        else:
+            disease_reversers = screen_disease_for_reversers(
+                disease_sig,
+                label=f"{disease_key}_disease_state",
+                library=library,
+                top_n=top_n_compounds,
+                z_threshold=z_threshold,
+                max_hits=max_hits,
+            )
+            _save_gps_cache(disease_sig, disease_reversers)
         for hit in disease_reversers:
             hit["screen_type"] = "disease_state_reversal"
-        disease_screen_ran = True
         log.info("GPS disease_state done: %d reversers", len(disease_reversers))
     else:
         warnings.append(
             f"Disease signature too sparse ({disease_sig_n} genes < {_MIN_DISEASE_SIG_GENES}); "
-            "skipping whole-disease GPS. Need CELLxGENE AMD h5ad for disease_log2fc."
+            "skipping whole-disease GPS. Need CELLxGENE h5ad for disease_log2fc."
         )
-
-    # ------------------------------------------------------------------
-    # Early-exit: disease screen ran but produced zero hits.
-    # Program screens share the same GPS machinery and compound library;
-    # if the whole-disease signature cannot produce hits, per-program
-    # screens are unlikely to either and would waste Docker compute.
-    # ------------------------------------------------------------------
-    if disease_screen_ran and len(disease_reversers) == 0:
-        warnings.append(
-            "Disease-state reversal returned 0 hits — skipping program reversal screens (early-exit). "
-            "Check: (1) BGRD cache exists, (2) signature has ≥700 GPS-compatible genes, "
-            "(3) GPS Docker image is current."
-        )
-        return {
-            "disease_reversers":   disease_reversers,
-            "program_reversers":   {},
-            "disease_sig_n_genes": disease_sig_n,
-            "programs_screened":   [],
-            "warnings":            warnings,
-        }
 
     # ------------------------------------------------------------------
     # 2. Identify top causal programs and build program work list.
@@ -317,14 +341,20 @@ def run_gps_disease_screens(
             "GPS program reversal: %s (%s, weight=%.3f, %d genes, source=%s)",
             prog_id, dir_str, weight, len(prog_sig), sig_source,
         )
-        hits = screen_disease_for_reversers(
-            prog_sig,
-            label=label,
-            library=library,
-            top_n=top_n_compounds,
-            z_threshold=GPS_Z_RGES_PROGRAM,
-            max_hits=max_hits,
-        )
+        _cached = _load_gps_cache(prog_sig)
+        if _cached is not None:
+            hits = _cached
+            log.info("GPS program %s loaded from cache: %d hits", prog_id, len(hits))
+        else:
+            hits = screen_disease_for_reversers(
+                prog_sig,
+                label=label,
+                library=library,
+                top_n=top_n_compounds,
+                z_threshold=GPS_Z_RGES_PROGRAM,
+                max_hits=max_hits,
+            )
+            _save_gps_cache(prog_sig, hits)
         for hit in hits:
             hit["screen_type"] = "program_reversal"
             hit["program_id"]  = prog_id
@@ -349,11 +379,58 @@ def run_gps_disease_screens(
                     warnings.append(f"GPS program screen failed for {failed_prog}: {exc}")
 
     # ------------------------------------------------------------------
-    # Annotate all program reversal hits in bulk (deduplicated).
-    # Compounds appearing in multiple programs are only annotated once,
-    # then the annotation is backfilled into every hit dict that shares
-    # the compound_id. This feeds putative_targets into priority compounds.
+    # Build program_vector: {compound_id → {prog_id: z_rges}} aggregated
+    # across all program reversal screens.  Each compound's vector encodes
+    # its transcriptional reversal strength per program — the GPS analogue
+    # of the gene β-footprint.  Attached to every hit so the visualization
+    # and convergence scoring can use program-space coordinates directly.
     # ------------------------------------------------------------------
+    compound_program_vectors: dict[str, dict[str, float]] = {}
+    for prog_id, hits in program_reversers.items():
+        for hit in hits:
+            cid = hit.get("compound_id", "")
+            z   = float(hit.get("z_rges") or hit.get("rges") or 0.0)
+            if cid:
+                compound_program_vectors.setdefault(cid, {})[prog_id] = z
+
+    # Composite disease reversal score = Σ_P (z_rges_P × γ_{P→disease})
+    # Positive γ × negative z_rges → therapeutic reversal of a risk program.
+    # The sign convention: z_rges > 0 = compound reverses that program signature.
+    prog_gamma_vals: dict[str, float] = {}
+    if gamma_estimates:
+        disease_key_for_gamma = disease_query.get("disease_key", "")
+        trait_aliases = {
+            "rheumatoid_arthritis": ["RA", "rheumatoid arthritis"],
+            "coronary_artery_disease": ["CAD", "coronary artery disease"],
+        }.get(disease_key_for_gamma, [disease_key_for_gamma])
+        for prog, trait_dict in gamma_estimates.items():
+            for alias in trait_aliases:
+                g = (trait_dict.get(alias) or {})
+                gval = g.get("gamma") if isinstance(g, dict) else None
+                if gval is not None:
+                    prog_gamma_vals[prog] = float(gval)
+                    break
+
+    for cid, pv in compound_program_vectors.items():
+        composite = sum(z * prog_gamma_vals.get(p, 0.0) for p, z in pv.items())
+        compound_program_vectors[cid]["__composite__"] = round(composite, 4)
+
+    # Attach program_vector to every hit
+    for hit in disease_reversers:
+        cid = hit.get("compound_id", "")
+        pv  = {k: v for k, v in compound_program_vectors.get(cid, {}).items()
+               if not k.startswith("__")}
+        hit["program_vector"]          = pv
+        hit["composite_disease_score"] = compound_program_vectors.get(cid, {}).get("__composite__", 0.0)
+
+    for prog_id, hits in program_reversers.items():
+        for hit in hits:
+            cid = hit.get("compound_id", "")
+            pv  = {k: v for k, v in compound_program_vectors.get(cid, {}).items()
+                   if not k.startswith("__")}
+            hit["program_vector"]          = pv
+            hit["composite_disease_score"] = compound_program_vectors.get(cid, {}).get("__composite__", 0.0)
+
     # ------------------------------------------------------------------
     # All Docker (GPS) screens complete. Now annotate — httpx threads only
     # run from here; no more subprocess.run() calls after this point.

@@ -26,7 +26,6 @@ from pipelines.ota_gamma_estimation import (
     compute_ota_gamma,
     build_gamma_matrix,
     estimate_cad_gammas,
-    PROVISIONAL_GAMMAS,
 )
 from pipelines.sensitivity_analysis import (
     run_batch_evalue,
@@ -66,7 +65,12 @@ class TestBetaEstimation:
 
     def test_tier2_above_coloc_threshold(self):
         eqtl = {"nes": 0.5, "se": 0.1, "tissue": "Whole_Blood"}
-        beta = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85)
+        # program_loading required — no loading means no per-program beta
+        beta_no_loading = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85)
+        assert beta_no_loading is None
+        # with loading: beta = NES × loading
+        beta = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85,
+                                   program_loading=1.0)
         assert beta is not None
         assert beta["beta"] == pytest.approx(0.5)
         assert beta["evidence_tier"] == "Tier2_Convergent"
@@ -142,10 +146,6 @@ class TestGammaEstimation:
         result = estimate_gamma("UNKNOWN_PROGRAM", "UNKNOWN_TRAIT")
         assert isinstance(result, dict)
         assert result.get("gamma") is None
-
-    def test_all_provisional_gammas_positive(self):
-        # PROVISIONAL_GAMMAS is empty — all γ values are data-derived
-        assert PROVISIONAL_GAMMAS == {}
 
     def test_compute_ota_gamma_chip_cad(self):
         # TET2 CHIP → inflammatory → CAD pathway

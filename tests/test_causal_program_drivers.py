@@ -1,12 +1,7 @@
 """
-Tests for the OT-genetic fallback `top_programs` reconstruction in
-`steps/tier3_causal/ota_gamma_calculator.py`.
-
-Regression target: AMD Run 2 produced `program_flag: no_program_data` for
-every top target because the fallback explicitly set `top_programs = []`.
-With Tier 2 `gene_program_overlap` piped through, the fallback now
-reconstructs a `{program: contribution}` dict using the best-available β/γ
-combination per program.
+Tests for program-level β/γ extraction utilities in
+`steps/tier3_causal/causal_filters.py` and program driver classification
+in `steps/tier4_translation/target_ranker.py`.
 """
 from __future__ import annotations
 
@@ -15,7 +10,6 @@ import math
 import pytest
 
 from steps.tier3_causal.ota_gamma_calculator import (
-    _build_fallback_top_programs,
     _extract_beta_for_program,
     _extract_gamma_for_trait,
 )
@@ -46,92 +40,3 @@ def test_extract_gamma_handles_all_shapes():
     assert _extract_gamma_for_trait({"CAD": 0.1}, "AMD") is None
 
 
-# ---------------------------------------------------------------------------
-# _build_fallback_top_programs — three branches
-# ---------------------------------------------------------------------------
-
-def test_fallback_branch1_beta_and_gamma_known():
-    """β × γ used directly; sum scales to ota_gamma."""
-    overlap = {"CFH": ["P_inflam", "P_comp"]}
-    betas = {"CFH": {"P_inflam": 0.6, "P_comp": 0.4}}
-    gammas = {"P_inflam": {"AMD": 0.5}, "P_comp": {"AMD": 0.2}}
-    out = _build_fallback_top_programs(
-        gene="CFH", trait="AMD", ota_gamma=0.15,
-        gene_program_overlap=overlap, gamma_estimates=gammas, beta_matrix=betas,
-    )
-    assert isinstance(out, dict) and len(out) == 2
-    assert sum(out.values()) == pytest.approx(0.15, rel=1e-6)
-    assert abs(out["P_inflam"]) > abs(out["P_comp"])   # β=0.6×γ=0.5 > β=0.4×γ=0.2
-
-
-def test_fallback_branch2_only_gamma_known():
-    overlap = {"CFH": ["P1", "P2"]}
-    gammas = {"P1": {"AMD": 0.8}, "P2": {"AMD": 0.2}}
-    out = _build_fallback_top_programs(
-        gene="CFH", trait="AMD", ota_gamma=0.1,
-        gene_program_overlap=overlap, gamma_estimates=gammas, beta_matrix={},
-    )
-    assert set(out.keys()) == {"P1", "P2"}
-    # Proportional to γ: 0.8/1.0 * 0.1 = 0.08; 0.2/1.0 * 0.1 = 0.02
-    assert out["P1"] == pytest.approx(0.08)
-    assert out["P2"] == pytest.approx(0.02)
-
-
-def test_fallback_branch3_neither_known_equal_split():
-    overlap = {"LIPC": ["P_lipid", "P_metab", "P_inflam"]}
-    out = _build_fallback_top_programs(
-        gene="LIPC", trait="AMD", ota_gamma=0.09,
-        gene_program_overlap=overlap, gamma_estimates={}, beta_matrix={},
-    )
-    assert set(out.keys()) == {"P_lipid", "P_metab", "P_inflam"}
-    for v in out.values():
-        assert v == pytest.approx(0.03)
-
-
-def test_fallback_preserves_negative_sign():
-    overlap = {"X": ["P1", "P2"]}
-    gammas = {"P1": {"AMD": 0.5}}  # only P1 has γ
-    out = _build_fallback_top_programs(
-        gene="X", trait="AMD", ota_gamma=-0.08,
-        gene_program_overlap=overlap, gamma_estimates=gammas, beta_matrix={},
-    )
-    # Branch 2 fires: only γ known for P1. |P1| gets full |ota_gamma| with sign.
-    assert out["P1"] == pytest.approx(-0.08)
-
-
-def test_fallback_empty_when_no_overlap():
-    assert _build_fallback_top_programs(
-        gene="ORPHAN", trait="AMD", ota_gamma=0.2,
-        gene_program_overlap={}, gamma_estimates={}, beta_matrix={},
-    ) == {}
-
-
-def test_fallback_empty_when_ota_gamma_is_zero_or_nan():
-    overlap = {"G": ["P1"]}
-    assert _build_fallback_top_programs(
-        gene="G", trait="AMD", ota_gamma=0.0,
-        gene_program_overlap=overlap, gamma_estimates={}, beta_matrix={},
-    ) == {}
-    assert _build_fallback_top_programs(
-        gene="G", trait="AMD", ota_gamma=float("nan"),
-        gene_program_overlap=overlap, gamma_estimates={}, beta_matrix={},
-    ) == {}
-
-
-# ---------------------------------------------------------------------------
-# Downstream integration: classifier no longer emits no_program_data sentinel
-# ---------------------------------------------------------------------------
-
-def test_classifier_escapes_no_program_data_with_fallback_dict():
-    """Regression: AMD top targets like CFH used to land here with `[]` and
-    the classifier returned `no_program_data`.  After the fix the fallback
-    emits a non-empty dict, so program_flag must be non-sentinel."""
-    overlap = {"CFH": ["COMPLEMENT", "INFLAMMATION"]}
-    gammas = {"COMPLEMENT": {"AMD": 0.4}, "INFLAMMATION": {"AMD": 0.1}}
-    tp = _build_fallback_top_programs(
-        gene="CFH", trait="AMD", ota_gamma=0.12,
-        gene_program_overlap=overlap, gamma_estimates=gammas, beta_matrix={},
-    )
-    drivers = _classify_program_drivers(tp, ota_gamma=0.12, disease_key="AMD")
-    assert drivers["program_flag"] != "no_program_data"
-    assert drivers["top_program"] in {"COMPLEMENT", "INFLAMMATION"}

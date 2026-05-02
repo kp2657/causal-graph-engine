@@ -79,10 +79,20 @@ class TestEstimateConditionalBetasForProgram:
     def test_eqtl_by_gene_routing(self):
         from pipelines.state_space.conditional_beta import estimate_conditional_betas_for_program
         eqtl_by_gene = {"TNF": {"nes": 0.7, "se": 0.1, "tissue": "colon"}}
+        # program_loading required for eQTL-MR; without it beta stays NaN
+        betas_no_loading = estimate_conditional_betas_for_program(
+            "p", ["TNF", "IL6"], "microglia", "AD",
+            eqtl_data_by_gene=eqtl_by_gene,
+            coloc_h4_by_gene={"TNF": 0.95},
+        )
+        tnf_no_load = next(b for b in betas_no_loading if b.gene == "TNF")
+        assert math.isnan(tnf_no_load.beta)  # no loading → no grounded beta
+        # with loading: eQTL-MR produces finite beta
         betas = estimate_conditional_betas_for_program(
             "p", ["TNF", "IL6"], "microglia", "AD",
             eqtl_data_by_gene=eqtl_by_gene,
             coloc_h4_by_gene={"TNF": 0.95},
+            program_loadings={"TNF": 0.8},
         )
         tnf_b = next(b for b in betas if b.gene == "TNF")
         il6_b = next(b for b in betas if b.gene == "IL6")

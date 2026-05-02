@@ -136,9 +136,14 @@ class TestEstimateBetaTier2pQtl(unittest.TestCase):
         r = self.fn("CFH", "complement_activation", pqtl_data=pqtl, program_loading=0.7)
         self.assertLess(r["beta"], 0)
 
-    def test_no_loading_defaults_to_one(self):
+    def test_no_loading_returns_none(self):
         pqtl = self._make_pqtl(0.4, pvalue=1e-8)
         r = self.fn("GENE", "prog", pqtl_data=pqtl, program_loading=None)
+        self.assertIsNone(r)
+
+    def test_loading_one_gives_raw_beta(self):
+        pqtl = self._make_pqtl(0.4, pvalue=1e-8)
+        r = self.fn("GENE", "prog", pqtl_data=pqtl, program_loading=1.0)
         self.assertAlmostEqual(r["beta"], 0.4, places=5)
 
     def test_rejects_non_finite_beta(self):

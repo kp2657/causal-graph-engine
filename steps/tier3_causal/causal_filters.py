@@ -8,7 +8,6 @@ main run() orchestration. Functions here:
   - _mechanistic_necessity_filter — prune genes with no program evidence
   - _extract_beta_for_program — safe β extraction from tiered beta_matrix shapes
   - _extract_gamma_for_trait  — safe γ extraction from multi-form gamma_estimates
-  - _build_fallback_top_programs — {program: contribution} for OT-fallback genes
   - _pareto_cutoff            — empiric elbow cutoff on sorted |γ| list
   - _HOUSEKEEPING_PREFIXES / _HOUSEKEEPING_EXACT — non-specific gene sets
 """
@@ -187,70 +186,6 @@ def _extract_gamma_for_trait(prog_gammas, trait: str) -> float | None:
         return None
     return f if _m.isfinite(f) else None
 
-
-def _build_fallback_top_programs(
-    gene: str,
-    trait: str,
-    ota_gamma: float,
-    gene_program_overlap: dict[str, list[str]],
-    gamma_estimates: dict[str, dict],
-    beta_matrix: dict[str, dict],
-) -> dict[str, float]:
-    """Construct a `{program: contribution}` dict for genes that reach γ via the
-    OT-genetic fallback (no programs contributed to β×γ).
-
-    Returns {} only when the gene has no program membership at all, which is
-    the only case where `_classify_program_drivers` should report
-    `no_program_data`.  When membership exists, contributions are derived from
-    the best-available evidence per program:
-
-      1. both β and γ known → β × γ  (direct composite)
-      2. only γ known       → γ × ota_gamma / Σγ  (scale proportionally)
-      3. neither known      → ota_gamma / N_programs  (equal split)
-
-    Sign of `ota_gamma` is preserved in all branches.
-    """
-    import math as _m
-    if not _m.isfinite(ota_gamma) or ota_gamma == 0.0:
-        return {}
-    progs = gene_program_overlap.get(gene) or []
-    if not progs:
-        return {}
-
-    # Gather β and γ per program
-    per_program: list[tuple[str, float | None, float | None]] = []
-    for p in progs:
-        b = _extract_beta_for_program(beta_matrix, gene, p)
-        g = _extract_gamma_for_trait(gamma_estimates.get(p), trait)
-        per_program.append((p, b, g))
-
-    # Branch 1 — both β and γ available for at least one program: use β×γ
-    direct = [(p, b * g) for p, b, g in per_program if b is not None and g is not None]
-    if direct:
-        # Normalise so Σcontributions == ota_gamma (preserves sign + magnitude)
-        total_abs = sum(abs(v) for _, v in direct)
-        if total_abs > 0:
-            scale = ota_gamma / sum(v for _, v in direct) if sum(v for _, v in direct) != 0 else 0.0
-            if scale == 0.0:
-                # Sum cancelled out — fall back to |value| weighting preserving ota_gamma sign
-                sign = 1.0 if ota_gamma >= 0 else -1.0
-                return {p: sign * (abs(v) / total_abs) * abs(ota_gamma) for p, v in direct}
-            return {p: v * scale for p, v in direct}
-
-    # Branch 2 — only γ available: distribute ota_gamma ∝ γ
-    gamma_only = [(p, g) for p, _, g in per_program if g is not None]
-    if gamma_only:
-        total_g = sum(abs(g) for _, g in gamma_only)
-        if total_g > 0:
-            sign = 1.0 if ota_gamma >= 0 else -1.0
-            return {p: sign * (abs(g) / total_g) * abs(ota_gamma) for p, g in gamma_only}
-
-    # Branch 3 — neither: equal split
-    n = len(progs)
-    if n > 0:
-        share = ota_gamma / n
-        return {p: share for p in progs}
-    return {}
 
 
 def _wes_concordance_check(

@@ -57,6 +57,7 @@ _PROG_PALETTE = [
 ]
 
 MIN_PROG_TARGETS = 10   # minimum OTA genes with fingerprint_r to render a program panel
+MIN_PROG_GAMMA   = 0.10  # minimum |γ_{program→disease}| to render a program panel
 
 
 # ─── loaders ──────────────────────────────────────────────────────────────────
@@ -312,35 +313,71 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
     bg_colors    = _make_bg_colors(n_genes, cluster_labels, cluster_meta, is_ota)
     bg_mask      = ~is_ota & ~np.isnan(all_r)
 
-    # ── Compute GPS convergence (re-run to get per-compound target x-positions) ─
-    from pipelines.gps_transcriptional_convergence import compute_gps_genetic_convergence
-    conv_map = compute_gps_genetic_convergence(
-        disease_reversers=disease_rev,
-        program_reversers=prog_rev_dict,
-        genetic_anchors=targets,
-        min_z_rges=1.5,
-        min_convergence_score=0.0,
-    )
+    # Build prog → list[(gene, xi, r)] lookup for fast compound placement
+    prog_gene_coords: dict[str, list[tuple[str, float, float]]] = {}
+    for t in targets:
+        gene = t["target_gene"]
+        if gene not in name_to_xi or gene not in fp_r_all:
+            continue
+        tp = t.get("top_programs") or {}
+        for prog, beta in tp.items():
+            if abs(beta) >= 0.05:
+                prog_gene_coords.setdefault(prog, []).append(
+                    (gene, float(name_to_xi[gene]), fp_r_all[gene])
+                )
+
+    def _gps_x_y_from_vector(
+        program_vector: dict[str, float],
+    ) -> tuple[float | None, float | None]:
+        """
+        Place a compound in island space using its program reversal vector.
+
+        x = |z_rges_P|-weighted mean x-position of OTA genes in reversed programs.
+            Genes weighted by |z_rges_P| × |β_{gene→P}|.
+        y = fingerprint_r of those genes, weighted by the same joint weight.
+            Compounds reversing therapeutic programs land in the therapeutic zone.
+
+        Returns (None, None) when no OTA genes with fingerprint_r overlap the
+        compound's active programs.
+        """
+        gene_w: dict[str, float] = {}
+        gene_r: dict[str, float] = {}
+
+        for prog, z in program_vector.items():
+            az = abs(z)
+            if az < 1.0:
+                continue
+            for gene, xi, r in prog_gene_coords.get(prog, []):
+                # Look up |β_{gene→P}| from OTA target record
+                tp   = ota_genes.get(gene, {}).get("top_programs") or {}
+                beta = abs(float(tp.get(prog, 0.0)))
+                w    = az * max(beta, 0.05)   # floor so genes with β just below threshold still count
+                gene_w[gene] = gene_w.get(gene, 0.0) + w
+                gene_r[gene] = r
+
+        if not gene_w:
+            return None, None
+
+        total_w = sum(gene_w.values())
+        x = sum(name_to_xi[g] * w for g, w in gene_w.items() if g in name_to_xi) / total_w
+        y = sum(gene_r[g] * w for g, w in gene_w.items()) / total_w
+        return x, float(y)
 
     def _gps_x_y(compound_id: str) -> tuple[float | None, float | None]:
-        """
-        x = score-weighted mean x-position of convergence targets in Perturb-seq library.
-        y = mean fingerprint_r of targets that have a measured r value.
-        Returns (None, None) if no targets are in the library.
-        """
-        ctargets = conv_map.get(compound_id, [])
-        hits = [(t["gene"], t["convergence_score"])
-                for t in ctargets if t["gene"] in name_to_xi]
-        if not hits:
-            return None, None
-        total_w = sum(s for _, s in hits)
-        if total_w <= 0:
-            return None, None
-        x = sum(name_to_xi[g] * s for g, s in hits) / total_w
-        # y: mean over only those targets that have a fingerprint_r measurement
-        r_vals = [fp_r_all[g] for g, _ in hits if g in fp_r_all]
-        y = float(np.mean(r_vals)) if r_vals else None
-        return x, y
+        """Resolve compound position from its stored program_vector."""
+        # Search disease reversers then program reversers for the program_vector
+        for hit in disease_rev:
+            if hit.get("compound_id") == compound_id:
+                pv = hit.get("program_vector") or {}
+                if pv:
+                    return _gps_x_y_from_vector(pv)
+        for hits in prog_rev_dict.values():
+            for hit in hits:
+                if hit.get("compound_id") == compound_id:
+                    pv = hit.get("program_vector") or {}
+                    if pv:
+                        return _gps_x_y_from_vector(pv)
+        return None, None
 
     # ── Determine program panels (≥MIN_PROG_TARGETS OTA genes with fp_r) ──────
     prog_ota_with_r: dict[str, list[tuple[str, float]]] = {}
@@ -351,7 +388,8 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
             prog_ota_with_r.setdefault(prog, []).append((gene, fp_r_all[gene]))
 
     show_progs = [p for p in all_progs
-                  if len(prog_ota_with_r.get(p, [])) >= MIN_PROG_TARGETS]
+                  if len(prog_ota_with_r.get(p, [])) >= MIN_PROG_TARGETS
+                  and abs(prog_gammas.get(p, 0.0)) >= MIN_PROG_GAMMA]
 
     # ── Layout ────────────────────────────────────────────────────────────────
     n_panels = 1 + len(show_progs)
@@ -474,15 +512,20 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
                             fontsize=5, color="#222222", zorder=6)
                 labeled_prog.add(gene)
 
-        # GPS program reversers: place at convergence-target centroid
+        # GPS program reversers: place using program_vector directly
         gps_hits = prog_rev_dict.get(prog, []) or []
-        placed: list[tuple[float, float, float]] = []  # (x, y, z)
+        seen_cids: set[str] = set()
+        placed: list[tuple[float, float, float]] = []  # (x, y, z_on_this_prog)
         for c in gps_hits:
             cid = c.get("compound_id", "")
-            z   = c.get("z_rges", c.get("rges", 0.0))
-            gx, gy = _gps_x_y(cid)
+            if cid in seen_cids:
+                continue
+            seen_cids.add(cid)
+            pv = c.get("program_vector") or {}
+            z  = pv.get(prog, c.get("z_rges", c.get("rges", 0.0)))
+            gx, gy = _gps_x_y_from_vector(pv) if pv else (None, None)
             if gx is not None and gy is not None:
-                placed.append((gx, gy, z))
+                placed.append((gx, gy, float(z)))
 
         if placed:
             gxs = np.array([p[0] for p in placed])

@@ -1,8 +1,11 @@
 """
 Tests for gps_transcriptional_convergence.py
 
-8 tests covering: convergence scoring, formula verification, disease-reverser
+8 tests covering: convergence scoring (dot-product formula), disease-reverser
 handling, annotation, z_rges threshold filtering, summarize counts, empty inputs.
+
+Architecture: convergence score = Σ_P (|z_rges_P| × |β_{gene→P}|)
+  z_rges_P from compound program_vector; β from anchor top_programs.
 """
 from __future__ import annotations
 
@@ -18,12 +21,16 @@ from pipelines.gps_transcriptional_convergence import (
 # Fixtures / helpers
 # ---------------------------------------------------------------------------
 
-def _make_program_reverser(compound_id: str, prog_id: str, z_rges: float) -> dict:
-    return {"compound_id": compound_id, "rges": -0.5, "z_rges": z_rges}
+def _make_program_reverser(compound_id: str, prog_id: str, z_rges: float,
+                            program_vector: dict | None = None) -> dict:
+    pv = program_vector if program_vector is not None else {prog_id: z_rges}
+    return {"compound_id": compound_id, "rges": -0.5, "z_rges": z_rges,
+            "program_vector": pv}
 
 
-def _make_disease_reverser(compound_id: str) -> dict:
-    return {"compound_id": compound_id, "rges": -0.5, "z_rges": 3.0}
+def _make_disease_reverser(compound_id: str, program_vector: dict | None = None) -> dict:
+    return {"compound_id": compound_id, "rges": -0.5, "z_rges": 3.0,
+            "program_vector": program_vector or {}}
 
 
 def _make_anchor(gene: str, top_programs: dict) -> dict:
@@ -37,8 +44,10 @@ def _make_anchor(gene: str, top_programs: dict) -> dict:
 def test_convergence_score_shared_programs():
     """Compound on programs [P1, P2], anchor drives [P1, P2] → positive score."""
     program_reversers = {
-        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0)],
-        "P2": [_make_program_reverser("CMP1", "P2", z_rges=3.0)],
+        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0,
+                                      program_vector={"P1": 2.0, "P2": 3.0})],
+        "P2": [_make_program_reverser("CMP1", "P2", z_rges=3.0,
+                                      program_vector={"P1": 2.0, "P2": 3.0})],
     }
     anchors = [_make_anchor("GENE_A", {"P1": 0.5, "P2": 0.8})]
 
@@ -60,13 +69,14 @@ def test_convergence_score_shared_programs():
 
 
 # ---------------------------------------------------------------------------
-# Test 2: no program overlap → score = 0, not convergent
+# Test 2: no program overlap → not convergent
 # ---------------------------------------------------------------------------
 
 def test_convergence_no_overlap():
     """Compound on [P1], anchor drives [P2] → no convergent annotation."""
     program_reversers = {
-        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0)],
+        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0,
+                                      program_vector={"P1": 2.0})],
     }
     anchors = [_make_anchor("GENE_A", {"P2": 0.9})]
 
@@ -78,24 +88,23 @@ def test_convergence_no_overlap():
         min_convergence_score=0.0,
     )
 
-    # CMP1 has P1 but GENE_A has P2 only → no shared programs → not in result
     assert "CMP1" not in result
 
 
 # ---------------------------------------------------------------------------
-# Test 3: manually verify the convergence score formula
+# Test 3: verify dot-product formula
 # ---------------------------------------------------------------------------
 
 def test_convergence_score_formula():
     """
-    Convergence score = sum(z_P × w_P) across shared programs (unnormalized).
-    CMP1 on P1 (z=2.0), P2 (z=4.0); GENE_A on P1 (w=0.5), P2 (w=1.0)
-    score = 2.0*0.5 + 4.0*1.0 = 5.0
-    Unnormalized sum rewards multi-program evidence without penalising n_shared.
+    score = Σ_P (|z_rges_P| × |β_{gene→P}|)
+    CMP1 program_vector: {P1: 2.0, P2: 4.0}
+    GENE_A top_programs: {P1: 0.5, P2: 1.0}
+    Expected: 2.0*0.5 + 4.0*1.0 = 5.0
     """
     program_reversers = {
-        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0)],
-        "P2": [_make_program_reverser("CMP1", "P2", z_rges=4.0)],
+        "P1": [_make_program_reverser("CMP1", "P1", z_rges=2.0,
+                                      program_vector={"P1": 2.0, "P2": 4.0})],
     }
     anchors = [_make_anchor("GENE_A", {"P1": 0.5, "P2": 1.0})]
 
@@ -109,21 +118,20 @@ def test_convergence_score_formula():
 
     assert "CMP1" in result
     score = result["CMP1"][0]["convergence_score"]
-    expected = 2.0 * 0.5 + 4.0 * 1.0   # = 5.0
+    expected = 2.0 * 0.5 + 4.0 * 1.0  # = 5.0
     assert abs(score - expected) < 1e-3
 
 
 # ---------------------------------------------------------------------------
-# Test 4: disease reversers have no per-program z_rges → no convergence hypothesis
+# Test 4: disease reversers without program_vector get no convergence
 # ---------------------------------------------------------------------------
 
-def test_disease_reverser_gets_no_convergence():
+def test_disease_reverser_no_program_vector_gets_no_convergence():
     """
-    Disease reversers reversed the full disease signature but cannot be attributed
-    to a specific program. Uniform program weights are identical for every compound,
-    producing degenerate scores. They correctly receive no convergence hypothesis.
+    Disease reversers with empty program_vector have no program attribution
+    and correctly receive no convergence hypothesis.
     """
-    disease_reversers = [_make_disease_reverser("CMP_D")]
+    disease_reversers = [_make_disease_reverser("CMP_D", program_vector={})]
     anchors = [_make_anchor("GENE_B", {"P1": 0.7, "P2": 0.3})]
 
     result = compute_gps_genetic_convergence(
@@ -134,7 +142,6 @@ def test_disease_reverser_gets_no_convergence():
         min_convergence_score=0.0,
     )
 
-    # Disease-only reversers get no compound_programs entry → not in result
     assert "CMP_D" not in result
 
 
@@ -144,13 +151,13 @@ def test_disease_reverser_gets_no_convergence():
 
 def test_annotate_adds_field():
     """
-    After annotation:
-    - Program reversers get 'convergent_genetic_targets_hypothesis' populated with hits.
-    - Disease reversers get the key set to [] (no per-program z_rges → no hypothesis).
+    Program reversers with program_vector get convergent targets.
+    Disease reversers without program_vector get empty list.
     """
-    disease_reversers = [_make_disease_reverser("CMP_A")]
+    disease_reversers = [_make_disease_reverser("CMP_A", program_vector={})]
     program_reversers = {
-        "P1": [_make_program_reverser("CMP_B", "P1", z_rges=2.5)],
+        "P1": [_make_program_reverser("CMP_B", "P1", z_rges=2.5,
+                                      program_vector={"P1": 2.5})],
     }
     anchors = [_make_anchor("GENE_C", {"P1": 0.6})]
 
@@ -160,25 +167,23 @@ def test_annotate_adds_field():
         genetic_anchors=anchors,
     )
 
-    # Disease reverser: key must exist, list is empty (phenotypic hit, unresolved mechanism)
     assert "annotation" in dr_out[0]
-    assert "convergent_genetic_targets_hypothesis" in dr_out[0]["annotation"]
     assert dr_out[0]["annotation"]["convergent_genetic_targets_hypothesis"] == []
 
-    # Program reverser: key exists and contains GENE_C
     assert "annotation" in pr_out["P1"][0]
     targets = pr_out["P1"][0]["annotation"]["convergent_genetic_targets_hypothesis"]
     assert any(t["gene"] == "GENE_C" for t in targets)
 
 
 # ---------------------------------------------------------------------------
-# Test 6: min_z_rges threshold filters out low-z compounds
+# Test 6: min_z_rges filters low-z programs from the vector
 # ---------------------------------------------------------------------------
 
 def test_min_z_threshold():
-    """Compound with |z_rges| < min_z_rges should not count toward convergence."""
+    """Programs with |z_rges| < min_z_rges are excluded from the vector."""
     program_reversers = {
-        "P1": [_make_program_reverser("CMP_LOW", "P1", z_rges=1.0)],  # below 1.5 threshold
+        "P1": [_make_program_reverser("CMP_LOW", "P1", z_rges=1.0,
+                                      program_vector={"P1": 1.0})],
     }
     anchors = [_make_anchor("GENE_D", {"P1": 0.9})]
 
@@ -190,7 +195,6 @@ def test_min_z_threshold():
         min_convergence_score=0.0,
     )
 
-    # CMP_LOW has |z_rges|=1.0 < 1.5 → excluded from compound_programs → not in result
     assert "CMP_LOW" not in result
 
 
@@ -201,12 +205,15 @@ def test_min_z_threshold():
 def test_summarize_counts():
     """2 convergent disease reversers, 3 not → n_disease_convergent=2."""
     def _hit_with_convergence(cid: str, genes: list[str]) -> dict:
-        targets = [{"gene": g, "convergence_score": 0.5, "shared_programs": ["P1"], "n_shared": 1}
+        targets = [{"gene": g, "convergence_score": 0.5,
+                    "shared_programs": ["P1"], "n_shared": 1}
                    for g in genes]
-        return {"compound_id": cid, "annotation": {"convergent_genetic_targets_hypothesis": targets}}
+        return {"compound_id": cid,
+                "annotation": {"convergent_genetic_targets_hypothesis": targets}}
 
     def _hit_no_convergence(cid: str) -> dict:
-        return {"compound_id": cid, "annotation": {"convergent_genetic_targets_hypothesis": []}}
+        return {"compound_id": cid,
+                "annotation": {"convergent_genetic_targets_hypothesis": []}}
 
     disease_reversers = [
         _hit_with_convergence("CMP1", ["GENE_A"]),

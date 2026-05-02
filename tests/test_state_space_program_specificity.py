@@ -209,7 +209,12 @@ class TestEstimateBetaTier25(unittest.TestCase):
 
     def test_activates_when_coloc_absent(self):
         eqtl = {"nes": -0.3, "tissue": "Whole_Blood"}
-        result = self.fn("PRPH2", "photoreceptor_integrity", eqtl_data=eqtl, coloc_h4=None)
+        # program_loading required — no loading means no per-program beta
+        result_no_loading = self.fn("PRPH2", "photoreceptor_integrity", eqtl_data=eqtl, coloc_h4=None)
+        self.assertIsNone(result_no_loading)
+        # with loading: direction-only tier activates
+        result = self.fn("PRPH2", "photoreceptor_integrity", eqtl_data=eqtl, coloc_h4=None,
+                         program_loading=0.5)
         self.assertIsNotNone(result)
         self.assertEqual(result["evidence_tier"], "Tier2_eQTL_direction")
 
