@@ -196,27 +196,23 @@ def _wes_concordance_check(
     Check whether the OTA composite γ direction agrees with WES rare LoF burden direction.
 
     WES burden is a direct human genetic causal signal for gene→disease direction:
-      burden_beta > 0: LoF increases disease risk → gene is protective → therapeutic = activate
-                       → ota_gamma should be < 0 (more gene activity = less disease)
-      burden_beta < 0: LoF decreases disease risk → gene is harmful   → therapeutic = inhibit
-                       → ota_gamma should be > 0 (more gene activity = more disease)
+      burden_beta > 0: LoF increases disease risk → gene is protective → OTA should be > 0
+      burden_beta < 0: LoF decreases disease risk → gene is harmful   → OTA should be < 0
 
-    Concordance: sign(ota_gamma) == -sign(burden_beta)
-    Discordance: sign(ota_gamma) ==  sign(burden_beta)
+    Concordance: sign(ota_gamma) == sign(burden_beta)  (same signs = agree on gene direction)
+    Discordance: sign(ota_gamma) != sign(burden_beta)
 
-    WES acts as a REWARD signal only — never penalizes:
-      - No burden data:                         wes_gamma_weight = 1.0 (neutral)
-      - Any p, discordant:                      wes_gamma_weight = 1.0 (annotated, not penalized)
-      - p < WES_CONCORDANCE_P_THRESHOLD, concordant: wes_gamma_weight > 1.0 (boost)
-        Scales linearly in -log10(p) from 1.0 at p=1e-4 to WES_CONCORDANT_BOOST (1.5) at p=5e-8.
+    Concordance and discordance are both annotation-only — ota_gamma is never modified.
+    wes_gamma_weight is always 1.0. Discordance is documented in wes_note and wes_concordant
+    so downstream consumers (CSO, report) can surface the conflict.
 
     Returns dict with:
-      wes_checked:       bool — True when any WES burden data is available
-      wes_concordant:    bool | None — direction agreement (None if no data)
-      wes_gamma_weight:  float — multiplier applied to ota_gamma (≥1.0 always; >1.0 when concordant+significant)
-      wes_burden_p:      float | None
-      wes_burden_beta:   float | None
-      wes_note:          str
+      wes_checked:      bool — True when any WES burden data is available
+      wes_concordant:   bool | None — direction agreement (None if no data)
+      wes_gamma_weight: float — always 1.0 (pure annotation; ota_gamma unchanged)
+      wes_burden_p:     float | None
+      wes_burden_beta:  float | None
+      wes_note:         str
     """
     result = {
         "wes_checked":      False,
@@ -252,32 +248,19 @@ def _wes_concordance_check(
     result["wes_burden_p"]    = burden_p
     result["wes_burden_beta"] = burden_beta
 
-    concordant = (ota_gamma * burden_beta) < 0  # opposite signs = concordant (see docstring)
+    # Same signs = concordant: both say gene drives disease (both <0) or gene protects (both >0)
+    concordant = (ota_gamma * burden_beta) > 0
     result["wes_concordant"] = concordant
 
-    if concordant and burden_p < WES_CONCORDANCE_P_THRESHOLD:
-        # Boost scales linearly in -log10(p): 1.0 at p=1e-4 → WES_CONCORDANT_BOOST at p=5e-8
-        _log10_p      = _math.log10(burden_p)
-        _log10_thresh = _math.log10(WES_CONCORDANCE_P_THRESHOLD)  # -4
-        _log10_gws    = _math.log10(5e-8)                          # ≈ -7.3
-        _t = min(1.0, (_log10_thresh - _log10_p) / (_log10_thresh - _log10_gws))
-        boost = 1.0 + (WES_CONCORDANT_BOOST - 1.0) * _t
-        boost = min(WES_CONCORDANT_BOOST, max(1.0, boost))
-        result["wes_gamma_weight"] = round(boost, 4)
+    if concordant:
         result["wes_note"] = (
             f"WES concordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
-            f"agrees with ota_gamma={ota_gamma:+.3f}. "
-            f"Applying {boost:.2f}x boost (scaled to stat strength)."
-        )
-    elif concordant:
-        result["wes_note"] = (
-            f"WES concordant (p={burden_p:.1e}, sub-threshold): burden_beta={burden_beta:+.3f} "
-            f"agrees with ota_gamma={ota_gamma:+.3f}. No boost applied (p≥{WES_CONCORDANCE_P_THRESHOLD:.0e})."
+            f"agrees with ota_gamma={ota_gamma:+.3f}."
         )
     else:
         result["wes_note"] = (
             f"WES discordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
-            f"vs ota_gamma={ota_gamma:+.3f}. Annotated only — no penalty applied."
+            f"opposes ota_gamma={ota_gamma:+.3f}. Perturbation and rare-variant direction conflict."
         )
 
     return result

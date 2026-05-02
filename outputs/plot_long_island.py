@@ -2,18 +2,23 @@
 Long-island multi-panel plot — transcriptional fingerprint landscape.
 
 Panel 0  — Disease state: all KOs, y = fingerprint_r (KO vs disease DEG).
-Panel 1…N — One per NMF program with ≥MIN_PROG_TARGETS OTA genes:
+Panel 1…N — One per SVD program with ≥MIN_PROG_TARGETS OTA genes:
              background grey, program OTA genes highlighted,
              GPS program reversers placed at convergence-target x-position.
 
-X-axis (shared): all Perturb-seq KOs ordered by disease-weighted hierarchical
-clustering of 30-dim SVD fingerprints.  Genes that modify the disease via the
-same transcriptional axes cluster together (islands).
+X-axis (shared): all Perturb-seq KOs ordered by hierarchical clustering
+restricted to the TOP_GWAS_COMPONENTS SVD dimensions ranked by |γ_{P→disease}|
+(OT L2G GWAS signal).  Genes that perturb the same GWAS-relevant transcriptional
+axes cluster together (islands).
+
+Coloring: each OTA target is coloured by the GWAS-aligned SVD component where
+its z-scored Vt loading is most extreme (|z| > GWAS_PROG_Z_THRESHOLD).  Genes
+below threshold get grey ("no dominant GWAS program").  This is computed fresh
+from the SVD matrix — independent of the checkpoint's top_program assignment.
 
 GPS compound placement in program panels:
   x = score-weighted mean x-position of the compound's convergence target genes
   y = mean fingerprint_r of those targets
-  This is now valid: convergence targets are gene-specific (fixed score bug).
 
 Usage:
     python outputs/plot_long_island.py --disease ra
@@ -57,7 +62,12 @@ _PROG_PALETTE = [
 ]
 
 MIN_PROG_TARGETS = 10   # minimum OTA genes with fingerprint_r to render a program panel
-MIN_PROG_GAMMA   = 0.10  # minimum |γ_{program→disease}| to render a program panel
+MIN_PROG_GAMMA   = 0.02  # minimum |γ_{program→disease}| to render a program panel
+                         # (LDSC τ-normalised values peak at ~0.10; OT L2G values at 0.1–0.5)
+
+TOP_GWAS_COMPONENTS  = 15   # SVD components (ranked by gwas_t) used for x-axis clustering
+GWAS_PROG_Z_THRESHOLD = 1.0 # |z-score| on a GWAS-aligned component to assign membership
+NMF_N_COMPONENTS     = 20   # NMF programs to extract in --mode nmf
 
 
 # ─── loaders ──────────────────────────────────────────────────────────────────
@@ -74,9 +84,127 @@ def _load_t3(slug: str) -> dict:
     return json.load(open(p)) if p.exists() else {}
 
 
-def _load_svd(dataset_id: str) -> tuple[np.ndarray, list[str]]:
+def _load_gwas_aligned_programs(dataset_id: str, top_k: int) -> list[dict]:
+    """Load pre-saved gwas_t-ranked program list (written by perturbseq_server)."""
+    p = pathlib.Path(f"data/perturbseq/{dataset_id}/gwas_aligned_programs.json")
+    if not p.exists():
+        return []
+    entries = json.load(open(p))
+    # Sort by |gwas_t_stat| — most strongly GWAS-aligned first
+    entries.sort(key=lambda e: abs(e["gwas_t_stat"]), reverse=True)
+    return entries[:top_k]
+
+
+def _load_svd(dataset_id: str) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """Returns (fp_mat, Vt, pert_names).
+    fp_mat = Vt.T  shape (n_perts × k) — used for clustering.
+    Vt             shape (k × n_perts)  — used for z-score thresholding.
+    """
     d = np.load(f"data/perturbseq/{dataset_id}/svd_loadings.npz")
-    return d["Vt"].T, list(d["pert_names"])
+    Vt = d["Vt"]           # (k × n_perts)
+    return Vt.T, Vt, list(d["pert_names"])
+
+
+def _svd_component_index(prog_name: str) -> int | None:
+    """'RA_SVD_C07' → 6  (0-indexed).  Returns None on parse failure."""
+    try:
+        return int(prog_name.rsplit("C", 1)[-1]) - 1
+    except (ValueError, IndexError):
+        return None
+
+
+def _gwas_prog_assignment(
+    fp_mat: np.ndarray,
+    pert_names: list[str],
+    gwas_col_indices: list[int],
+    gwas_prog_names: list[str],
+) -> tuple[dict[str, str | None], dict[str, float]]:
+    """
+    Assign each Perturb-seq gene to its dominant GWAS-aligned SVD component.
+
+    For each gene, z-score its loading on every GWAS-aligned component
+    (z = (Vt[c,g] - mean_c) / std_c across all perturbations).
+    Assign to the component with the largest |z| if |z| > GWAS_PROG_Z_THRESHOLD,
+    else assign None ("no dominant GWAS program").
+
+    Returns:
+        gene_prog  — {gene_name: program_id | None}
+        gene_z     — {gene_name: z-score on its assigned component} (for sorting)
+    """
+    if not gwas_col_indices:
+        empty = {g: None for g in pert_names}
+        return empty, {g: 0.0 for g in pert_names}
+
+    gwas_fp  = fp_mat[:, gwas_col_indices]           # (n_perts × top_k)
+    col_mean = gwas_fp.mean(axis=0)
+    col_std  = gwas_fp.std(axis=0)
+    col_std[col_std < 1e-12] = 1.0
+    gwas_z   = (gwas_fp - col_mean) / col_std        # (n_perts × top_k)
+
+    abs_z  = np.abs(gwas_z)
+    best_c = abs_z.argmax(axis=1)                    # (n_perts,)
+    best_z = abs_z[np.arange(len(pert_names)), best_c]
+    # Signed z on best component — used for within-program sort direction
+    signed_z = gwas_z[np.arange(len(pert_names)), best_c]
+
+    gene_prog: dict[str, str | None] = {}
+    gene_z:    dict[str, float]      = {}
+    for i, gene in enumerate(pert_names):
+        if best_z[i] >= GWAS_PROG_Z_THRESHOLD:
+            gene_prog[gene] = gwas_prog_names[best_c[i]]
+            gene_z[gene]    = float(signed_z[i])
+        else:
+            gene_prog[gene] = None
+            gene_z[gene]    = 0.0
+    return gene_prog, gene_z
+
+
+def _run_nmf_assignment(
+    Vt: np.ndarray,
+    pert_names: list[str],
+    disease_key: str,
+    gwas_anchor_genes: set[str],
+    n_components: int = NMF_N_COMPONENTS,
+) -> tuple[dict[str, str | None], list[str], dict[str, float]]:
+    """
+    Run NMF on |Vt.T| (n_perts × k) to get sparse, parts-based program assignments.
+
+    Unlike SVD (dense/orthogonal, every gene loads on all components), NMF
+    produces sparse non-negative W where each perturbation loads primarily on
+    one or few components — argmax is a meaningful "dominant program."
+
+    Ranks programs by mean loading of GWAS anchor genes: the component where
+    GWAS-perturbed genes cluster most strongly = the most disease-relevant axis.
+
+    Returns:
+        gene_prog      — {gene: 'RA_NMF_C01' | None}
+        prog_order     — top-k program names sorted by GWAS relevance (desc)
+        prog_gwas_score — {prog: mean_gwas_loading}  (used as proxy for γ_{P→disease})
+    """
+    from sklearn.decomposition import NMF
+
+    X = np.abs(Vt.T)  # (n_perts × k) — abs makes non-negative; captures loading magnitude
+    model = NMF(n_components=n_components, init="nndsvda", random_state=42, max_iter=500)
+    W = model.fit_transform(X)  # (n_perts × n_components)
+
+    assignments = W.argmax(axis=1)  # argmax is meaningful with sparse NMF
+
+    prefix = disease_key.upper()
+    comp_names = [f"{prefix}_NMF_C{c+1:02d}" for c in range(n_components)]
+
+    gene_prog: dict[str, str | None] = {
+        gene: comp_names[assignments[i]] for i, gene in enumerate(pert_names)
+    }
+
+    gwas_idx = [i for i, g in enumerate(pert_names) if g in gwas_anchor_genes]
+    if gwas_idx:
+        gwas_scores = W[gwas_idx, :].mean(axis=0)
+    else:
+        gwas_scores = W.mean(axis=0)
+
+    prog_gwas_score = {comp_names[c]: float(gwas_scores[c]) for c in range(n_components)}
+    prog_order = sorted(comp_names, key=lambda p: prog_gwas_score[p], reverse=True)
+    return gene_prog, prog_order, prog_gwas_score
 
 
 def _load_fp_r(dataset_id: str) -> dict[str, float]:
@@ -98,53 +226,98 @@ def _prog_gamma(t3: dict, disease_key: str) -> dict[str, float]:
             if v and isinstance(v, dict) and v.get("gamma") is not None:
                 out[prog] = v["gamma"]
                 break
+
+    # Override SVD program gammas with signed chi-square τ (CAD only; RA has no
+    # sign variance so falls back to checkpoint values).
+    try:
+        import sys as _sys
+        import pathlib as _pl
+        _root = _pl.Path(__file__).parent.parent
+        if str(_root) not in _sys.path:
+            _sys.path.insert(0, str(_root))
+        from pipelines.ldsc.gamma_loader import get_svd_program_gammas
+        svd_gammas = get_svd_program_gammas(disease_key.upper())
+        for prog, est in svd_gammas.items():
+            if est.get("gamma") is not None:
+                out[prog] = est["gamma"]
+    except Exception:
+        pass  # non-fatal; old checkpoint gammas remain
+
     return out
 
 
 # ─── disease-weighted clustering ──────────────────────────────────────────────
 
-def _build_layout(fp: np.ndarray, all_r: np.ndarray,
-                  n_islands: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _build_layout(
+    fp_mat: np.ndarray,
+    all_r: np.ndarray,
+    n_islands: int,
+    gene_prog: dict[str, str | None],
+    gene_z: dict[str, float],
+    pert_names: list[str],
+    gwas_progs_sorted: list[str],
+    gene_gamma: dict[str, float],
+) -> tuple[np.ndarray, np.ndarray]:
     """
-    Returns (x_pos, xi_to_cluster, link_Z).
-    x_pos[i] = x-axis position of gene i.
+    Build x-axis ordering: GWAS-program blocks, within each block sorted by
+    OTA gamma ascending (most protective/therapeutic leftmost).
+
+    x = OTA γ (causal, genetics-based)
+    y = fingerprint_r (transcriptional, RNA-based)
+
+    Two independent axes: a gene bottom-left within its block has both
+    transcriptional similarity to disease reversal AND genetic causal evidence
+    for protection — the strongest therapeutic candidates.
+
+    Genes with no OTA gamma (library-only) sort to x=0 within their block.
+    Unassigned genes (grey, no dominant GWAS axis) appended at right, also
+    sorted by OTA gamma.
+
+    Returns:
+        x_pos          — (n_perts,) int  position of each gene on x-axis
+        cluster_labels — (n_perts,) int  cluster id (1…n_programs+1)
     """
-    from scipy.cluster.hierarchy import linkage, leaves_list, fcluster
-    from scipy.spatial.distance import pdist
+    n = len(pert_names)
+    prog_to_label = {p: i + 1 for i, p in enumerate(gwas_progs_sorted)}
+    unassigned_label = len(gwas_progs_sorted) + 1
 
-    # Weight SVD dims by correlation with fingerprint_r
-    fp_w = fp.copy()
-    valid = ~np.isnan(all_r)
-    if valid.sum() >= 4:
-        dw = np.zeros(fp.shape[1])
-        for k in range(fp.shape[1]):
-            x = fp[valid, k]; y = all_r[valid]
-            xm, ym = x - x.mean(), y - y.mean()
-            den = np.sqrt((xm**2).sum() * (ym**2).sum())
-            dw[k] = abs(xm @ ym / den) if den > 1e-12 else 0.0
-        ws = dw.sum()
-        if ws > 1e-12:
-            dw = dw / ws * fp.shape[1]
-        fp_w *= dw[np.newaxis, :]
+    def _sort_val(i: int) -> float:
+        g = pert_names[i]
+        if g in gene_gamma:
+            return gene_gamma[g]           # OTA target: position by OTA γ
+        # Library gene: fall back to fingerprint_r so background cloud
+        # spreads horizontally rather than stacking at x=0.
+        return all_r[i] if not math.isnan(all_r[i]) else 0.0
 
-    norms = np.linalg.norm(fp_w, axis=1, keepdims=True)
-    norms[norms == 0] = 1.0
-    fp_norm = fp_w / norms
+    ordered: list[int] = []
 
-    dists  = pdist(fp_norm, metric="cosine")
-    Z      = linkage(dists, method="ward")
-    order  = leaves_list(Z)
-    labels = fcluster(Z, n_islands, criterion="maxclust")
+    for prog in gwas_progs_sorted:
+        members = [
+            (i, _sort_val(i))
+            for i in range(n)
+            if gene_prog.get(pert_names[i]) == prog
+        ]
+        members.sort(key=lambda t: t[1])   # ascending: protective left, disease right
+        ordered.extend(idx for idx, _ in members)
 
-    x_pos = np.empty(len(order), dtype=int)
-    x_pos[order] = np.arange(len(order))
+    unassigned = [
+        (i, _sort_val(i))
+        for i in range(n)
+        if gene_prog.get(pert_names[i]) is None
+    ]
+    unassigned.sort(key=lambda t: t[1])
+    ordered.extend(idx for idx, _ in unassigned)
 
-    # xi_to_cluster[xi] = cluster label
-    xi_to_cluster = np.empty(len(order), dtype=int)
-    for i in range(len(order)):
-        xi_to_cluster[x_pos[i]] = labels[i]
+    x_pos = np.empty(n, dtype=int)
+    for xi, gene_idx in enumerate(ordered):
+        x_pos[gene_idx] = xi
 
-    return x_pos, xi_to_cluster, Z, labels
+    cluster_labels = np.array([
+        prog_to_label.get(gene_prog.get(pert_names[i]), unassigned_label)
+        for i in range(n)
+    ], dtype=int)
+
+    return x_pos, cluster_labels
 
 
 # ─── cluster metadata ─────────────────────────────────────────────────────────
@@ -261,7 +434,7 @@ def _style_ax(ax, n_genes, ylabel, title="", yticks=True):
 # ─── main ─────────────────────────────────────────────────────────────────────
 
 def plot_long_island(disease_key: str, out_path: str | None = None,
-                     n_islands: int = 12) -> None:
+                     n_islands: int = 12, mode: str = "svd") -> None:
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -279,14 +452,6 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
     known       = cfg["known"]
     prog_gammas = _prog_gamma(t3, disease_key)
 
-    def _dom_prog(t: dict) -> str | None:
-        return (t.get("program_drivers") or {}).get("top_program")
-
-    all_progs = sorted(
-        {p for t in targets if (p := _dom_prog(t))},
-        key=lambda p: -prog_gammas.get(p, 0.0),
-    )
-    prog_color = {p: _PROG_PALETTE[i % len(_PROG_PALETTE)] for i, p in enumerate(all_progs)}
     ota_genes: dict[str, dict] = {t["target_gene"]: t for t in targets}
 
     disease_rev   = chem.get("gps_disease_reversers", []) or []
@@ -294,16 +459,73 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
 
     # ── Load SVD + fingerprint r ──────────────────────────────────────────────
     print(f"Loading SVD fingerprints for {cfg['dataset_id']}…")
-    fp_mat, fp_names = _load_svd(cfg["dataset_id"])
-    fp_r_all         = _load_fp_r(cfg["dataset_id"])
-    name_to_idx      = {n: i for i, n in enumerate(fp_names)}
+    fp_mat, Vt, fp_names = _load_svd(cfg["dataset_id"])
+    fp_r_all              = _load_fp_r(cfg["dataset_id"])
 
     n_genes = len(fp_names)
     all_r   = np.array([fp_r_all.get(fp_names[i], float("nan")) for i in range(n_genes)])
 
-    # ── Build layout (cluster order, labels) ──────────────────────────────────
-    print("  Building disease-weighted clustering…")
-    x_pos, xi_to_cluster, link_Z, cluster_labels = _build_layout(fp_mat, all_r, n_islands)
+    # ── Program selection: SVD (gwas_t threshold) or NMF (argmax) ────────────
+    if mode == "nmf":
+        print(f"  Running NMF (n={NMF_N_COMPONENTS}) on |Vt.T| for sparse program assignment…")
+        gwas_anchor_genes = {t["target_gene"] for t in targets
+                             if t.get("dominant_tier", "").startswith("Tier1")}
+        gene_gwas_prog, nmf_prog_order, nmf_gwas_score = _run_nmf_assignment(
+            Vt, fp_names, disease_key, gwas_anchor_genes, NMF_N_COMPONENTS
+        )
+        gwas_progs_sorted = nmf_prog_order[:TOP_GWAS_COMPONENTS]
+        print(f"  Top NMF programs (by GWAS anchor loading): "
+              f"{', '.join(p.split('_')[-1] for p in gwas_progs_sorted)}")
+        # Use NMF gwas_score as proxy for γ_{program→disease} in panel filter + title
+        prog_gammas_display = nmf_gwas_score
+    else:
+        # SVD mode: load gwas_t-ranked programs, z-threshold assignment
+        gwas_ranked = _load_gwas_aligned_programs(cfg["dataset_id"], TOP_GWAS_COMPONENTS)
+        if not gwas_ranked:
+            gwas_ranked = [
+                {"program_id": p, "gwas_t_stat": prog_gammas.get(p, 0.0)}
+                for p in sorted(prog_gammas, key=lambda p: abs(prog_gammas[p]), reverse=True)
+                if "_SVD_" in p
+            ][:TOP_GWAS_COMPONENTS]
+
+        gwas_progs_sorted = [e["program_id"] for e in gwas_ranked]
+
+        gwas_col_indices: list[int] = []
+        for p in gwas_progs_sorted:
+            idx = _svd_component_index(p)
+            if idx is not None and 0 <= idx < Vt.shape[0]:
+                gwas_col_indices.append(idx)
+
+        print(f"  GWAS-aligned components ({len(gwas_progs_sorted)}, by gwas_t): "
+              f"{', '.join(p.split('_')[-1] for p in gwas_progs_sorted)}")
+
+        gene_gwas_prog, gene_z = _gwas_prog_assignment(
+            fp_mat, fp_names, gwas_col_indices, gwas_progs_sorted
+        )
+        prog_gammas_display = prog_gammas
+
+    # Build color palette from selected programs
+    all_progs  = gwas_progs_sorted
+    prog_color = {p: _PROG_PALETTE[i % len(_PROG_PALETTE)] for i, p in enumerate(all_progs)}
+
+    # ── Build gene_gamma lookup (OTA γ per gene, for x-axis within blocks) ───
+    # x = OTA γ (causal, genetics-based); y = fingerprint_r (transcriptional)
+    gene_gamma: dict[str, float] = {
+        t["target_gene"]: float(t["ota_gamma"])
+        for t in targets
+        if t.get("ota_gamma") is not None and not math.isnan(float(t["ota_gamma"]))
+    }
+
+    # ── Build layout: program-sorted x-axis, within-block by OTA γ ───────────
+    print("  Building program-sorted x-axis layout (x=OTA γ within blocks)…")
+    # gene_z only exists in SVD mode; NMF uses argmax so no signed z needed
+    _gene_z = gene_z if mode == "svd" else {g: 0.0 for g in fp_names}
+    x_pos, cluster_labels = _build_layout(
+        fp_mat, all_r, n_islands,
+        gene_prog=gene_gwas_prog, gene_z=_gene_z,
+        pert_names=fp_names, gwas_progs_sorted=gwas_progs_sorted,
+        gene_gamma=gene_gamma,
+    )
     name_to_xi  = {name: x_pos[i] for i, name in enumerate(fp_names)}
     all_xi      = np.array([x_pos[i] for i in range(n_genes)])
     is_ota      = np.array([fp_names[i] in ota_genes for i in range(n_genes)])
@@ -379,196 +601,192 @@ def plot_long_island(disease_key: str, out_path: str | None = None,
                         return _gps_x_y_from_vector(pv)
         return None, None
 
-    # ── Determine program panels (≥MIN_PROG_TARGETS OTA genes with fp_r) ──────
-    prog_ota_with_r: dict[str, list[tuple[str, float]]] = {}
+    # ── Determine which programs get a subpanel ───────────────────────────────
+    # A gene appears in program P's panel if its OTA contribution |β(gene→P)×γ(P)|
+    # clears a minimum threshold. This is more informative than winner-takes-all
+    # (which hides high-γ programs like C15 with moderate β) and avoids the all-same-
+    # pattern of full top_programs (where every gene appears in every panel).
+    PROG_CONTRIB_MIN = 0.03   # minimum |β × γ| for program panel membership
+    prog_ota_with_gamma: dict[str, list[tuple[str, float, float]]] = {}
+    gwas_prog_set = set(all_progs)
     for t in targets:
-        prog = _dom_prog(t)
         gene = t["target_gene"]
-        if prog and gene in fp_r_all:
-            prog_ota_with_r.setdefault(prog, []).append((gene, fp_r_all[gene]))
-
-    show_progs = [p for p in all_progs
-                  if len(prog_ota_with_r.get(p, [])) >= MIN_PROG_TARGETS
-                  and abs(prog_gammas.get(p, 0.0)) >= MIN_PROG_GAMMA]
-
-    # ── Layout ────────────────────────────────────────────────────────────────
-    n_panels = 1 + len(show_progs)
-    # Disease panel taller; program panels shorter
-    h_ratios = [3.5] + [2.0] * len(show_progs)
-    fig_h    = 4.5 + 2.5 * len(show_progs)
-    fig = plt.figure(figsize=(22, fig_h))
-    gs  = GridSpec(n_panels, 1, figure=fig, hspace=0.45,
-                   height_ratios=h_ratios)
-
-    # ═════════════════════════════════════════════════════════════════════════
-    # Panel 0: Disease state — full KO landscape
-    # ═════════════════════════════════════════════════════════════════════════
-    ax0 = fig.add_subplot(gs[0])
-    _draw_islands(ax0, cluster_meta)
-    _draw_background(ax0, all_xi, all_r, bg_mask, bg_colors)
-
-    # OTA targets
-    for i in range(n_genes):
-        if not is_ota[i] or math.isnan(all_r[i]):
+        gamma = gene_gamma.get(gene)
+        r = fp_r_all.get(gene)
+        if gamma is None or r is None:
             continue
-        t    = ota_genes[fp_names[i]]
-        prog = _dom_prog(t)
-        col  = prog_color.get(prog, "#9E9E9E")
-        size = 65 if t.get("dominant_tier", "") == "Tier1_Interventional" else 24
-        ec   = "#B71C1C" if is_known[i] else "white"
-        ew   = 1.8       if is_known[i] else 0.4
-        ax0.scatter(all_xi[i], all_r[i], c=col, s=size,
-                    edgecolors=ec, linewidths=ew, alpha=0.93, zorder=4)
+        tp = t.get("top_programs") or {}
+        assigned = False
+        for prog, b in tp.items():
+            if prog not in gwas_prog_set:
+                continue
+            prog_g = prog_gammas.get(prog, 0.0)
+            if abs(b * prog_g) >= PROG_CONTRIB_MIN:
+                prog_ota_with_gamma.setdefault(prog, []).append((gene, gamma, r))
+                assigned = True
+        if not assigned:
+            # Fallback: dominant z-score assignment so gene still appears somewhere
+            dom = gene_gwas_prog.get(gene)
+            if dom:
+                prog_ota_with_gamma.setdefault(dom, []).append((gene, gamma, r))
 
-    # Labels: known + top-15% OTA by |r|
-    ota_rv = sorted([(abs(all_r[i]), i) for i in range(n_genes)
-                     if is_ota[i] and not math.isnan(all_r[i])])
-    thresh = ota_rv[max(0, int(len(ota_rv)*0.85))][0] if ota_rv else 0.0
-    labeled: set[str] = set()
-    for i in range(n_genes):
-        if not is_ota[i] or math.isnan(all_r[i]):
-            continue
-        gene = fp_names[i]
-        if is_known[i] or abs(all_r[i]) >= thresh:
-            col = "#B71C1C" if is_known[i] else "#222222"
-            fw  = "bold"   if is_known[i] else "normal"
-            va  = "bottom" if all_r[i] >= 0 else "top"
-            dy  = 0.020    if all_r[i] >= 0 else -0.020
-            ax0.annotate(gene, (all_xi[i], all_r[i]+dy),
-                         ha="center", va=va, fontsize=5.5,
-                         color=col, fontweight=fw, zorder=6)
-            labeled.add(gene)
+    if mode == "nmf":
+        # NMF: top-8 programs by GWAS loading with enough OTA targets (no γ threshold)
+        show_progs = [p for p in all_progs
+                      if len(prog_ota_with_gamma.get(p, [])) >= MIN_PROG_TARGETS]
+    else:
+        show_progs = [p for p in all_progs
+                      if len(prog_ota_with_gamma.get(p, [])) >= MIN_PROG_TARGETS
+                      and abs(prog_gammas.get(p, 0.0)) >= MIN_PROG_GAMMA]
 
-    _draw_island_labels(ax0, cluster_meta, labeled, n_genes)
+    # ── Layout: square grid of per-program panels only ───────────────────────
+    n_cols   = min(4, len(show_progs)) if show_progs else 1
+    n_rows   = math.ceil(len(show_progs) / n_cols) if show_progs else 1
+    panel_sz = 4.5  # inches per panel (square)
+    fig = plt.figure(figsize=(n_cols * panel_sz, n_rows * panel_sz))
+    gs  = GridSpec(n_rows, n_cols, figure=fig, hspace=0.45, wspace=0.35)
 
-    ax0.text(100, -1.01, "← KO reverses disease (therapeutic)",
-             fontsize=7, color="#1A237E", va="bottom", fontweight="bold")
-    ax0.text(100,  0.99, "KO amplifies disease →",
-             fontsize=7, color="#B71C1C", va="top", fontweight="bold")
-
-    n_with_r = sum(1 for i in range(n_genes) if is_ota[i] and not math.isnan(all_r[i]))
-    _style_ax(ax0, n_genes,
-              ylabel="Fingerprint r\n(KO vs disease DEG)",
-              title=(f"{cfg['label']}  ·  disease state\n"
-                     f"{n_genes:,} KOs · {n_islands} islands · "
-                     f"{sum(is_ota)} OTA targets ({n_with_r} with fingerprint r)"))
-
-    # Legend for panel 0
-    prog_h = [mpatches.Patch(color=prog_color[p],
-                              label=f"{p.split('_')[-1]} γ={prog_gammas.get(p,0):+.2f}")
-              for p in all_progs]
-    misc_h = [
-        mpatches.Patch(color=_island_color(-0.25), alpha=0.6, label="Therapeutic island"),
-        mpatches.Patch(color=_island_color(+0.25), alpha=0.6, label="Disease island"),
-        Line2D([0],[0], marker="o", color="w", markerfacecolor="#AAAAAA",
-               markersize=5, label="Perturb-seq library"),
-        Line2D([0],[0], marker="o", color="w", markerfacecolor="#1565C0",
-               markersize=8, label="OTA target (large=Tier1)"),
-        mpatches.Patch(facecolor="none", edgecolor="#B71C1C", linewidth=1.8,
-                       label="Validated target"),
-        Line2D([0],[0], marker="*", color="w", markerfacecolor="#FFC107",
-               markersize=11, label="GPS reverser (program panel)"),
+    # Shared x-range: symmetric around 0, driven by global max |γ| across all panels
+    all_gammas_shown = [
+        gm
+        for prog in show_progs
+        for _, gm, _ in prog_ota_with_gamma.get(prog, [])
     ]
-    ax0.legend(handles=prog_h + misc_h, loc="upper right",
-               fontsize=5.8, ncol=3, framealpha=0.92)
+    x_abs_max = max((abs(g) for g in all_gammas_shown), default=1.0)
+    x_abs_max = math.ceil(x_abs_max * 10) / 10 * 1.1   # 10% headroom, rounded up
+    shared_xlim = (-x_abs_max, x_abs_max)
 
     # ═════════════════════════════════════════════════════════════════════════
-    # Panels 1…N: One per NMF program
+    # Per-program panels: x = OTA γ (actual value), y = fingerprint_r
     # ═════════════════════════════════════════════════════════════════════════
     for pi, prog in enumerate(show_progs):
-        ax = fig.add_subplot(gs[1 + pi], sharex=ax0)
+        row, col = divmod(pi, n_cols)
+        ax = fig.add_subplot(gs[row, col])
         pcol  = prog_color.get(prog, "#555555")
-        pname = prog.split("_")[-1]
-        gamma = prog_gammas.get(prog, float("nan"))
+        gamma_prog = prog_gammas_display.get(prog, float("nan"))
 
-        _draw_islands(ax, cluster_meta)
+        genes_in_prog = prog_ota_with_gamma.get(prog, [])  # (gene, gamma, r)
 
-        # Background: all KOs at their landscape positions but faint grey
-        ax.scatter(all_xi[bg_mask], all_r[bg_mask],
-                   c="#DDDDDD", s=2, alpha=0.30, linewidths=0,
-                   zorder=2, rasterized=True)
+        # OTA targets: x = actual OTA gamma, y = fingerprint_r
+        # Density-aware size; radial alpha (distance from origin → vivid, center → faint).
+        n_dots = len(genes_in_prog)
+        scale    = max(0.25, 1.0 - 0.006 * n_dots)   # 1.0 at n=0, ~0.25 at n=125
+        sz_t1    = max(12, int(55 * scale))            # Tier1: 55→12
+        sz_other = max(5,  int(22 * scale))            # others: 22→5
 
-        # Program OTA genes
-        prog_genes = prog_ota_with_r.get(prog, [])
-        prog_gene_set = {g for g, _ in prog_genes}
-        labeled_prog: set[str] = set()
-        rv_prog = sorted([(abs(r), g) for g, r in prog_genes])
-        thresh_prog = rv_prog[max(0, int(len(rv_prog)*0.80))][0] if rv_prog else 0.0
+        gamma_norm = x_abs_max if x_abs_max > 0 else 1.0
 
-        for gene, r in prog_genes:
-            if gene not in name_to_xi:
-                continue
-            xi = name_to_xi[gene]
-            t  = ota_genes.get(gene, {})
-            size = 55 if t.get("dominant_tier", "") == "Tier1_Interventional" else 22
-            ec   = "#B71C1C" if gene in known else "white"
-            ew   = 1.6       if gene in known else 0.4
-            ax.scatter(xi, r, c=pcol, s=size,
-                       edgecolors=ec, linewidths=ew, alpha=0.92, zorder=4)
-            if gene in known or abs(r) >= thresh_prog:
+        rv = sorted([(abs(r), gene) for gene, _, r in genes_in_prog])
+        label_set  = {g for _, g in rv[max(0, int(len(rv) * 0.80)):]} | known
+
+        for gene, gm, r in genes_in_prog:
+            is_k      = gene in known
+            highlight = gene in label_set
+            size  = sz_t1 if ota_genes.get(gene, {}).get("dominant_tier","") == "Tier1_Interventional" else sz_other
+            ec    = "#B71C1C" if is_k else "none"
+            ew    = 1.4       if is_k else 0.0
+            if highlight:
+                alpha = 0.95
+            else:
+                dist  = math.sqrt((gm / gamma_norm) ** 2 + r ** 2) / math.sqrt(2)
+                alpha = max(0.06, min(0.90, 0.10 + 0.80 * dist))
+            ax.scatter(gm, r, c=pcol, s=size,
+                       edgecolors=ec, linewidths=ew, alpha=alpha, zorder=4)
+
+        for gene, gm, r in genes_in_prog:
+            if gene in label_set:
                 va = "bottom" if r >= 0 else "top"
                 dy = 0.018 if r >= 0 else -0.018
-                ax.annotate(gene, (xi, r+dy), ha="center", va=va,
-                            fontsize=5, color="#222222", zorder=6)
-                labeled_prog.add(gene)
+                ax.annotate(gene, (gm, r + dy), ha="center", va=va,
+                            fontsize=5, color="#B71C1C" if gene in known else "#222222",
+                            fontweight="bold" if gene in known else "normal", zorder=6)
 
-        # GPS program reversers: place using program_vector directly
-        gps_hits = prog_rev_dict.get(prog, []) or []
-        seen_cids: set[str] = set()
-        placed: list[tuple[float, float, float]] = []  # (x, y, z_on_this_prog)
-        for c in gps_hits:
-            cid = c.get("compound_id", "")
-            if cid in seen_cids:
-                continue
-            seen_cids.add(cid)
-            pv = c.get("program_vector") or {}
-            z  = pv.get(prog, c.get("z_rges", c.get("rges", 0.0)))
-            gx, gy = _gps_x_y_from_vector(pv) if pv else (None, None)
-            if gx is not None and gy is not None:
-                placed.append((gx, gy, float(z)))
+        ax.axvline(0, color="#888888", lw=0.8, ls="--", zorder=3)
+        ax.axhline(0, color="#888888", lw=0.8, ls="--", zorder=3)
+        ax.set_xlim(*shared_xlim)
+        ax.set_ylim(-1.05, 1.05)
+        ax.set_ylabel("Fingerprint r\n(KO vs disease DEG)", fontsize=7)
+        ax.set_xlabel("OTA γ  (← protective   |   disease-amplifying →)", fontsize=7)
+        ax.set_facecolor("white")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
 
-        if placed:
-            gxs = np.array([p[0] for p in placed])
-            gys = np.array([p[1] for p in placed])
-            gzs = np.array([p[2] for p in placed])
-            sz  = np.clip(np.abs(gzs) * 20, 40, 200)
-            ax.scatter(gxs, gys, c="#FFC107", s=sz, marker="*",
-                       edgecolors="#E65100", linewidths=0.8,
-                       alpha=0.95, zorder=7,
-                       label=f"{len(placed)} GPS reversers")
-            # Label the strongest GPS hit
-            best = int(np.argmin(gzs))
-            ax.annotate(f"z={gzs[best]:.1f}", (gxs[best], gys[best]+0.04),
-                        ha="center", va="bottom", fontsize=4.8,
-                        color="#E65100", fontweight="bold", zorder=8)
+        if mode == "nmf":
+            score_str = f"gwas_load={gamma_prog:.3f}" if not math.isnan(gamma_prog) else ""
+            ax.set_title(
+                f"{prog}  ·  {score_str}  ·  {len(genes_in_prog)} OTA targets\n"
+                f"(x = SVD-based OTA γ,  NMF used for grouping only)",
+                fontsize=7, fontweight="bold", pad=3,
+            )
+        else:
+            gwas_t_val = gwas_ranked[all_progs.index(prog)]["gwas_t_stat"] if prog in all_progs else float("nan")
+            gamma_str  = f"γ={gamma_prog:+.2f}" if not math.isnan(gamma_prog) else ""
+            ax.set_title(
+                f"{prog}  ·  gwas_t={gwas_t_val:+.1f}  {gamma_str}  ·  {len(genes_in_prog)} OTA targets",
+                fontsize=8, fontweight="bold", pad=3,
+            )
 
-        gamma_str = f"γ={gamma:+.2f}" if not math.isnan(gamma) else ""
-        n_placed  = len(placed)
-        gps_str   = f" · {n_placed}/{len(gps_hits)} GPS hits placed" if gps_hits else ""
-        _style_ax(ax, n_genes,
-                  ylabel=f"Fingerprint r\n(KO vs disease DEG)",
-                  title=f"{prog}  {gamma_str}  ·  {len(prog_genes)} OTA targets{gps_str}")
+    default_path = f"outputs/long_island_{disease_key}_{mode}.png"
+    plt.savefig(out_path or default_path, dpi=160, bbox_inches="tight")
+    print(f"Saved → {out_path or default_path}")
 
-        if placed:
-            ax.legend(fontsize=6, loc="upper right", framealpha=0.85)
 
-    # ── X-axis label on bottom panel ──────────────────────────────────────────
-    last_ax = ax if show_progs else ax0
-    last_ax.set_xlabel(
-        "Gene KOs  ·  x = disease-weighted fingerprint clustering  "
-        "(← therapeutic islands   |   disease islands →)",
-        fontsize=8,
-    )
+def plot_explainer(out_path: str = "outputs/long_island_explainer.png") -> None:
+    """
+    Mock quadrant diagram explaining the x/y axes of the per-program panels.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+    import numpy as np
 
-    plt.savefig(out_path or f"outputs/long_island_{disease_key}.png",
-                dpi=160, bbox_inches="tight")
-    print(f"Saved → {out_path or f'outputs/long_island_{disease_key}.png'}")
+    fig, ax = plt.subplots(figsize=(5, 5))
+
+    # Quadrant shading
+    ax.fill_between([-3, 0], [0, 0], [1, 1],  color="#D6E4F0", alpha=0.5, zorder=0)  # top-left
+    ax.fill_between([0,  3], [0, 0], [1, 1],  color="#FADBD8", alpha=0.5, zorder=0)  # top-right
+    ax.fill_between([-3, 0], [-1, -1], [0, 0], color="#D5F5E3", alpha=0.6, zorder=0)  # bottom-left ★
+    ax.fill_between([0,  3], [-1, -1], [0, 0], color="#FEF9E7", alpha=0.5, zorder=0)  # bottom-right
+
+    # Quadrant labels
+    kw = dict(fontsize=8, ha="center", va="center", style="italic")
+    ax.text(-1.5,  0.6, "Transcriptionally\nprotective\nbut no genetic\ncausal evidence", color="#1A5276", **kw)
+    ax.text( 1.5,  0.6, "Transcriptionally\ndisease-amplifying\n& genetically\nharmful", color="#922B21", **kw)
+    ax.text(-1.5, -0.6, "★ Best candidates\nGenetically protective\n& transcriptionally\nreverses disease", color="#1E8449",
+            fontsize=8, ha="center", va="center", fontweight="bold")
+    ax.text( 1.5, -0.6, "Transcriptionally\nreverses disease\nbut genetic evidence\nfor harm — flag", color="#7D6608", **kw)
+
+    # Axes
+    ax.axvline(0, color="#555555", lw=1.2, zorder=3)
+    ax.axhline(0, color="#555555", lw=1.2, zorder=3)
+    ax.set_xlim(-3, 3); ax.set_ylim(-1.05, 1.05)
+    ax.set_xlabel("OTA γ  (causal / genetics-based)\n← KO protects from disease   |   KO drives disease →",
+                  fontsize=8)
+    ax.set_ylabel("Fingerprint r  (transcriptional / RNA-based)\n← KO reverses disease DEG   |   KO mimics disease DEG →",
+                  fontsize=8)
+    ax.set_title("Per-GWAS-program panel — axis guide\n(one panel per GWAS-aligned SVD component)",
+                 fontsize=9, fontweight="bold")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    plt.tight_layout()
+    plt.savefig(out_path, dpi=160, bbox_inches="tight")
+    print(f"Saved → {out_path}")
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--disease",   choices=["ra", "cad"], required=True)
+    ap.add_argument("--disease",   choices=["ra", "cad"], required=False)
     ap.add_argument("--out",       type=str, default=None)
     ap.add_argument("--n_islands", type=int, default=12)
+    ap.add_argument("--mode",      choices=["svd", "nmf"], default="svd",
+                    help="Program assignment method: svd (z-threshold) or nmf (argmax)")
+    ap.add_argument("--explainer", action="store_true",
+                    help="Generate the axis explainer mock figure instead")
     args = ap.parse_args()
-    plot_long_island(args.disease, out_path=args.out, n_islands=args.n_islands)
+    if args.explainer:
+        plot_explainer(out_path=args.out or "outputs/long_island_explainer.png")
+    else:
+        plot_long_island(args.disease, out_path=args.out, n_islands=args.n_islands,
+                         mode=args.mode)

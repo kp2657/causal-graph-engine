@@ -61,6 +61,24 @@ def _load_tau_file(disease_key: str) -> dict[str, Any] | None:
         return None
 
 
+@lru_cache(maxsize=8)
+def _load_svd_tau_file(disease_key: str) -> dict[str, Any] | None:
+    """Load pre-computed SVD τ file. Cached per process.
+
+    Reads from data/ldsc/results/{disease_key}_SVD_program_taus.json.
+    Returns None (not raises) when file is absent — callers handle gracefully.
+    """
+    live = _RESULTS_DIR / f"{disease_key}_SVD_program_taus.json"
+    if not live.exists():
+        return None
+    try:
+        with open(live) as fh:
+            return json.load(fh)
+    except Exception as exc:
+        log.warning("Failed to load SVD ldsc taus for %s: %s", disease_key, exc)
+        return None
+
+
 def get_program_gamma_ldsc(
     program: str,
     disease_key: str,
@@ -84,17 +102,14 @@ def get_program_gamma_ldsc(
         return None
 
     tau = program_taus.get(program)
-    if tau is None or tau <= 0:
+    if tau is None:
         return None
 
-    # Normalize τ to [0,1] γ using proportion of positive enrichment
-    pos_taus = [v for v in program_taus.values() if v > 0]
-    total_pos = sum(pos_taus) if pos_taus else 1.0
-    if total_pos <= 0:
-        return None
-
-    gamma_value = max(tau, 0.0) / (total_pos + 1e-8)
-    gamma_value = min(gamma_value, 1.0)
+    # Normalize τ to γ ∈ [-1, 1] using total absolute enrichment as scale.
+    # Negative τ (heritability-depleted) → negative γ (anti-disease program).
+    total_abs = sum(abs(v) for v in program_taus.values()) or 1.0
+    gamma_value = tau / (total_abs + 1e-8)
+    gamma_value = max(-1.0, min(1.0, gamma_value))
     gamma_value = round(gamma_value, 5)
 
     # Find τ_p and τ_SE for this program from raw_annotations
@@ -107,11 +122,11 @@ def get_program_gamma_ldsc(
             tau_se = annot.get("tau_se")
             break
 
-    # Delta method: SE_γ = SE_τ / (total_positive_τ + ε)
+    # Delta method: SE_γ = SE_τ / (Σ|τ| + ε)
     if tau_se is not None:
-        gamma_se = round(float(tau_se) / (total_pos + 1e-8), 5)
+        gamma_se = round(float(tau_se) / (total_abs + 1e-8), 5)
     else:
-        gamma_se = round(gamma_value * 0.30, 5)
+        gamma_se = round(abs(gamma_value) * 0.30, 5)
 
     evidence_tier = "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional"
     h2 = data.get("h2")
@@ -150,6 +165,133 @@ def get_all_program_gammas_ldsc(disease_key: str) -> dict[str, dict]:
         if est is not None:
             results[prog] = est
     return results
+
+
+def get_svd_program_gammas(disease_key: str) -> dict[str, dict]:
+    """
+    Return γ estimates for all SVD programs.
+
+    Uses the eQTL-direction signed γ from program_gammas when available
+    (written by run_svd_programs). Falls back to signed τ normalization for
+    legacy files that predate the eQTL direction step.
+
+    γ semantics:
+      γ > 0: program is atherogenic (drives disease; risk allele increases its expression)
+      γ < 0: program is atheroprotective (protective; risk allele suppresses it)
+      γ = 0: program not in causal path (τ < 0, depleted of GWAS heritability)
+
+    tau_sign is preserved as a separate annotation — it carries information about
+    whether the program's gene windows are enriched (tau_sign=+1) or depleted (−1)
+    of GWAS heritability, independent of the causal direction.
+    """
+    data = _load_svd_tau_file(disease_key.upper())
+    if not data:
+        return {}
+
+    # --- New format: program_gammas computed by run_svd_programs ---
+    program_gammas: dict[str, float] = data.get("program_gammas", {})
+    gamma_annots: list[dict] = data.get("gamma_annotations", [])
+    annot_by_prog = {a["name"]: a for a in gamma_annots}
+
+    if program_gammas:
+        total_abs = sum(abs(v) for v in program_gammas.values()) or 1.0
+        results: dict[str, dict] = {}
+
+        for prog, gamma_raw in program_gammas.items():
+            # Normalize to [-1, 1]
+            gamma_value = gamma_raw / (total_abs + 1e-8)
+            gamma_value = max(-1.0, min(1.0, round(gamma_value, 5)))
+
+            annot    = annot_by_prog.get(prog, {})
+            tau      = annot.get("tau") or data.get("program_taus", {}).get(prog, 0.0)
+            tau_sign = annot.get("tau_sign", 1 if tau >= 0 else -1)
+            dir_src  = annot.get("direction_source", "unknown")
+            tau_p    = 1.0
+            tau_se   = None
+            for raw in data.get("raw_annotations", []):
+                if raw.get("name") == prog:
+                    tau_p  = float(raw.get("tau_p", 1.0))
+                    tau_se = raw.get("tau_se")
+                    break
+
+            gamma_se = round(float(tau_se) / (total_abs + 1e-8), 5) if tau_se is not None else round(abs(gamma_value) * 0.30, 5)
+            evidence_tier = "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional"
+
+            results[prog] = {
+                "gamma":            gamma_value,
+                "gamma_se":         gamma_se,
+                "evidence_tier":    evidence_tier,
+                "data_source":      f"S-LDSC_eQTL_{disease_key}_gamma={gamma_raw:.4f}",
+                "program":          prog,
+                "trait":            disease_key.upper(),
+                "tau":              tau,
+                "tau_sign":         tau_sign,     # +1 enriched, -1 depleted — annotation only
+                "tau_p":            tau_p,
+                "direction_source": dir_src,
+                "note": (
+                    f"γ={gamma_raw:.4f} for {prog} ({disease_key}). "
+                    f"Direction: {dir_src}. "
+                    f"LDSC τ={tau:.4f} (tau_sign={tau_sign:+d}, annotation only). "
+                    f"τ_p={tau_p:.3g}."
+                ),
+            }
+
+        log.info(
+            "SVD γ loaded for %s: %d programs (%d atherogenic, %d protective, %d depleted)",
+            disease_key.upper(), len(results),
+            sum(1 for v in results.values() if v["gamma"] > 0),
+            sum(1 for v in results.values() if v["gamma"] < 0),
+            sum(1 for v in results.values() if v["gamma"] == 0),
+        )
+        return results
+
+    # --- Legacy fallback: old format without program_gammas ---
+    # Sign-variance guard still applies for legacy signed-τ files
+    program_taus: dict[str, float] = data.get("program_taus", {})
+    if not program_taus:
+        return {}
+
+    n_pos = sum(1 for v in program_taus.values() if v > 0)
+    n_neg = sum(1 for v in program_taus.values() if v < 0)
+    if n_pos == 0 or n_neg == 0:
+        log.warning(
+            "SVD τ for %s (legacy): no sign variance (%d pos, %d neg) — skipping γ override.",
+            disease_key.upper(), n_pos, n_neg,
+        )
+        return {}
+
+    total_abs = sum(abs(v) for v in program_taus.values()) or 1.0
+    results = {}
+    for prog, tau in program_taus.items():
+        gamma_value = tau / (total_abs + 1e-8)
+        gamma_value = max(-1.0, min(1.0, round(gamma_value, 5)))
+        tau_p = 1.0
+        tau_se = None
+        for annot in data.get("raw_annotations", []):
+            if annot.get("name") == prog:
+                tau_p  = float(annot.get("tau_p", 1.0))
+                tau_se = annot.get("tau_se")
+                break
+        gamma_se = round(float(tau_se) / (total_abs + 1e-8), 5) if tau_se is not None else round(abs(gamma_value) * 0.30, 5)
+        results[prog] = {
+            "gamma":            gamma_value,
+            "gamma_se":         gamma_se,
+            "evidence_tier":    "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional",
+            "data_source":      f"S-LDSC_chisq_{disease_key}_SVD_tau={tau:.4f}",
+            "program":          prog,
+            "trait":            disease_key.upper(),
+            "tau":              tau,
+            "tau_sign":         1 if tau >= 0 else -1,
+            "tau_p":            tau_p,
+            "direction_source": "legacy_tau_sign",
+            "note":             f"Legacy: τ={tau:.4f} for {prog}. τ_p={tau_p:.3g}.",
+        }
+    return results
+
+
+def svd_ldsc_available(disease_key: str) -> bool:
+    """Return True if pre-computed SVD S-LDSC results exist for this disease."""
+    return (_RESULTS_DIR / f"{disease_key.upper()}_SVD_program_taus.json").exists()
 
 
 def ldsc_available(disease_key: str) -> bool:

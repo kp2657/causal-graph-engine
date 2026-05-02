@@ -1285,6 +1285,24 @@ def get_gwas_aligned_svd_programs(
     top3 = [(p["program_id"], p.get("combined_score", p["gwas_t_stat"])) for p in programs[:3]]
     log.info("Top GWAS+DE-aligned SVD components for %s: %s", disease_key, top3)
 
+    # Persist ranking so the island plot can use gwas_t_stat ordering without
+    # needing the full GWAS gene list at plot time.
+    import json as _json
+    _rank_path = _npz_path(dataset_id).parent / "gwas_aligned_programs.json"
+    try:
+        _rank_path.write_text(_json.dumps([
+            {
+                "program_id":     p["program_id"],
+                "gwas_t_stat":    p["gwas_t_stat"],
+                "de_pearson":     p["de_pearson"],
+                "combined_score": p["combined_score"],
+            }
+            for p in programs
+        ], indent=2))
+        log.info("Saved GWAS-aligned program ranking → %s", _rank_path)
+    except Exception as _e:
+        log.warning("Could not save GWAS-aligned ranking: %s", _e)
+
     return programs
 
 

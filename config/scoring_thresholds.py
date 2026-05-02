@@ -177,6 +177,13 @@ SLDSC_TAU_SIGNIFICANT_P: float = 0.05
 # τ_p threshold below which a program is considered significantly heritability-enriched.
 # Used to annotate program contributions in the OTA sum output.
 
+SLDSC_GAMMA_FLOOR: float = 0.02
+# Minimum |γ(P→trait)| for a program to contribute to the OTA sum β×γ.
+# Programs below this threshold have near-zero heritability enrichment; large β on them
+# adds noise without signal (γ_SE-weighting is insufficient when SE << |γ|).
+# Matches MIN_PROG_GAMMA in the long-island plot for consistency.
+# Derived from S-LDSC τ distribution: max=0.113, floor cuts programs with |τ|<0.02 (~15%).
+
 # ---------------------------------------------------------------------------
 # Multi-timepoint Perturb-seq — condition-specific β quality
 # ---------------------------------------------------------------------------

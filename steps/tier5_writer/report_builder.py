@@ -428,12 +428,12 @@ def run(
             # Fine-mapped PIP tiebreaker
             "fine_mapped_pip":         t.get("fine_mapped_pip", 0.0),
             # WES rare-variant burden concordance
-            "wes_checked":             t.get("wes_checked", False),
-            "wes_concordant":          t.get("wes_concordant"),
-            "wes_burden_p":            t.get("wes_burden_p"),
-            "wes_burden_beta":         t.get("wes_burden_beta"),
-            "wes_gamma_weight":        t.get("wes_gamma_weight", 1.0),
-            "wes_note":                t.get("wes_note"),
+            "wes_checked":    t.get("wes_checked", False),
+            "wes_concordant": t.get("wes_concordant"),
+            "wes_burden_p":   t.get("wes_burden_p"),
+            "wes_burden_beta": t.get("wes_burden_beta"),
+            "wes_gamma_weight": t.get("wes_gamma_weight", 1.0),
+            "wes_note":       t.get("wes_note"),
             # Heritability bridge for mechanistic-only targets: surfaces the
             # OT γ of programs the gene controls, so a gene with
             # ot_genetic_score < 0.05 can still be defended as genetically

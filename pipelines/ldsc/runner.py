@@ -183,22 +183,30 @@ def compute_program_gwas_enrichment(
     prog_snp_pos: dict[str, list[tuple[int, int, float]]] = {p: [] for p in program_gene_sets}
     all_chisq: list[float] = []
 
+    chr_col  = cfg.get("chr_col", "CHR")
+    pos_col  = cfg.get("pos_col", "POS")
+    beta_col = cfg.get("beta_col", "BETA")
+    se_col   = cfg.get("se_col", "SE")
+
     with gzip.open(raw, "rt") as fh:
         header = fh.readline().strip().split("\t")
         col = {c: i for i, c in enumerate(header)}
-        required = {"CHR", "POS", "BETA", "SE"}
+        required = {chr_col, pos_col, beta_col, se_col}
         if not required.issubset(col):
-            raise ValueError(f"PLAtlas file missing columns {required - set(col)}")
+            raise ValueError(f"Sumstats file missing columns {required - set(col)}")
 
         for line in fh:
             parts = line.strip().split("\t")
             if len(parts) < len(col):
                 continue
             try:
-                chrom = parts[col["CHR"]]
-                pos   = int(parts[col["POS"]])
-                beta  = float(parts[col["BETA"]])
-                se    = float(parts[col["SE"]])
+                chrom = parts[col[chr_col]]
+                pos_raw = parts[col[pos_col]]
+                if not pos_raw or pos_raw == "NA":
+                    continue
+                pos   = int(float(pos_raw))
+                beta  = float(parts[col[beta_col]])
+                se    = float(parts[col[se_col]])
                 if se <= 0:
                     continue
                 chisq = (beta / se) ** 2
@@ -539,6 +547,476 @@ def _parse_ldsc_results(out_prefix: Path, prog: str) -> dict | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# eQTL-direction γ sign
+# ---------------------------------------------------------------------------
+
+# Number of top genes per SVD component used for eQTL direction scoring.
+# Smaller than the 100 used for LDSC windows: eQTL API calls are expensive,
+# and the top-20 genes capture the dense loading core of each component.
+_EQTL_TOP_GENES = 20
+
+# Minimum weighted gene count with eQTL coverage to trust the direction score.
+_EQTL_MIN_COVERAGE = 3
+
+# Maximum |γ| assigned via eQTL-direction-only fallback (used when all S-LDSC τ < 0,
+# indicating a regulatory-architecture disease where gene-body S-LDSC is uninformative).
+# Comparable to typical CAD τ values (max ~0.11).
+_EQTL_GAMMA_MAX = 0.15
+
+# Cache file for GWAS variant betas looked up during direction scoring.
+_GWAS_BETA_CACHE_SUFFIX = "_gwas_variant_betas.json"
+
+
+def _collect_gwas_betas_for_genes(
+    disease_key: str,
+    genes: list[str],
+    gene_coords: dict[str, tuple[str, int, int]],
+    window_bp: int = 50_000,
+) -> dict[str, float]:
+    """
+    Scan GWAS sumstats and return {rsid: gwas_beta} for variants within
+    ±window_bp of any gene in *genes*.
+
+    Cached to data/ldsc/results/{disease_key}_gwas_variant_betas.json.
+    Incremental: only queries missing genes.
+    """
+    from pipelines.ldsc.setup import GWAS_CONFIG, _SUMSTATS_DIR as SS_DIR
+
+    cache_path = _RESULTS_DIR / f"{disease_key.upper()}{_GWAS_BETA_CACHE_SUFFIX}"
+    cached: dict[str, float] = {}
+    if cache_path.exists():
+        try:
+            with open(cache_path) as fh:
+                cached = json.load(fh)
+        except Exception:
+            cached = {}
+
+    cfg = GWAS_CONFIG.get(disease_key.upper())
+    if not cfg:
+        return cached
+
+    raw = SS_DIR / cfg["filename"]
+    if not raw.exists():
+        return cached
+
+    # Build windows for uncached genes only
+    missing_genes = [g for g in genes if not any(
+        f"{g}:" in k for k in cached
+    )]
+    if not missing_genes:
+        return cached
+
+    windows: dict[str, list[tuple[int, int]]] = {}  # chrom -> [(start, end)]
+    gene_window_map: dict[str, str] = {}  # rsid -> gene_tag (for cache key)
+    for g in missing_genes:
+        coords = gene_coords.get(g)
+        if not coords:
+            continue
+        chrom_str, start, end = coords
+        chrom_n = chrom_str.lstrip("chr")
+        w_start = max(0, start - window_bp)
+        w_end   = end + window_bp
+        windows.setdefault(chrom_n, []).append((w_start, w_end))
+
+    if not windows:
+        return cached
+
+    _chr_col  = cfg.get("chr_col", "CHROM")
+    _pos_col  = cfg.get("pos_col", "POS")
+    _snp_col  = cfg.get("snp_col", "#ID")
+    _beta_col = cfg.get("beta_col", "BETA")
+
+    col_map: dict[str, int] = {}
+    new_betas: dict[str, float] = {}
+
+    opener = gzip.open if str(raw).endswith(".gz") else open
+    try:
+        with opener(raw, "rt") as fh:
+            for raw_line in fh:
+                if not col_map:
+                    header_line = raw_line.lstrip("#").strip()
+                    col_map = {c: i for i, c in enumerate(header_line.split("\t"))}
+                    continue
+                parts = raw_line.strip().split("\t")
+                try:
+                    chrom = parts[col_map[_chr_col]].lstrip("chr")
+                    pos_raw = parts[col_map[_pos_col]]
+                    if not pos_raw or pos_raw == "NA":
+                        continue
+                    pos   = int(float(pos_raw))
+                    rsid  = parts[col_map[_snp_col]]
+                    beta  = float(parts[col_map[_beta_col]])
+                except (KeyError, ValueError, IndexError):
+                    continue
+                for start, end in windows.get(chrom, []):
+                    if start <= pos <= end:
+                        new_betas[rsid] = beta
+                        break
+    except Exception as exc:
+        log.warning("GWAS beta scan failed: %s", exc)
+
+    if new_betas:
+        cached.update(new_betas)
+        _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(cache_path, "w") as fh:
+            json.dump(cached, fh)
+        log.info("GWAS beta cache: %d variants → %s", len(cached), cache_path.name)
+
+    return cached
+
+
+def compute_program_eqtl_direction(
+    disease_key: str,
+    dataset_id: str,
+    n_top_genes: int = _EQTL_TOP_GENES,
+) -> dict[str, dict]:
+    """
+    Compute eQTL-direction scores for each SVD program.
+
+    For each component P, takes the top-N genes by |U_scaled[:, P]|, preserving
+    sign. For each gene queries a cis-eQTL. If the eQTL variant also appears in
+    the GWAS sumstats, the GWAS beta provides the allele direction for disease.
+
+    Direction score for program P:
+        score_P = Σ_G |U[G,P]| × sign(U[G,P]) × sign(eQTL_β_G) × sign(GWAS_β_at_eQTL_variant_G)
+
+    When no GWAS beta is available for the eQTL variant, falls back to:
+        score_P = Σ_G |U[G,P]| × sign(U[G,P]) × sign(eQTL_β_G)
+
+    Returns dict[program_id -> {
+        "direction_score":   float,
+        "n_eqtl_genes":      int,
+        "direction_source":  "eqtl_x_gwas" | "eqtl_only" | "none",
+    }]
+    """
+    import numpy as np
+
+    npz_path = _ROOT / "data" / "perturbseq" / dataset_id / "svd_loadings.npz"
+    if not npz_path.exists():
+        log.warning("SVD loadings not found for eQTL direction: %s", npz_path)
+        return {}
+
+    npz        = np.load(npz_path)
+    U_scaled   = npz["U_scaled"]   # (n_genes, n_components)
+    gene_names = npz["gene_names"]
+
+    prefix       = disease_key.upper()
+    n_components = U_scaled.shape[1]
+
+    # --- Step 1: collect top-N genes per component with signed loadings ---
+    # {program_id: [(gene, signed_loading), ...]}
+    program_top_genes: dict[str, list[tuple[str, float]]] = {}
+    for c in range(n_components):
+        prog_id  = f"{prefix}_SVD_C{c+1:02d}"
+        loadings = U_scaled[:, c]
+        top_idx  = np.argsort(np.abs(loadings))[::-1][:n_top_genes]
+        program_top_genes[prog_id] = [
+            (str(gene_names[i]), float(loadings[i])) for i in top_idx
+        ]
+
+    # Deduplicate: query eQTL once per gene
+    all_genes: list[str] = list({g for genes in program_top_genes.values() for g, _ in genes})
+    log.info(
+        "eQTL direction: %d unique genes across %d programs (%s)",
+        len(all_genes), n_components, disease_key.upper(),
+    )
+
+    # --- Step 2: fetch gene coordinates for GWAS beta scan ---
+    gene_coords = _fetch_gene_coords_hg38(all_genes)
+    gwas_betas  = _collect_gwas_betas_for_genes(disease_key, all_genes, gene_coords)
+    log.info("GWAS betas collected: %d variants", len(gwas_betas))
+
+    # --- Step 3: load eQTL top-hits from local index (downloaded once from EBI FTP) ---
+    from pipelines.ldsc.eqtl_local import build_gene_index, load_gene_index, gene_index_available
+
+    if not gene_index_available(disease_key):
+        log.info("eQTL gene index not found — building from local sumstats (may take a few minutes)…")
+        try:
+            gene_index = build_gene_index(disease_key, all_genes)
+        except FileNotFoundError as exc:
+            log.warning("%s\nDirection scores skipped.", exc)
+            return {}
+        except Exception as exc:
+            log.warning("Failed to build eQTL gene index: %s — direction scores skipped", exc)
+            return {}
+    else:
+        gene_index = load_gene_index(disease_key)
+        # Re-index if new genes appeared (index is a strict subset of all_genes)
+        missing = [g for g in all_genes if g not in gene_index and g not in (gene_index or {})]
+        if len(missing) > len(all_genes) * 0.2:
+            log.info("eQTL index covers <80%% of genes — rebuilding…")
+            try:
+                gene_index = build_gene_index(disease_key, all_genes, force=True)
+            except Exception as exc:
+                log.warning("Index rebuild failed: %s — using existing index", exc)
+
+    # gene_eqtl mirrors the old shape: {gene → top_eqtl_dict | None}
+    gene_eqtl: dict[str, dict | None] = {g: gene_index.get(g) for g in all_genes}
+    n_with_eqtl = sum(1 for v in gene_eqtl.values() if v is not None)
+    log.info("eQTL coverage: %d / %d genes (local index)", n_with_eqtl, len(all_genes))
+
+    # --- Step 4: compute direction score per program ---
+    results: dict[str, dict] = {}
+
+    for prog_id, gene_loading_pairs in program_top_genes.items():
+        score           = 0.0
+        sum_abs_loading = 0.0
+        n_eqtl          = 0
+        n_gwas_hit      = 0
+
+        for gene, loading in gene_loading_pairs:
+            eqtl = gene_eqtl.get(gene)
+            if eqtl is None:
+                continue
+            eqtl_beta = eqtl.get("beta")
+            if eqtl_beta is None:
+                continue
+            try:
+                eqtl_beta = float(eqtl_beta)
+            except (TypeError, ValueError):
+                continue
+
+            weight       = abs(loading)
+            loading_sign = 1.0 if loading >= 0 else -1.0
+            eqtl_sign    = 1.0 if eqtl_beta >= 0 else -1.0
+
+            # Try to get GWAS allele direction for this eQTL variant
+            eqtl_rsid  = eqtl.get("rsid") or eqtl.get("variant_id") or ""
+            gwas_beta  = gwas_betas.get(eqtl_rsid)
+            if gwas_beta is not None:
+                gwas_sign   = 1.0 if gwas_beta >= 0 else -1.0
+                contribution = weight * loading_sign * eqtl_sign * gwas_sign
+                n_gwas_hit  += 1
+            else:
+                # Fallback: no GWAS allele confirmation
+                contribution = weight * loading_sign * eqtl_sign
+
+            score          += contribution
+            sum_abs_loading += weight
+            n_eqtl         += 1
+
+        if n_eqtl == 0:
+            source = "none"
+        elif n_gwas_hit >= _EQTL_MIN_COVERAGE:
+            source = "eqtl_x_gwas"
+        else:
+            source = "eqtl_only"
+
+        results[prog_id] = {
+            "direction_score":  round(score, 6),
+            "sum_abs_loading":  round(sum_abs_loading, 6),
+            "n_eqtl_genes":     n_eqtl,
+            "n_gwas_hits":      n_gwas_hit,
+            "direction_source": source,
+        }
+
+    n_positive = sum(1 for r in results.values() if r["direction_score"] > 0)
+    n_negative = sum(1 for r in results.values() if r["direction_score"] < 0)
+    log.info(
+        "eQTL direction scores: %d positive, %d negative, %d zero/none",
+        n_positive, n_negative,
+        len(results) - n_positive - n_negative,
+    )
+    return results
+
+
+_DISEASE_SVD_DATASET: dict[str, str] = {
+    "CAD": "schnitzler_cad_vascular",
+    "RA":  "czi_2025_cd4t_perturb",
+    "SLE": "czi_2025_cd4t_perturb",
+}
+
+# Top genes per SVD component used to define the genomic annotation window.
+# 100 captures the dense loading tail without over-representing sparse components.
+_SVD_TOP_GENES_PER_COMPONENT = 100
+
+
+def extract_svd_gene_sets(
+    dataset_id: str,
+    n_top_genes: int = _SVD_TOP_GENES_PER_COMPONENT,
+    disease_key: str = "",
+) -> dict[str, set[str]]:
+    """
+    Extract top-N genes per SVD component from U_scaled (gene × component matrix).
+
+    Args:
+        dataset_id:   Perturbseq registry key, e.g. "schnitzler_cad_vascular".
+        n_top_genes:  Number of genes per component, ranked by |U_scaled| loading.
+        disease_key:  Disease prefix for program IDs (e.g. "CAD").
+
+    Returns:
+        dict[program_id -> set[gene_symbol]] for all 30 SVD components.
+    """
+    import numpy as np
+
+    npz_path = _ROOT / "data" / "perturbseq" / dataset_id / "svd_loadings.npz"
+    if not npz_path.exists():
+        raise FileNotFoundError(
+            f"SVD loadings not found: {npz_path}\n"
+            "Run: python -m mcp_servers.perturbseq_server get_gwas_aligned_svd_programs"
+        )
+
+    npz = np.load(npz_path)
+    U_scaled   = npz["U_scaled"]   # shape (n_genes, n_components)
+    gene_names = npz["gene_names"] # shape (n_genes,)
+
+    n_components = U_scaled.shape[1]
+    prefix = disease_key.upper() if disease_key else dataset_id.split("_")[0].upper()
+
+    gene_sets: dict[str, set[str]] = {}
+    for c in range(n_components):
+        program_id = f"{prefix}_SVD_C{c+1:02d}"
+        loadings   = U_scaled[:, c]
+        top_idx    = np.argsort(np.abs(loadings))[::-1][:n_top_genes]
+        gene_sets[program_id] = {str(gene_names[i]) for i in top_idx}
+
+    log.info(
+        "Extracted %d SVD gene sets (%d genes each) from %s",
+        len(gene_sets), n_top_genes, dataset_id,
+    )
+    return gene_sets
+
+
+def run_svd_programs(
+    disease_key: str,
+    force: bool = False,
+) -> dict[str, float]:
+    """
+    Compute GWAS χ² enrichment + eQTL-direction γ for all 30 SVD programs.
+
+    γ decomposition:
+      - Magnitude: |τ| from LDSC chi-square enrichment
+      - Sign:      eQTL direction score (risk allele × program loading)
+      - τ < 0:     program not in causal path → γ = 0
+      - τ > 0, no eQTL coverage: γ = +|τ|, direction_source="unknown"
+
+    The original LDSC τ sign is preserved as `tau_sign` annotation in the JSON.
+
+    Saves to data/ldsc/results/{disease_key}_SVD_program_taus.json.
+    Returns dict[program_id -> gamma] (the final signed γ, not raw τ).
+    """
+    out_path = _RESULTS_DIR / f"{disease_key.upper()}_SVD_program_taus.json"
+    if out_path.exists() and not force:
+        log.info("SVD τ file already exists: %s (pass force=True to recompute)", out_path)
+        with open(out_path) as fh:
+            data = json.load(fh)
+            # Return gamma field if present, fall back to program_taus
+            return data.get("program_gammas", data.get("program_taus", {}))
+
+    dataset_id = _DISEASE_SVD_DATASET.get(disease_key.upper())
+    if not dataset_id:
+        raise ValueError(f"No SVD dataset configured for {disease_key}")
+
+    gene_sets = extract_svd_gene_sets(dataset_id, disease_key=disease_key)
+    if not gene_sets:
+        raise RuntimeError(f"No SVD gene sets extracted for {disease_key}")
+
+    log.info(
+        "Computing GWAS χ² enrichment for %d SVD programs (%s)...",
+        len(gene_sets), disease_key.upper(),
+    )
+    result = compute_program_gwas_enrichment(disease_key, gene_sets)
+    program_taus: dict[str, float] = result["program_taus"]
+
+    # eQTL-direction γ sign
+    log.info("Computing eQTL direction scores for %s SVD programs...", disease_key.upper())
+    direction_scores = compute_program_eqtl_direction(disease_key, dataset_id)
+
+    # Combine: γ = sign(eQTL_direction) × |τ|
+    # τ < 0 → program not in causal path → γ = 0 (unless all programs have τ < 0)
+    # τ > 0, no eQTL → γ = +|τ|, direction unknown
+    #
+    # Special case: if ALL programs have τ < 0 (regulatory-architecture disease,
+    # e.g. RA where causal variants are in enhancers not gene bodies), the S-LDSC
+    # gene-body τ is uninformative. Fall back to eQTL-direction-only γ:
+    #   normalized_concordance = direction_score / sum_abs_loading ∈ [-1, +1]
+    #   γ = normalized_concordance × _EQTL_GAMMA_MAX
+    all_tau_negative = all(tau < 0 for tau in program_taus.values())
+    if all_tau_negative:
+        log.info(
+            "All %s SVD τ < 0 (regulatory-architecture disease): "
+            "falling back to eQTL-direction-only γ (scale=±%.2f)",
+            disease_key.upper(), _EQTL_GAMMA_MAX,
+        )
+
+    program_gammas: dict[str, float] = {}
+    gamma_annotations: list[dict] = []
+
+    for prog, tau in program_taus.items():
+        tau_mag  = abs(tau)
+        tau_sign = 1 if tau >= 0 else -1
+
+        if all_tau_negative:
+            # S-LDSC gene-body τ uninformative → use eQTL concordance fraction as γ
+            dir_info        = direction_scores.get(prog, {})
+            dir_score       = dir_info.get("direction_score", 0.0)
+            sum_abs_loading = dir_info.get("sum_abs_loading", 0.0)
+            n_eqtl          = dir_info.get("n_eqtl_genes", 0)
+            dir_src         = dir_info.get("direction_source", "none")
+
+            if n_eqtl < _EQTL_MIN_COVERAGE or sum_abs_loading == 0.0:
+                gamma      = 0.0
+                dir_source = "no_eqtl_coverage"
+            else:
+                # Normalized concordance fraction ∈ [-1, +1]
+                concordance = dir_score / sum_abs_loading
+                concordance = max(-1.0, min(1.0, concordance))
+                gamma       = concordance * _EQTL_GAMMA_MAX
+                dir_source  = dir_src + "_eqtl_direction_only"
+        elif tau < 0:
+            # Depleted of GWAS heritability → not in causal path
+            gamma        = 0.0
+            dir_source   = "depleted"
+        else:
+            dir_info = direction_scores.get(prog, {})
+            dir_score = dir_info.get("direction_score", 0.0)
+            dir_src   = dir_info.get("direction_source", "none")
+
+            if dir_src != "none" and dir_info.get("n_eqtl_genes", 0) >= _EQTL_MIN_COVERAGE:
+                gamma      = (1.0 if dir_score >= 0 else -1.0) * tau_mag
+                dir_source = dir_src
+            else:
+                # No eQTL coverage — magnitude only, direction unknown
+                gamma      = tau_mag
+                dir_source = "unknown"
+
+        gamma = round(gamma, 6)
+        program_gammas[prog] = gamma
+
+        gamma_annotations.append({
+            "name":             prog,
+            "tau":              tau,
+            "tau_sign":         tau_sign,   # preserved for annotation; NOT used for γ direction
+            "gamma":            gamma,
+            "direction_source": dir_source,
+            "direction_score":  direction_scores.get(prog, {}).get("direction_score"),
+            "sum_abs_loading":  direction_scores.get(prog, {}).get("sum_abs_loading"),
+            "n_eqtl_genes":     direction_scores.get(prog, {}).get("n_eqtl_genes", 0),
+        })
+
+    # Merge into the enrichment result
+    result["program_gammas"]    = program_gammas
+    result["gamma_annotations"] = gamma_annotations
+    result["all_tau_negative"]  = all_tau_negative
+    # Keep program_taus for backward compatibility and raw-τ inspection
+    # (program_taus still holds original signed τ values)
+
+    _RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        json.dump(result, fh, indent=2)
+    log.info("Saved SVD γ → %s", out_path)
+
+    n_pos = sum(1 for g in program_gammas.values() if g > 0)
+    n_neg = sum(1 for g in program_gammas.values() if g < 0)
+    n_zero = sum(1 for g in program_gammas.values() if g == 0.0)
+    log.info(
+        "SVD γ summary: %d atherogenic (+), %d atheroprotective (−), %d depleted (0)",
+        n_pos, n_neg, n_zero,
+    )
+    return program_gammas
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     cmd     = sys.argv[1] if len(sys.argv) > 1 else "status"
@@ -561,5 +1039,20 @@ if __name__ == "__main__":
         print(f"\n{disease} program τ enrichment scores:")
         for p, t in sorted(taus.items(), key=lambda x: -abs(x[1])):
             print(f"  {p}: {t:+.4f}")
+    elif cmd == "run_svd":
+        force_flag = "--force" in sys.argv
+        print(f"Computing GWAS χ² enrichment for SVD programs ({disease})...")
+        taus = run_svd_programs(disease, force=force_flag)
+        print(f"\n{disease} SVD program τ enrichment scores (sorted by |τ|):")
+        for p, t in sorted(taus.items(), key=lambda x: -abs(x[1])):
+            sign = "+" if t >= 0 else ""
+            print(f"  {p}: {sign}{t:.4f}")
+    elif cmd == "download_eqtl":
+        from pipelines.ldsc.eqtl_local import download_dataset
+        p = download_dataset(disease)
+        print(f"Downloaded: {p}")
     else:
-        print("Usage: python -m pipelines.ldsc.runner run CAD|RA")
+        print("Usage:")
+        print("  python -m pipelines.ldsc.runner run CAD|RA           # NMF programs")
+        print("  python -m pipelines.ldsc.runner run_svd CAD|RA       # SVD programs")
+        print("  python -m pipelines.ldsc.runner download_eqtl CAD|RA # fetch eQTL sumstats")

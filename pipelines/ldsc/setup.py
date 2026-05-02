@@ -76,24 +76,30 @@ GWAS_CONFIG: dict[str, dict] = {
         "snp_col": "#ID",
         "a1_col": "ALT",
         "a2_col": "REF",
+        "chr_col": "CHR",
+        "pos_col": "POS",
         "beta_col": "BETA",
         "se_col": "SE",
         "p_col": "P",
         "n_col": "N",
-        "n_value": 818469,  # from header row
+        "n_value": 818469,
     },
     "RA": {
-        "url": "https://g-fce312.fd635.8443.data.globus.org/sumstats_downsized/EUR/Phe_714.EUR.gwama.sumstats.txt.gz",
-        "filename": "Phe_714.EUR.gwama.sumstats.txt.gz",
-        "description": "PLAtlas Phe_714 — ICD-9 714 rheumatoid arthritis (MVP+UKB+FinnGen, N≈820k)",
-        "snp_col": "#ID",
-        "a1_col": "ALT",
-        "a2_col": "REF",
-        "beta_col": "BETA",
-        "se_col": "SE",
-        "p_col": "P",
-        "n_col": "N",
-        "n_value": 820742,
+        # GWAS Catalog GCST90132222 — Sakaue et al. 2021 (PMID 36333501)
+        # Seropositive RA, 35,871 cases / 240,149 controls (multi-cohort)
+        # Replaces PLAtlas Phe_714 (ICD-9 EHR-derived, case dilution → τ depletion)
+        "url": "https://ftp.ebi.ac.uk/pub/databases/gwas/summary_statistics/GCST90132001-GCST90133000/GCST90132222/harmonised/GCST90132222.h.tsv.gz",
+        "filename": "GCST90132222.h.tsv.gz",
+        "description": "GCST90132222 — Sakaue 2021 seropositive RA (35,871 cases / 240,149 controls, multi-cohort)",
+        "snp_col": "rsid",
+        "a1_col": "effect_allele",
+        "a2_col": "other_allele",
+        "chr_col": "chromosome",
+        "pos_col": "base_pair_location_grch38",
+        "beta_col": "beta",
+        "se_col": "standard_error",
+        "p_col": "p_value",
+        "n_value": 276020,  # 35,871 cases + 240,149 controls
     },
 }
 
@@ -264,14 +270,13 @@ def download_polyfun_ld_scores(force: bool = False) -> Path:
         with tarfile.open(tmp_path, "r:gz") as tf:
             tf.extractall(_POLYFUN_LDSCORE_DIR, filter="data")
         log.info("PolyFun LD scores extracted successfully")
+        log.info("PolyFun LD scores downloaded to %s", _POLYFUN_LDSCORE_DIR)
     except Exception as exc:
         log.warning("PolyFun tarball download failed: %s", exc)
         log.warning("Download manually: aws s3 cp --no-sign-request "
                     "s3://broad-alkesgroup-ukbb-ld/UKBB_LD/baselineLF_v2.2.UKB.tar.gz %s", tmp_path)
     finally:
         tmp_path.unlink(missing_ok=True)
-    else:
-        log.info("PolyFun LD scores downloaded to %s", _POLYFUN_LDSCORE_DIR)
 
     return _POLYFUN_LDSCORE_DIR
 

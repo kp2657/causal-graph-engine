@@ -25,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.evidence import GeneTraitAssociation
 from config.scoring_thresholds import (
-    SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P,
+    SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P, SLDSC_GAMMA_FLOOR,
     TIMEPOINT_ACTIVATION_BIAS_MIN,
 )
 
@@ -108,6 +108,7 @@ def compute_ota_gamma(
     gamma_estimates: dict[str, dict],
     skip_programs: frozenset[str] | None = None,
     program_activation_biases: dict[str, float] | None = None,
+    program_gwas_t: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute the Ota composite γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait}).
@@ -154,17 +155,39 @@ def compute_ota_gamma(
         if gamma_val is None and isinstance(beta_info, dict):
             gamma_val = beta_info.get("program_gamma")
 
+        # Fallback: when no OT L2G / S-LDSC gamma exists, use gwas_t as a signed
+        # proxy.  gwas_t = mean Vt loading of GWAS-perturbed genes / SEM on that
+        # axis.  Positive → axis enriched for GWAS signal (small positive γ proxy);
+        # negative → axis depleted (small negative γ proxy).  Scale to ~0.01 per
+        # unit gwas_t so the fallback stays well below OT L2G magnitudes (0.1–0.5).
+        # This prevents programs with a valid β from being silently excluded solely
+        # because OT L2G returned no enrichment for that axis.
+        if gamma_val is None and program_gwas_t is not None:
+            _gt = program_gwas_t.get(program)
+            if _gt is not None and _gt == _gt:   # exists and not NaN
+                gamma_val = math.copysign(min(abs(_gt), 10.0), _gt) * 0.01
+                if gamma_info is None:
+                    gamma_info = {}
+                if isinstance(gamma_info, dict):
+                    gamma_info = dict(gamma_info)
+                    gamma_info.setdefault("gamma_source_type", "gwas_t_fallback")
+                    gamma_info.setdefault("gamma_se", abs(gamma_val) * 1.0)  # high uncertainty
+
         if beta_val is None or gamma_val is None:
             continue
-        # NaN beta means "no data" — skip rather than contribute 0 × γ,
-        # which would silently erase program→trait evidence.
+        # NaN beta means "no data" — skip rather than contribute 0 × γ.
         if isinstance(beta_val, float) and math.isnan(beta_val):
             continue
+        # Skip programs with negligible heritability enrichment. A large β on a
+        # near-zero-γ program (e.g. β=2.0, γ=-0.013) contributes < 0.03 to the
+        # OTA sum but inflates σ and can flip sign when many accumulate.
+        # γ_SE-weighting alone is insufficient when SE << |γ| (weight ≈ 1.0).
+        if abs(gamma_val) < SLDSC_GAMMA_FLOOR:
+            continue
 
-        # Cap β magnitude at ±2.0: values beyond this indicate non-specific
-        # global perturbation effects (e.g. ribosomal KO, global stress response)
-        # rather than program-specific causal effects.
-        beta_val = max(-2.0, min(2.0, float(beta_val)))
+        # Do NOT cap z-scored β: z-scores are continuous and extreme values carry
+        # real signal (e.g. CCM2 z=3.38 on C10).  The old ±2.0 cap originated from
+        # NES saturation in GSEA and does not apply to Vt z-scores.
 
         # γ SE-weighted contribution: programs with high GWAS uncertainty (few L2G
         # genes, noisy enrichment) are down-weighted relative to well-grounded ones.
@@ -265,7 +288,7 @@ def compute_ota_gamma(
         _b = _binfo.get("beta")
         if _b is None or (isinstance(_b, float) and math.isnan(_b)):
             continue
-        _bf = max(-2.0, min(2.0, float(_b)))
+        _bf = float(_b)   # z-scores: no cap — extreme values are real signal
         if abs(_bf) >= 0.05:
             _beta_footprint[_prog] = round(_bf, 4)
 
@@ -413,6 +436,7 @@ def compute_ota_gamma_with_uncertainty(
     genebayes_result: dict | None = None,
     skip_programs: frozenset[str] | None = None,
     program_activation_biases: dict[str, float] | None = None,
+    program_gwas_t: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute Ota composite γ with 95% CI and optional GeneBayes grounding.
@@ -441,7 +465,8 @@ def compute_ota_gamma_with_uncertainty(
 
     base = compute_ota_gamma(gene, trait, beta_estimates, gamma_estimates,
                              skip_programs=skip_programs,
-                             program_activation_biases=program_activation_biases)
+                             program_activation_biases=program_activation_biases,
+                             program_gwas_t=program_gwas_t)
 
     variance = 0.0
     for prog, beta_info in beta_estimates.items():
@@ -479,6 +504,10 @@ def compute_ota_gamma_with_uncertainty(
                 continue
             g = float(g_info)
             s_g = abs(g) * 0.30
+
+        # Mirror the floor from compute_ota_gamma: skip weak-γ programs in variance
+        if abs(g) < SLDSC_GAMMA_FLOOR:
+            continue
 
         variance += g * g * s_b * s_b + b * b * s_g * s_g
 

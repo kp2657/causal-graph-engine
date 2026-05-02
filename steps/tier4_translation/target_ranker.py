@@ -581,13 +581,13 @@ def run(
             "beta_program_concentration": rec.get("beta_program_concentration"),
             # Fine-mapped PIP: max posterior inclusion probability across GWAS credible sets.
             "fine_mapped_pip": pip_map.get(gene, 0.0),
-            # WES rare-variant burden concordance (annotation; boost already applied to ota_gamma in Tier 3)
-            "wes_checked":      rec.get("wes_checked", False),
-            "wes_concordant":   rec.get("wes_concordant"),
-            "wes_burden_p":     rec.get("wes_burden_p"),
-            "wes_burden_beta":  rec.get("wes_burden_beta"),
+            # WES rare-variant burden concordance — annotation only, ota_gamma unchanged
+            "wes_checked":    rec.get("wes_checked", False),
+            "wes_concordant": rec.get("wes_concordant"),
+            "wes_burden_p":   rec.get("wes_burden_p"),
+            "wes_burden_beta": rec.get("wes_burden_beta"),
             "wes_gamma_weight": rec.get("wes_gamma_weight", 1.0),
-            "wes_note":         rec.get("wes_note"),
+            "wes_note":       rec.get("wes_note"),
             # tier_upgrade_log: records any re-scoring events applied after initial tier assignment.
             # Format: [{"from_tier": str, "to_tier": str, "reason": str, "data_source": str}]
             # Empty list means the gene kept its originally assigned tier throughout the run.

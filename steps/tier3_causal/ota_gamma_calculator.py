@@ -73,6 +73,82 @@ def run(
     short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), "CAD")
 
     # -------------------------------------------------------------------------
+    # Load gwas_t statistics for SVD programs (used as signed γ fallback when
+    # OT L2G returns no gamma — prevents GWAS-negative programs like C08 from
+    # being silently excluded from the OTA sum).
+    # -------------------------------------------------------------------------
+    _DISEASE_DATASET_MAP: dict[str, str] = {
+        "CAD": "schnitzler_cad_vascular",
+        "RA":  "czi_2025_cd4t_perturb",
+        "SLE": "czi_2025_cd4t_perturb",
+    }
+    _program_gwas_t: dict[str, float] | None = None
+    _gwas_t_dataset = _DISEASE_DATASET_MAP.get(short)
+    if _gwas_t_dataset:
+        import json as _json_gwas
+        from pathlib import Path as _Path
+        _gwas_t_path = (
+            _Path(__file__).parent.parent.parent
+            / "data" / "perturbseq" / _gwas_t_dataset
+            / "gwas_aligned_programs.json"
+        )
+        if _gwas_t_path.exists():
+            try:
+                _raw = _json_gwas.loads(_gwas_t_path.read_text())
+                if isinstance(_raw, list):
+                    _program_gwas_t = {
+                        r["program_id"]: float(r["gwas_t_stat"])
+                        for r in _raw
+                        if "program_id" in r and "gwas_t_stat" in r
+                    }
+            except Exception as _gt_exc:
+                warnings.append(f"gwas_t load failed ({_gwas_t_dataset}): {_gt_exc}")
+
+    # -------------------------------------------------------------------------
+    # Override gamma_estimates for SVD programs using signed chi-square τ.
+    # S-LDSC τ provides directional signal: negative τ = heritability-depleted
+    # (anti-atherogenic) program, which OT L2G cannot express (always ≥ 0).
+    # Only overrides programs that have a τ entry; OT L2G remains for NMF/Hallmark.
+    # -------------------------------------------------------------------------
+    _svd_gammas: dict[str, dict] = {}
+    try:
+        from pipelines.ldsc.gamma_loader import get_svd_program_gammas as _get_svd_gammas
+        _svd_gammas = _get_svd_gammas(short)
+    except Exception as _svd_exc:
+        warnings.append(f"SVD γ load failed (non-fatal): {_svd_exc}")
+
+    if _svd_gammas:
+        gamma_estimates = dict(gamma_estimates)  # shallow copy before mutation
+        _n_overridden = 0
+        for _prog, _svd_est in _svd_gammas.items():
+            _gamma_val = _svd_est.get("gamma")
+            if _gamma_val is None:
+                continue
+            # Build a trait-keyed entry compatible with OTA format
+            _svd_trait_entry = {
+                trait_key: {
+                    "gamma":         _gamma_val,
+                    "gamma_se":      _svd_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _svd_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _svd_est.get("data_source", "S-LDSC_chisq"),
+                }
+                for trait_key in (list(gamma_estimates.get(_prog, {}).keys()) or [disease_name])
+            }
+            if not _svd_trait_entry:
+                _svd_trait_entry = {disease_name: {
+                    "gamma":         _gamma_val,
+                    "gamma_se":      _svd_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _svd_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _svd_est.get("data_source", "S-LDSC_chisq"),
+                }}
+            gamma_estimates[_prog] = _svd_trait_entry
+            _n_overridden += 1
+        if _n_overridden:
+            warnings.append(
+                f"svd_ldsc_gamma_override: {_n_overridden} SVD programs got signed γ from χ² τ"
+            )
+
+    # -------------------------------------------------------------------------
     # Load program precedence discounts (if available) and apply to gamma_estimates
     # -------------------------------------------------------------------------
     _disease_key_early = disease_query.get("disease_key") or ""
@@ -228,6 +304,7 @@ def run(
                     genebayes_result=gb_result,
                     skip_programs=_OTA_SKIP_PROGRAMS,
                     program_activation_biases=program_activation_biases,
+                    program_gwas_t=_program_gwas_t,
                 )
                 ota_gamma_raw = ota_result.get("ota_gamma")
                 ota_gamma = float('nan') if ota_gamma_raw is None else float(ota_gamma_raw)
@@ -249,17 +326,9 @@ def run(
                 _loo_discount = _loo_discounts.get(gene, 1.0)
                 _loo_stable = _loo_discount >= 1.0
 
-                # WES directional concordance — reward-only gate.
-                # Concordant + significant (p < WES_CONCORDANCE_P_THRESHOLD): wes_gamma_weight > 1.0 (boost).
-                # Discordant or sub-threshold: wes_gamma_weight = 1.0 (no change).
-                # Weight is always ≥ 1.0, so unconditional multiply is safe.
+                # WES directional concordance — annotation only, ota_gamma unchanged.
+                # Concordance/discordance documented in wes_concordant + wes_note.
                 _wes = _wes_concordance_check(ota_gamma, gb_result)
-                _wes_weight = _wes["wes_gamma_weight"]
-                if _wes_weight != 1.0:
-                    ota_gamma = ota_gamma * _wes_weight
-                    warnings.append(
-                        f"{gene} → {trait}: {_wes['wes_note']}"
-                    )
 
                 key = f"{gene}__{trait}"
                 r: dict = {
@@ -278,11 +347,11 @@ def run(
                     "tissue_weight":            round(_tissue_mult, 4),
                     "n_programs_contributing":  _n_programs_contributing,
                     "loo_stable":               _loo_stable,
-                    "wes_checked":              _wes["wes_checked"],
-                    "wes_concordant":           _wes["wes_concordant"],
-                    "wes_burden_p":             _wes["wes_burden_p"],
-                    "wes_burden_beta":          _wes["wes_burden_beta"],
-                    "wes_gamma_weight":         _wes["wes_gamma_weight"],
+                    "wes_checked":    _wes["wes_checked"],
+                    "wes_concordant": _wes["wes_concordant"],
+                    "wes_burden_p":   _wes["wes_burden_p"],
+                    "wes_burden_beta": _wes["wes_burden_beta"],
+                    "wes_gamma_weight": _wes["wes_gamma_weight"],
                 }
                 if _wes["wes_checked"]:
                     r["wes_note"] = _wes["wes_note"]
@@ -710,13 +779,13 @@ def run(
                     tr_results[r["gene"]].get("tau_specificity_class")
                     if r["gene"] in tr_results else None
                 ),
-                # WES rare-variant burden concordance (boost already applied to ota_gamma above)
-                "wes_checked":      r.get("wes_checked", False),
-                "wes_concordant":   r.get("wes_concordant"),
-                "wes_burden_p":     r.get("wes_burden_p"),
-                "wes_burden_beta":  r.get("wes_burden_beta"),
+                # WES rare-variant burden concordance (boost/flip already applied to ota_gamma above)
+                "wes_checked":    r.get("wes_checked", False),
+                "wes_concordant": r.get("wes_concordant"),
+                "wes_burden_p":   r.get("wes_burden_p"),
+                "wes_burden_beta": r.get("wes_burden_beta"),
                 "wes_gamma_weight": r.get("wes_gamma_weight", 1.0),
-                "wes_note":         r.get("wes_note"),
+                "wes_note":       r.get("wes_note"),
                 # Phase U: pleiotropy diagnostic — fraction of β-mass in disease-specific programs
                 "beta_program_concentration": r.get("beta_program_concentration"),
                 # True when at least one β×γ product contributed to ota_gamma

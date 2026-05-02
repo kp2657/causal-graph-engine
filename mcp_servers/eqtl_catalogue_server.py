@@ -82,7 +82,9 @@ _SCEQTL_STUDIES = {
 # OneK1K tissue_labels: "monocyte", "CD16+ monocyte", "CD4+ T cell", "CD8+ T cell",
 #   "B cell", "memory B cell", "NK cell", "dendritic cell", "plasmacytoid dendritic cell", etc.
 DISEASE_SC_EQTL_CELL_TYPES: dict[str, list[str]] = {
-    "CAD":  ["monocyte", "macrophage"],
+    # CAD: arterial endothelial biology → GTEx artery bulk tissue
+    # tissue_labels in eQTL Catalogue: "Artery_Coronary", "Artery_Aorta", "Artery_Tibial"
+    "CAD":  ["artery", "coronary", "aorta"],
     "RA":   ["CD4", "B cell", "monocyte"],
 }
 

@@ -91,6 +91,44 @@ DISEASE_PROGRAMS: dict[str, frozenset] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# High-confidence GWAS anchor genes per disease.
+# Source: PAV-supported gene-disease associations (protein-altering variants)
+# with L2G ≥ 0.5 from Tsepilov et al. 2026 (Human Pleiotropic Map) ST7.
+# These are used as hard-coded seeds for OT L2G anchor bypass when the
+# pipeline has no Perturb-seq β for a GWAS-anchored gene.
+# ---------------------------------------------------------------------------
+DISEASE_GWAS_ANCHORS: dict[str, frozenset] = {
+    "CAD": frozenset({
+        "PCSK9", "LDLR", "APOB", "HMGCR", "LPA", "CETP", "SORT1",
+        "TRIB1", "PPARG", "NOS3",
+    }),
+    "RA": frozenset({
+        # PAV-supported, L2G ≥ 0.5, from ST7 (Tsepilov 2026) filtered to EFO_0000685
+        "IFNGR2",   # L2G 0.951, eQTL+pQTL coloc, GCST90132222
+        "AHNAK2",   # L2G 0.941, GCST90013534
+        "DNASE1L3", # L2G 0.944, GCST007278
+        "FCRL3",    # L2G 0.923, eQTL+pQTL coloc, GCST90013534
+        "FCGR2A",   # L2G 0.910, eQTL+pQTL coloc, GCST90132222
+        "DCLRE1B",  # L2G 0.914, eQTL coloc, GCST90302863
+        "WDFY4",    # L2G 0.904, GCST90013534
+        "NCF2",     # L2G 0.949, GCST007278
+        "AIRE",     # L2G 0.861, GCST90132222
+        "SIRPG",    # L2G 0.811, eQTL+pQTL coloc, GCST90302863
+        "SWAP70",   # L2G 0.856, eQTL+pQTL coloc, GCST011389
+        "PADI4",    # L2G 0.691, eQTL coloc, RA-classic citrullination
+        "IRAK1",    # L2G 0.646, eQTL coloc, IL-1/TLR signaling
+        "PLD4",     # L2G 0.710, eQTL coloc, GCST011389
+        # Clinically validated targets (ST5, L2G ≥ 0.5, Phase ≥ 3)
+        "TYK2",     # L2G 0.934, Phase 4 (deucravacitinib)
+        "IL6R",     # L2G 0.940, Phase 4 (tocilizumab/sarilumab)
+        "TRAF3IP2", # L2G 0.969, Phase 3
+        "CD40",     # L2G 0.948, Phase 1
+        "IL12B",    # L2G 0.875, Phase 2
+    }),
+}
+
+
 def resolve(name_or_key: str) -> dict | None:
     """Resolve any disease name or key to a full info dict."""
     key = get_disease_key(name_or_key) or DISEASE_EFO.get(name_or_key.upper().strip()) and name_or_key.upper().strip()
