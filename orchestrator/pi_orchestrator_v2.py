@@ -9,7 +9,7 @@ Pipeline tiers
 --------------
 Tier 1  Phenomics   — disease ontology, GWAS instruments, genetic anchors
 Tier 2  Pathway     — β estimation (eQTL-MR, Perturb-seq, pQTL, Tier 2L transfer)
-Tier 3  Causal      — SCONE causal discovery, γ estimation, program decomposition
+Tier 3  Causal      — OTA γ estimation, program decomposition, causal graph construction
 Tier 4  Translation — target prioritization, GPS phenotypic screening, chemistry
 Tier 5  Writing     — structured JSON/Markdown report generation
 
@@ -40,8 +40,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Force line-buffered stdout so print() output appears immediately when piped
 # (conda run and tee both trigger block-buffering otherwise).
 sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
-
-import os
 
 # ---------------------------------------------------------------------------
 # Quality gate constants and helpers (inlined from v1)
@@ -235,17 +233,34 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
 
     work = [(prog, trait) for prog in program_names for trait in traits]
 
-    # Load S-LDSC pre-computed τ coefficients (Mode 2 γ) — available after
-    # running: python -m pipelines.ldsc.runner run {disease_key}
+    # Load S-LDSC pre-computed τ coefficients (Mode 2 γ).
+    # Three separate try-blocks so a failure in one source doesn't prevent others.
     _ldsc_gammas: dict[str, dict] = {}
     try:
-        from pipelines.ldsc.gamma_loader import get_all_program_gammas_ldsc, ldsc_available
-        if ldsc_available(short_name):
-            _ldsc_gammas = get_all_program_gammas_ldsc(short_name)
-            if _ldsc_gammas:
-                print(f"[S-LDSC] Loaded τ coefficients for {len(_ldsc_gammas)} programs ({short_name})")
-    except Exception as _ldsc_err:
-        pass  # S-LDSC not yet run — falls back to OT L2G only
+        from pipelines.ldsc.gamma_loader import (
+            get_all_program_gammas_ldsc, get_svd_program_gammas,
+            get_locus_program_gammas, ldsc_available,
+        )
+    except ImportError:
+        get_all_program_gammas_ldsc = get_svd_program_gammas = get_locus_program_gammas = None
+        ldsc_available = lambda _: False
+    try:
+        if ldsc_available(short_name) and get_all_program_gammas_ldsc:
+            _ldsc_gammas.update(get_all_program_gammas_ldsc(short_name))
+    except Exception:
+        pass
+    try:
+        if get_svd_program_gammas:
+            _ldsc_gammas.update(get_svd_program_gammas(short_name))
+    except Exception:
+        pass
+    try:
+        if get_locus_program_gammas:
+            _ldsc_gammas.update(get_locus_program_gammas(short_name))
+    except Exception:
+        pass
+    if _ldsc_gammas:
+        print(f"[S-LDSC] Loaded τ coefficients for {len(_ldsc_gammas)} programs ({short_name})")
 
     def _fetch(prog_trait: tuple[str, str]) -> tuple[str, str, dict]:
         prog, trait = prog_trait
@@ -380,8 +395,26 @@ def _collect_gene_list(
             _log("L2G_SEED_FAIL", "_collect_gene_list",
                  f"L2G gene seeding failed: {_l2g_exc} — gene list will be GWAS-validated hits only")
 
-    # Return empty list if no genes found — surface the failure rather than silently
-    # injecting CAD-specific genes into an AMD/other-disease run.
+    # Hard-seed curated anchors from disease_registry as a fallback for genes that
+    # OT Platform misses (e.g. AHNAK2, DNASE1L3 in RA — strong L2G but absent from
+    # OT association query due to database lag or score cutoff differences).
+    # These are only added when NOT already in the gene list.
+    try:
+        from models.disease_registry import DISEASE_GWAS_ANCHORS
+        _dkey = (disease_query.get("disease_key") or "").upper()
+        _anchors = DISEASE_GWAS_ANCHORS.get(_dkey, frozenset())
+        _anchor_added = []
+        for _ag in sorted(_anchors):
+            if _ag not in genes:
+                genes.append(_ag)
+                ot_scores[_ag] = max(ot_scores.get(_ag, 0.0), 0.5)  # treat as moderate L2G
+                _anchor_added.append(_ag)
+        if _anchor_added:
+            _log("ANCHOR_SEED", "_collect_gene_list",
+                 f"hard-seeded {len(_anchor_added)} registry anchors missing from OT: {sorted(_anchor_added)}")
+    except Exception:
+        pass
+
     return genes, ot_scores, ot_cache
 
 
@@ -546,6 +579,279 @@ def _collect_svd_nominees(disease_query: dict, gwas_gene_list: list[str]) -> lis
         return []
 
 
+def _collect_cache_first_nominees(
+    disease_query: dict,
+    ot_scores: dict[str, float],
+    exclude_genes: set[str],
+) -> tuple[list[dict], set[str]]:
+    """
+    Single-step cache-first nomination preserving the Ota/Zhu genetic framework.
+
+    Ranking score per gene: |pre_OTA| × l2g_weight × eqtl_coherence_weight
+
+    - pre_OTA = Σ_P β(gene,P) × γ(P,trait)  [S-LDSC γ = genetic link]
+    - l2g_weight = f(OT L2G score)            [V2G specificity]
+    - eqtl_coherence_weight                   [eQTL direction × OTA direction]
+
+    Returns:
+        (nominees, uncached_ot_genes)
+        nominees: list of dicts sorted by effective_score desc
+        uncached_ot_genes: OT L2G genes not in beta cache (need h5ad β estimation)
+    """
+    disease_name = (disease_query.get("disease_name") or "").lower()
+    dataset_id: str | None = None
+    disease_key: str | None = None
+    try:
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        short_key = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name, "")
+        if short_key and short_key in DISEASE_CELL_TYPE_MAP:
+            dataset_id = DISEASE_CELL_TYPE_MAP[short_key].get("scperturb_dataset")
+        disease_key = short_key.upper() if short_key else None
+    except Exception:
+        pass
+
+    if not dataset_id or not disease_key:
+        return [], set()
+
+    try:
+        from pipelines.replogle_parser import _PERTURBSEQ_DIR
+        from pipelines.ldsc.gamma_loader import get_svd_program_gammas, get_locus_program_gammas
+        from config.scoring_thresholds import (
+            SLDSC_GAMMA_FLOOR,
+            CACHE_FIRST_L2G_STRONG, CACHE_FIRST_L2G_MODERATE,
+            CACHE_FIRST_L2G_WEIGHT_STRONG, CACHE_FIRST_L2G_WEIGHT_MODERATE,
+            CACHE_FIRST_L2G_WEIGHT_PROXIMAL, CACHE_FIRST_L2G_WEIGHT_NONE,
+            CACHE_FIRST_EQTL_CONCORDANT_WEIGHT, CACHE_FIRST_EQTL_DISCORDANT_WEIGHT,
+            CACHE_FIRST_EFFECTIVE_SCORE_MIN, CACHE_FIRST_MAX_NOMINEES,
+            PERTURB_NOMINATED_GAMMA_MIN,
+        )
+
+        # --- S-LDSC program gammas (genetic backbone) — merge locus + SVD ---
+        gammas = {**get_svd_program_gammas(disease_key), **get_locus_program_gammas(disease_key)}
+        active_gammas = {p: d["gamma"] for p, d in gammas.items() if abs(d["gamma"]) >= SLDSC_GAMMA_FLOOR}
+        if not active_gammas:
+            return [], set()
+
+        # --- SVD beta cache ---
+        cache_dir = _PERTURBSEQ_DIR / dataset_id
+        split_files = list(cache_dir.glob("beta_cache_*split*.json")) if cache_dir.exists() else []
+        if not split_files:
+            split_files = list(cache_dir.glob("beta_cache_*.json"))
+        if not split_files:
+            return [], set()
+        cache_path = max(split_files, key=lambda p: p.stat().st_size)
+        with open(cache_path) as f:
+            beta_cache = json.load(f)
+
+        # --- eQTL index for direction coherence ---
+        import pathlib as _pl
+        _eqtl_dir = _pl.Path(__file__).parent.parent / "data" / "eqtl" / "indices"
+        eqtl_betas: dict[str, float] = {}
+        for eqtl_file in _eqtl_dir.glob(f"{disease_key}_*_top_eqtls.json"):
+            try:
+                with open(eqtl_file) as f:
+                    idx = json.load(f)
+                if isinstance(idx, dict):
+                    for gene, rec in idx.items():
+                        if isinstance(rec, dict) and "beta" in rec:
+                            eqtl_betas.setdefault(gene, float(rec["beta"]))
+            except Exception:
+                pass
+
+        def _l2g_weight(gene: str) -> float:
+            score = ot_scores.get(gene, 0.0)
+            if isinstance(score, dict):
+                score = score.get("score", 0.0) or 0.0
+            score = float(score or 0.0)
+            if score >= CACHE_FIRST_L2G_STRONG:
+                return CACHE_FIRST_L2G_WEIGHT_STRONG
+            if score >= CACHE_FIRST_L2G_MODERATE:
+                return CACHE_FIRST_L2G_WEIGHT_MODERATE
+            if gene in beta_cache:
+                return CACHE_FIRST_L2G_WEIGHT_PROXIMAL  # GWAS-proximal (in Perturb library)
+            return CACHE_FIRST_L2G_WEIGHT_NONE
+
+        def _eqtl_weight(gene: str, pre_ota: float) -> float:
+            eqtl_b = eqtl_betas.get(gene)
+            if eqtl_b is None or pre_ota == 0.0:
+                return 1.0  # no data — no penalty
+            # Concordant: sign(eQTL_β) × sign(OTA) < 0
+            # risk allele ↑ expression (eQTL_β > 0) AND KO ↓ disease (OTA < 0)
+            # = more expression promotes disease = inhibition is therapeutic
+            return CACHE_FIRST_EQTL_CONCORDANT_WEIGHT if (eqtl_b * pre_ota) < 0 else CACHE_FIRST_EQTL_DISCORDANT_WEIGHT
+
+        # Standard gene symbol: 2-20 chars, starts with letter, no run of digits only
+        # Excludes: Enhancer-BP-etc-*, lncRNAs (AL123456, AC001234), controls (safe-*)
+        import re as _re
+        _GENE_SYMBOL_RE  = _re.compile(r'^[A-Z][A-Z0-9\-]{1,19}$')
+        _LNCRNA_RE       = _re.compile(r'^A[CL]\d{6}')  # AC/AL + 6-digit accession
+        _SAFE_TARGET_RE  = _re.compile(r'^(safe|non)-', _re.I)
+
+        from config.scoring_thresholds import CACHE_FIRST_STRESS_MEAN_THRESHOLD
+        import statistics as _stats
+
+        # --- Compute effective score for all cached genes ---
+        nominees: list[dict] = []
+        cached_genes: set[str] = set(beta_cache.keys())
+
+        for gene, entry in beta_cache.items():
+            if gene in exclude_genes:
+                continue
+            # Filter non-gene entries: enhancers, lncRNA accessions, controls
+            if not _GENE_SYMBOL_RE.match(gene):
+                continue
+            if _LNCRNA_RE.match(gene) or _SAFE_TARGET_RE.match(gene):
+                continue
+            betas = {k: v["beta"] for k, v in entry.get("programs", {}).items() if "SVD" in k}
+            if not betas:
+                continue
+            # Pre-screen essential-gene stress responders using hard mean|β| cutoff.
+            # SVD z-score betas have uniformly high CV (0.5–0.8) even for true stress genes,
+            # so CV-gating is unreliable at this stage. Plain amplitude threshold suffices:
+            # ACTR3C (5.5) and TP53 (3.1) filtered; CCM2 (1.9) and KRIT1 (0.8) retained.
+            _beta_vals = [abs(v) for v in betas.values()]
+            if len(_beta_vals) > 5 and _stats.mean(_beta_vals) > CACHE_FIRST_STRESS_MEAN_THRESHOLD:
+                continue
+            pre_ota = sum(betas.get(p, 0.0) * g for p, g in active_gammas.items())
+            if pre_ota == 0.0:
+                continue
+
+            l2g_w   = _l2g_weight(gene)
+            eqtl_w  = _eqtl_weight(gene, pre_ota)
+            eff     = abs(pre_ota) * l2g_w * eqtl_w
+
+            l2g_score = ot_scores.get(gene, 0.0)
+            if isinstance(l2g_score, dict):
+                l2g_score = l2g_score.get("score", 0.0) or 0.0
+            has_l2g = float(l2g_score or 0.0) >= CACHE_FIRST_L2G_MODERATE
+
+            # For genes with OT L2G, gate on penalized effective_score.
+            # For genes without OT L2G (PerturbNominated), gate on |pre_OTA| alone —
+            # the l2g_weight=0.10 penalty reflects uncertainty, not absence of signal.
+            if has_l2g:
+                if eff < CACHE_FIRST_EFFECTIVE_SCORE_MIN:
+                    continue
+            else:
+                if abs(pre_ota) < PERTURB_NOMINATED_GAMMA_MIN:
+                    continue
+
+            nominees.append({
+                "gene":             gene,
+                "pre_ota":          round(pre_ota, 5),
+                "l2g_weight":       l2g_w,
+                "eqtl_weight":      eqtl_w,
+                "effective_score":  round(eff, 5),
+                "ot_l2g_score":     float(l2g_score or 0.0),
+                "eqtl_beta":        eqtl_betas.get(gene),
+                "nomination_tier":  (
+                    "Tier1_Interventional"  if float(l2g_score or 0.0) >= CACHE_FIRST_L2G_STRONG else
+                    "Tier2_Convergent"      if float(l2g_score or 0.0) >= CACHE_FIRST_L2G_MODERATE else
+                    "Tier2_PerturbNominated"
+                ),
+            })
+
+        nominees.sort(key=lambda x: -x["effective_score"])
+        nominees = nominees[:CACHE_FIRST_MAX_NOMINEES]
+
+        # --- OT L2G genes not in beta cache still need h5ad β ---
+        uncached_ot_genes = {
+            g for g in ot_scores
+            if g not in cached_genes and g not in exclude_genes
+        }
+
+        n_tier1 = sum(1 for n in nominees if n["nomination_tier"] == "Tier1_Interventional")
+        n_tier2p = sum(1 for n in nominees if n["nomination_tier"] == "Tier2_PerturbNominated")
+        _log(
+            "CACHE_FIRST_NOM",
+            "_collect_cache_first_nominees",
+            f"{len(nominees)} nominees ({n_tier1} Tier1, {n_tier2p} PerturbNominated) "
+            f"+ {len(uncached_ot_genes)} uncached OT genes | "
+            f"top: {[n['gene'] for n in nominees[:5]]}",
+        )
+        return nominees, uncached_ot_genes
+
+    except Exception as exc:
+        _log("CACHE_FIRST_NOM_FAIL", "_collect_cache_first_nominees", str(exc))
+        return [], set()
+
+
+def _collect_high_ota_perturbseq_nominees(
+    disease_query: dict,
+    exclude_genes: set[str],
+) -> list[str]:
+    """
+    Nominate Perturb-seq genes with |OTA γ| >= PERTURB_NOMINATED_GAMMA_MIN
+    that are not already in the gene list via OT L2G or SVD/fingerprint paths.
+
+    Uses the SVD beta cache + program gammas to pre-estimate OTA before the
+    full pipeline runs. All genes in the Schnitzler/CZI library were selected
+    from within ±500 kb of GWAS signals, so GWAS proximity is implicit.
+
+    Returns: list of gene symbols, sorted by |pre-OTA| descending.
+    """
+    disease_name = (disease_query.get("disease_name") or "").lower()
+    dataset_id: str | None = None
+    disease_key: str | None = None
+    try:
+        from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+        short_key = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name, "")
+        if short_key and short_key in DISEASE_CELL_TYPE_MAP:
+            dataset_id = DISEASE_CELL_TYPE_MAP[short_key].get("scperturb_dataset")
+        disease_key = short_key.upper() if short_key else None
+    except Exception:
+        pass
+
+    if not dataset_id or not disease_key:
+        return []
+
+    try:
+        from pipelines.replogle_parser import _PERTURBSEQ_DIR
+        from pipelines.ldsc.gamma_loader import get_svd_program_gammas, get_locus_program_gammas
+        from config.scoring_thresholds import PERTURB_NOMINATED_GAMMA_MIN, SLDSC_GAMMA_FLOOR
+
+        # Load SVD + locus program gammas
+        gammas = {**get_svd_program_gammas(disease_key), **get_locus_program_gammas(disease_key)}
+        active_gammas = {p: d["gamma"] for p, d in gammas.items() if abs(d["gamma"]) >= SLDSC_GAMMA_FLOOR}
+        if not active_gammas:
+            return []
+
+        # Pick the largest SVD-keyed beta cache
+        cache_dir = _PERTURBSEQ_DIR / dataset_id
+        cache_files = list(cache_dir.glob("beta_cache_*split*.json")) if cache_dir.exists() else []
+        if not cache_files:
+            cache_files = list(cache_dir.glob("beta_cache_*.json"))
+        if not cache_files:
+            return []
+        cache_path = max(cache_files, key=lambda p: p.stat().st_size)
+        with open(cache_path) as f:
+            beta_cache = json.load(f)
+
+        nominees: list[tuple[str, float]] = []
+        for gene, entry in beta_cache.items():
+            if gene in exclude_genes:
+                continue
+            betas = {k: v["beta"] for k, v in entry.get("programs", {}).items() if "SVD" in k}
+            if not betas:
+                continue
+            pre_ota = sum(betas.get(p, 0.0) * g for p, g in active_gammas.items())
+            if abs(pre_ota) >= PERTURB_NOMINATED_GAMMA_MIN:
+                nominees.append((gene, pre_ota))
+
+        nominees.sort(key=lambda x: -abs(x[1]))
+        from config.scoring_thresholds import PERTURB_NOMINATED_MAX
+        genes = [g for g, _ in nominees[:PERTURB_NOMINATED_MAX]]
+        _log(
+            "PERTURB_OTA_NOM",
+            "_collect_high_ota_perturbseq_nominees",
+            f"{len(genes)} high-OTA Perturb-seq nominees (|pre-OTA|≥{PERTURB_NOMINATED_GAMMA_MIN}) "
+            f"from {dataset_id} (top: {genes[:5]})",
+        )
+        return genes
+    except Exception as exc:
+        _log("PERTURB_OTA_NOM_FAIL", "_collect_high_ota_perturbseq_nominees", str(exc))
+        return []
+
+
 # ---------------------------------------------------------------------------
 # Tier 4 feedback helper
 # ---------------------------------------------------------------------------
@@ -681,21 +987,50 @@ def analyze_disease_v2(
     #
     # Legacy fallback (USE_SVD_GENE_NOMINATION=False): full Perturb-seq union.
     try:
-        from config.scoring_thresholds import USE_SVD_GENE_NOMINATION
+        from config.scoring_thresholds import USE_SVD_GENE_NOMINATION, USE_CACHE_FIRST_NOMINATION
     except Exception:
         USE_SVD_GENE_NOMINATION = False
+        USE_CACHE_FIRST_NOMINATION = False
 
-    if USE_SVD_GENE_NOMINATION:
+    _cf_nominee_tiers: dict[str, str] = {}
+    _perturb_nominated_new: set[str] = set()
+    ota_nominees: list[str] = []
+
+    if USE_CACHE_FIRST_NOMINATION:
+        gwas_set = set(gwas_gene_list)
+        cf_nominees, uncached_ot_genes = _collect_cache_first_nominees(
+            disease_query,
+            ot_scores=gwas_ot_scores,
+            exclude_genes=gwas_set,
+        )
+        perturb_only_genes = [n["gene"] for n in cf_nominees]
+        _cf_nominee_tiers = {n["gene"]: n["nomination_tier"] for n in cf_nominees}
+        _perturb_nominated_new = {
+            n["gene"] for n in cf_nominees if n["nomination_tier"] == "Tier2_PerturbNominated"
+        }
+        # Uncached OT genes (L2G but no Perturb-seq β) still go through h5ad estimation
+        for g in uncached_ot_genes:
+            if g not in gwas_set and g not in set(perturb_only_genes):
+                perturb_only_genes.append(g)
+
+    elif USE_SVD_GENE_NOMINATION:
         gwas_set = set(gwas_gene_list)
         svd_nominees = _collect_svd_nominees(disease_query, gwas_gene_list)
         svd_set = set(svd_nominees)
         fp_nominees = _collect_disease_fingerprint_nominees(disease_query, gwas_set)
         fp_novel = [g for g in fp_nominees if g not in gwas_set and g not in svd_set]
-        perturb_only_genes = svd_nominees + fp_novel
+        # Path 3 — High-OTA Perturb-seq: genes with |pre-OTA γ| ≥ PERTURB_NOMINATED_GAMMA_MIN
+        # that aren't already covered by OT L2G, SVD cosine, or fingerprint paths.
+        # These are genes Schnitzler-validated as causal regulators of CAD programs but
+        # whose GWAS signal is too distal or diffuse for OT L2G to capture.
+        already_covered = gwas_set | svd_set | set(fp_novel)
+        ota_nominees = _collect_high_ota_perturbseq_nominees(disease_query, already_covered)
+        perturb_only_genes = svd_nominees + fp_novel + ota_nominees
         _log(
             "NOMINATION_UNION",
             "gene_list",
-            f"{len(svd_nominees)} SVD + {len(fp_novel)} fingerprint-novel = "
+            f"{len(svd_nominees)} SVD + {len(fp_novel)} fingerprint-novel + "
+            f"{len(ota_nominees)} high-OTA = "
             f"{len(perturb_only_genes)} non-GWAS nominees "
             f"(total {len(gwas_gene_list) + len(perturb_only_genes)}: "
             f"{len(gwas_gene_list)} GWAS + {len(perturb_only_genes)} nominated)",
@@ -713,11 +1048,28 @@ def analyze_disease_v2(
 
     disease_query = {
         **disease_query,
-        "gwas_genes": gwas_gene_list,          # unchanged — used for γ grounding & anchor QC
-        "perturb_only_genes": perturb_only_genes,  # novel candidates with no GWAS prior
+        "gwas_genes": gwas_gene_list,
+        "perturb_only_genes": perturb_only_genes,
+        "perturb_nominated_genes": (
+            _perturb_nominated_new if USE_CACHE_FIRST_NOMINATION
+            else (set(ota_nominees) if USE_SVD_GENE_NOMINATION else set())
+        ),
+        "cache_first_nominee_tiers": _cf_nominee_tiers,  # gene → tier label for ota_gamma_calculator
         "ot_genetic_scores": gwas_ot_scores,
         "_ot_disease_targets_cache": ot_disease_targets_cache,
     }
+
+    # Persist GWAS gene list so gamma_loader can use Zhu et al. GWAS enrichment γ_P
+    # in standalone analysis without a full pipeline run.
+    if gwas_gene_list:
+        import pathlib as _ot_pl, json as _ot_json
+        _ot_cache_dir = _ot_pl.Path(__file__).parent.parent / "data" / "ot_cache"
+        _ot_cache_dir.mkdir(exist_ok=True)
+        _dk_up = (disease_query.get("disease_key") or "").upper()
+        if _dk_up:
+            (_ot_cache_dir / f"{_dk_up}_genetic_genes.json").write_text(
+                _ot_json.dumps(list(gwas_gene_list))
+            )
 
     # Hard gate: require h5ad before running any β estimation.
     # Without h5ad, Perturb-seq β falls back to provisional_virtual which has no causal
@@ -840,15 +1192,6 @@ def analyze_disease_v2(
     tier3_issues = _run_quality_gate_tier3(causal_result)
     all_warnings.extend(tier3_issues)
 
-    # Scientific reviewer — plain function call on written edges
-    from orchestrator.scientific_reviewer import review_batch
-    causal_edges = causal_result.get("edges_written", []) or []
-    if causal_edges:
-        review_result = review_batch(causal_edges)
-        pipeline_outputs["review_result"] = review_result
-        n_rej = review_result.get("n_rejected", 0)
-        if n_rej:
-            all_warnings.append(f"Scientific reviewer rejected {n_rej}/{len(causal_edges)} edges")
 
     # Tier 3 checkpoint — saves all inputs needed to re-run Tier 4 independently.
     try:
@@ -1014,7 +1357,7 @@ def analyze_disease_v2(
 
 
 def _write_pipeline_output(result: dict, data_dir: Path) -> None:
-    """Write pipeline result JSON to data/ directory."""
+    """Write pipeline result JSON and Markdown report to data/ directory."""
     disease_slug = (
         result.get("disease_name", "unknown")
         .lower().replace(" ", "_").replace("-", "_")
@@ -1024,13 +1367,150 @@ def _write_pipeline_output(result: dict, data_dir: Path) -> None:
         json.dump(result, _f, indent=2, default=str)
     print(f"  Output written:  {out_path}")
 
+    # Write Markdown report alongside JSON
+    md_path = data_dir / f"analyze_{disease_slug}.md"
+    try:
+        sections = []
+        if result.get("executive_summary"):
+            sections.append(result["executive_summary"])
+        if result.get("target_table"):
+            sections.append("\n## Target Rankings\n\n" + result["target_table"])
+        narratives = result.get("top_target_narratives") or []
+        if narratives:
+            sections.append("\n## Top Target Narratives\n\n" + "\n\n".join(narratives))
+        if result.get("limitations"):
+            sections.append("\n## Limitations\n\n" + result["limitations"])
+        if sections:
+            md_path.write_text("\n\n".join(sections))
+            print(f"  Markdown written: {md_path}")
+    except Exception as _e:
+        print(f"  Markdown write skipped: {_e}")
+
+
+def _write_plots(disease_name: str) -> None:
+    """Generate drug target validation, SVD + NMF plots, and refresh RDF/JSON-LD/CSV exports."""
+    from models.disease_registry import get_disease_key
+    disease_key = (get_disease_key(disease_name) or disease_name).lower()
+    import sys, os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+    # Drug target validation — runs first, before plots, so QC is visible before rendering
+    try:
+        from steps.tier5_writer.drug_target_validator import print_drug_target_report
+        import json
+        from pathlib import Path as _Path
+        _ck_path = _Path(__file__).parent.parent / "data" / "checkpoints" / f"{disease_key.replace(' ', '_')}__tier4.json"
+        if not _ck_path.exists():
+            # Try slug form
+            _slug = disease_name.lower().replace(" ", "_")
+            _ck_path = _Path(__file__).parent.parent / "data" / "checkpoints" / f"{_slug}__tier4.json"
+        if _ck_path.exists():
+            with open(_ck_path) as _fh:
+                _ck4 = json.load(_fh)
+            _targets = (_ck4.get("prioritization_result") or {}).get("targets") or []
+            _dk_upper = (get_disease_key(disease_name) or disease_name).upper()
+            print_drug_target_report(_dk_upper, _targets)
+        else:
+            print(f"  Drug target validation skipped — checkpoint not found: {_ck_path}")
+    except Exception as _dv_exc:
+        print(f"  Drug target validation skipped ({_dv_exc})")
+
+    # Per-program plots: condition-split GeneticNMF (RA) or cNMF MAST (CAD)
+    from outputs.plot_long_island import plot_gnmf_programs
+    if disease_key == "ra":
+        for _cond in ("Stim48hr", "Rest"):
+            try:
+                plot_gnmf_programs(disease_key, condition=_cond)
+            except Exception as _e:
+                print(f"  Plot (gnmf/{_cond}) skipped: {_e}")
+    else:
+        try:
+            plot_gnmf_programs(disease_key)
+        except Exception as _e:
+            print(f"  Plot (gnmf) skipped ({disease_key}): {_e}")
+
+    # Per-program biological annotations
+    try:
+        from pipelines.program_annotator import annotate_programs
+        ann = annotate_programs(disease_key)
+        print(f"  Program annotations written: {len(ann)} programs")
+    except Exception as _e:
+        print(f"  Program annotations skipped ({disease_key}): {_e}")
+
+    # RDF / JSON-LD / CSV graph export
+    try:
+        from graph.export import export_disease_graph
+        result = export_disease_graph(disease_name)
+        print(f"  Exports written: {result.get('n_edges', '?')} edges → data/exports/")
+    except Exception as _e:
+        print(f"  Graph export skipped: {_e}")
+
+
+def run_tier3_from_checkpoint(disease_name: str) -> dict[str, Any]:
+    """
+    Re-run Tier 3 (OTA γ calculator) using beta_result saved in an existing
+    Tier 3 checkpoint, then proceed through Tier 4+5.
+
+    Use after wiring new program tracks (e.g. cNMF gammas/betas) without
+    re-running the expensive Tiers 1–2 (GWAS, eQTL, beta_matrix_builder).
+    Overwrites the Tier 3 checkpoint before handing off to run_tier4.
+    """
+    import time as _time
+    _disease_slug = disease_name.lower().replace(" ", "_").replace("-", "_")
+    ckpt_dir = Path(__file__).parent.parent / "data" / "checkpoints"
+    ckpt3_path = ckpt_dir / f"{_disease_slug}__tier3.json"
+
+    if not ckpt3_path.exists():
+        raise FileNotFoundError(
+            f"No Tier 3 checkpoint for {disease_name!r}: {ckpt3_path}\n"
+            f"Run the full pipeline first: analyze_disease_v2 \"{disease_name}\""
+        )
+
+    with ckpt3_path.open() as _f:
+        ckpt = json.load(_f)
+    print(f"\nLoaded Tier 3 checkpoint (for Tier 3 re-run): {ckpt3_path}")
+    print(f"  Disease: {ckpt.get('disease_name')}  |  Run ID: {ckpt.get('run_id')}")
+
+    disease_query     = ckpt["disease_query"]
+    genetics_result   = ckpt.get("genetics_result", {})
+    beta_result       = ckpt.get("beta_result", {})
+    regulatory_result = ckpt.get("regulatory_result", {})
+    gamma_estimates   = ckpt.get("gamma_estimates", {})
+    kg_result         = ckpt.get("kg_result", {})
+
+    beta_matrix = beta_result.get("beta_matrix", {})
+    print(f"\n{'='*60}\nTIER 3 — OTA γ (re-run, {len(beta_matrix)} genes)\n{'='*60}")
+    t0 = _time.time()
+
+    from steps.tier3_causal.ota_gamma_calculator import run as _cda_run
+    from steps.tier3_causal.drug_target_graph_enricher import run as _kgc_run
+
+    causal_result = _cda_run(beta_result, gamma_estimates, disease_query)
+    print(f"  Tier 3 done — n_written={causal_result.get('n_edges_written', 0)}  {_time.time()-t0:.1f}s")
+    kg_result = _kgc_run(causal_result, disease_query)
+
+    # Overwrite Tier 3 checkpoint with updated causal_result
+    try:
+        with ckpt3_path.open("w") as _cf3:
+            json.dump({
+                **ckpt,
+                "causal_result": causal_result,
+                "kg_result":     kg_result,
+            }, _cf3, indent=2, default=str)
+        print(f"  Tier 3 checkpoint updated: {ckpt3_path}")
+    except Exception as _e:
+        print(f"  Tier 3 checkpoint save failed: {_e}")
+
+    # Hand off to Tier 4+5 using the refreshed checkpoint
+    return run_tier4_from_checkpoint(disease_name)
+
 
 def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     """
     Re-run Tier 4 (+ Tier 5) from a saved Tier 3 checkpoint.
 
     Use this after updating scoring logic, GPS Docker, or compound library without
-    re-running the expensive Tiers 1–3 (GWAS, eQTL-MR, Perturb-seq, SCONE).
+    re-running the expensive Tiers 1–3 (GWAS, eQTL-MR, Perturb-seq, OTA).
 
     Args:
         disease_name: Same string used in the original analyze_disease_v2 call.
@@ -1226,14 +1706,26 @@ if __name__ == "__main__":
         help="Re-run Tier 4+5 from saved Tier 3 checkpoint (skips Tiers 1-3)",
     )
     _p4.add_argument("disease_name", help='Disease name matching existing checkpoint')
+    _p3 = _sub.add_parser(
+        "run_tier3",
+        help="Re-run Tier 3 (OTA γ) from saved beta_result in Tier 3 checkpoint, then Tier 4+5",
+    )
+    _p3.add_argument("disease_name", help='Disease name matching existing checkpoint')
     _args = _parser.parse_args()
     if _args.command == "analyze_disease_v2":
         _result = analyze_disease_v2(_args.disease_name)
         _data_dir = Path(__file__).parent.parent / "data"
         _write_pipeline_output(_result, _data_dir)
+        _write_plots(_args.disease_name)
     elif _args.command == "run_tier4":
         _result = run_tier4_from_checkpoint(_args.disease_name)
         _data_dir = Path(__file__).parent.parent / "data"
         _write_pipeline_output(_result, _data_dir)
+        _write_plots(_args.disease_name)
+    elif _args.command == "run_tier3":
+        _result = run_tier3_from_checkpoint(_args.disease_name)
+        _data_dir = Path(__file__).parent.parent / "data"
+        _write_pipeline_output(_result, _data_dir)
+        _write_plots(_args.disease_name)
     else:
         _parser.print_help()

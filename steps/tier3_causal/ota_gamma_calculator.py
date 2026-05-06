@@ -50,7 +50,7 @@ def run(
     """
     from pipelines.ota_gamma_estimation import compute_ota_gamma, compute_ota_gamma_with_uncertainty
     _OTA_SKIP_PROGRAMS: frozenset[str] = frozenset({"__protein_channel__"})
-    from pipelines.scone_sensitivity import polybic_selection
+    from pipelines.polybic_filter import polybic_selection
     from mcp_servers.graph_db_server import (
         write_causal_edges,
         run_evalue_check,
@@ -65,6 +65,24 @@ def run(
     beta_matrix  = beta_matrix_result.get("beta_matrix", {})
     tier_per_gene = beta_matrix_result.get("evidence_tier_per_gene", {})
     programs     = beta_matrix_result.get("programs", [])
+    coloc_h4_per_gene: dict[str, float] = beta_matrix_result.get("coloc_h4_per_gene", {})
+    _perturb_nominated: set[str] = disease_query.get("perturb_nominated_genes") or set()
+    _cache_first_tiers: dict[str, str] = disease_query.get("cache_first_nominee_tiers") or {}
+    _TIER_RANK = {
+        "Tier1_Interventional": 1, "Tier2_Convergent": 2,
+        "Tier2_PerturbNominated": 3, "Tier3_Provisional": 4,
+        "provisional_virtual": 5, "no_perturb_data": 6,
+    }
+    # Cache-first path: apply tier labels computed from effective_score ranking
+    for _g, _nom_tier in _cache_first_tiers.items():
+        existing = tier_per_gene.get(_g, "no_perturb_data")
+        if _TIER_RANK.get(_nom_tier, 5) < _TIER_RANK.get(existing, 6):
+            tier_per_gene[_g] = _nom_tier
+    # Legacy path: high-OTA Perturb-seq nominees without cache-first tiers
+    for _g in _perturb_nominated:
+        if _g not in _cache_first_tiers:
+            if _g not in tier_per_gene or tier_per_gene[_g] in ("provisional_virtual", "no_perturb_data"):
+                tier_per_gene[_g] = "Tier2_PerturbNominated"
     program_activation_biases: dict[str, float] | None = beta_matrix_result.get("program_activation_biases")
     gene_program_overlap: dict[str, list[str]] = disease_query.get("gene_program_overlap") or {}
     warnings: list[str] = []
@@ -80,7 +98,6 @@ def run(
     _DISEASE_DATASET_MAP: dict[str, str] = {
         "CAD": "schnitzler_cad_vascular",
         "RA":  "czi_2025_cd4t_perturb",
-        "SLE": "czi_2025_cd4t_perturb",
     }
     _program_gwas_t: dict[str, float] | None = None
     _gwas_t_dataset = _DISEASE_DATASET_MAP.get(short)
@@ -112,10 +129,105 @@ def run(
     # -------------------------------------------------------------------------
     _svd_gammas: dict[str, dict] = {}
     try:
-        from pipelines.ldsc.gamma_loader import get_svd_program_gammas as _get_svd_gammas
-        _svd_gammas = _get_svd_gammas(short)
+        from pipelines.ldsc.gamma_loader import (
+            get_svd_program_gammas as _get_svd_gammas,
+            get_locus_program_gammas as _get_locus_gammas,
+            get_cnmf_program_gammas as _get_cnmf_gammas,
+            get_genetic_nmf_program_gammas as _get_gnmf_gammas,
+        )
+        # Pass gwas_genes for Zhu et al. 2025 bystander correction (GWAS enrichment γ_P).
+        _gwas_gene_list = list(disease_query.get("gwas_genes") or [])
+        # RA: SVD components C29/C26 are dominated by broad T-cell activation/proliferation
+        # and confound 13/16 RA anchors. Use GeneticNMF + LOCUS only for RA to eliminate
+        # bystander signal; SVD retained for CAD where components are more specific.
+        _use_svd = short != "RA"
+        # RA: load condition-specific GeneticNMF gammas (Stim48hr for primary OTA sum;
+        # REST gammas stored separately for ota_gamma_rest computation below).
+        # Falls back to shared condition="" file if condition-specific file is absent.
+        _gnmf_stim_gammas = _get_gnmf_gammas(short, condition="Stim48hr") or _get_gnmf_gammas(short)
+        _svd_gammas = {
+            **(_get_svd_gammas(short, gwas_genes=_gwas_gene_list) if _use_svd else {}),
+            **_get_locus_gammas(short),
+            **_get_cnmf_gammas(short),   # Schnitzler k=60 cNMF for CAD; no-op for others
+            **_gnmf_stim_gammas,         # WES-regularised GeneticNMF for RA; no-op for CAD
+        }
+        # REST-condition GeneticNMF gammas: used in the REST OTA sum only.
+        _gnmf_rest_gammas: dict[str, dict] = _get_gnmf_gammas(short, condition="REST") if short == "RA" else {}
+        # Purge any SVD entries already in gamma_estimates (from checkpoint) when SVD is
+        # excluded. The checkpoint preserves gamma_estimates from the original full run;
+        # without active removal those stale SVD gammas survive into the OTA sum.
+        if not _use_svd:
+            _svd_pfx = f"{short}_SVD_"
+            gamma_estimates = {
+                k: v for k, v in gamma_estimates.items()
+                if not k.startswith(_svd_pfx)
+            }
     except Exception as _svd_exc:
         warnings.append(f"SVD γ load failed (non-fatal): {_svd_exc}")
+
+    # -------------------------------------------------------------------------
+    # Load cNMF betas once (gene → {CAD_cNMF_P*: cosine_proj}) for augmenting
+    # gene_beta inside the per-gene loop below. No-op when no cNMF dataset exists.
+    # -------------------------------------------------------------------------
+    _cnmf_betas: dict[str, dict[str, float]] = {}       # Stim48hr (primary OTA)
+    _cnmf_betas_rest: dict[str, dict[str, float]] = {}  # REST condition (parallel OTA)
+    try:
+        from pipelines.ldsc.runner import _DISEASE_CNMF_DATASET
+        _cnmf_ds = _DISEASE_CNMF_DATASET.get(short.upper())
+        if _cnmf_ds:
+            from mcp_servers.perturbseq_server import load_cnmf_program_betas as _load_cnmf_b
+            _cnmf_betas = _load_cnmf_b(_cnmf_ds, short.upper(), condition="Stim48hr")
+            warnings.append(f"cNMF betas loaded (Stim48hr): {len(_cnmf_betas)} genes ({_cnmf_ds})")
+            _cnmf_betas_rest = _load_cnmf_b(_cnmf_ds, short.upper(), condition="Rest")
+            if _cnmf_betas_rest:
+                warnings.append(f"cNMF betas loaded (Rest): {len(_cnmf_betas_rest)} genes")
+    except Exception as _cnmf_exc:
+        warnings.append(f"cNMF β load failed (non-fatal): {_cnmf_exc}")
+
+    # Two separate OTA sums: Stim48hr (ota_gamma) and REST (ota_gamma_rest).
+    # Gammas are program-level properties independent of condition; only betas differ.
+
+    # -------------------------------------------------------------------------
+    # Load z-scored locus betas for additive locus OTA contribution.
+    # Tier 2 uses SVD Vt for β (proper scale); locus Vt is row-z-scored here
+    # so LOCUS_* gamma entries have matching β values in the OTA sum.
+    # -------------------------------------------------------------------------
+    # Locus betas are GWAS-anchor-scoped: locus programs characterise what each GWAS
+    # causal gene does molecularly. Non-GWAS genes already have SVD β; extending to
+    # all 11k+ perturbed genes causes random z-score accumulation that swamps SVD signal.
+    _gwas_anchor_genes: frozenset[str] = frozenset(disease_query.get("gwas_genes") or [])
+    _locus_betas: dict[str, dict[str, float]] = {}  # gene -> {LOCUS_P -> z-beta}
+    if _gwas_t_dataset and _svd_gammas and _gwas_anchor_genes:
+        try:
+            import numpy as _np_ota
+            from pipelines.ldsc.gamma_loader import get_locus_program_gammas as _glpg
+            _locus_gmap = _glpg(short)
+            if _locus_gmap:
+                _locus_npz = (
+                    Path(__file__).parent.parent.parent
+                    / "data" / "perturbseq" / _gwas_t_dataset
+                    / "gwas_anchored_programs.npz"
+                )
+                if _locus_npz.exists():
+                    _ld = _np_ota.load(_locus_npz, allow_pickle=True)
+                    _lVt    = _ld["Vt"]                # (n_loci × n_perts)
+                    _lpert  = list(_ld["pert_names"])
+                    _lnames = list(_ld["locus_names"])
+                    # Z-score each row so each locus program spans same β scale as SVD
+                    _row_std = _lVt.std(axis=1, keepdims=True) + 1e-8
+                    _lVt_z  = (_lVt - _lVt.mean(axis=1, keepdims=True)) / _row_std
+                    for _gi, _gname in enumerate(_lpert):
+                        if _gname in _gwas_anchor_genes:  # GWAS anchors only
+                            _locus_betas[_gname] = {
+                                _lnames[_li]: float(_lVt_z[_li, _gi])
+                                for _li in range(len(_lnames))
+                            }
+                    warnings.append(
+                        f"locus_betas_loaded: {len(_locus_betas)}/{len(_gwas_anchor_genes)} "
+                        f"GWAS anchors × {len(_lnames)} locus programs"
+                    )
+        except Exception as _lb_exc:
+            warnings.append(f"locus_beta_load failed (non-fatal): {_lb_exc}")
 
     if _svd_gammas:
         gamma_estimates = dict(gamma_estimates)  # shallow copy before mutation
@@ -199,21 +311,42 @@ def run(
     _disease_key_loo = disease_query.get("disease_key") or ""
     if _disease_key_loo:
         try:
+            import json as _json_loo
+            from pathlib import Path as _Path_loo
             from pipelines.ldsc.gamma_loader import load_loo_discounts as _load_loo_discounts
             from pipelines.ldsc.runner import _fetch_gene_coords_hg38 as _fetch_gene_coords
-            # Build anchor positions from gene coordinate cache
-            _all_genes_for_loo = beta_matrix_result.get("genes", [])
-            _gene_coords_raw = _fetch_gene_coords(_all_genes_for_loo)
-            _anchor_positions: dict[str, tuple[int, int]] = {}
-            for _g, _coords in _gene_coords_raw.items():
-                try:
-                    _chrom_str = str(_coords[0]).lstrip("chr")
-                    _chrom_int = int(_chrom_str)
-                    _pos_mid = (int(_coords[1]) + int(_coords[2])) // 2
-                    _anchor_positions[_g] = (_chrom_int, _pos_mid)
-                except (ValueError, IndexError):
-                    pass
-            _loo_discounts = _load_loo_discounts(_disease_key_loo, _anchor_positions)
+            # Cache LOO discounts to disk: O(n_anchors × n_programs × n_snps) is expensive
+            # (~2B ops for 447 anchors × 30 programs × 160k SNPs) — skip recompute if cached.
+            _loo_cache_path = (
+                _Path_loo(__file__).parent.parent.parent
+                / "data" / "ldsc" / "results"
+                / f"{_disease_key_loo.upper()}_loo_discounts.json"
+            )
+            if _loo_cache_path.exists():
+                _loo_discounts = _json_loo.loads(_loo_cache_path.read_text())
+            else:
+                # LOO runs on GWAS anchor genes only (disease_query["gwas_genes"]):
+                # Tier1_Interventional in evidence_tier_per_gene is applied to ALL beta
+                # matrix genes (all 2188), not just the 447 GWAS anchors.
+                _gwas_anchors_loo: set[str] = set(disease_query.get("gwas_genes") or [])
+                _all_genes_for_loo = [
+                    g for g in beta_matrix_result.get("genes", [])
+                    if g in _gwas_anchors_loo
+                ]
+                _gene_coords_raw = _fetch_gene_coords(_all_genes_for_loo)
+                _anchor_positions: dict[str, tuple[int, int]] = {}
+                for _g, _coords in _gene_coords_raw.items():
+                    try:
+                        _chrom_str = str(_coords[0]).lstrip("chr")
+                        _chrom_int = int(_chrom_str)
+                        _pos_mid = (int(_coords[1]) + int(_coords[2])) // 2
+                        _anchor_positions[_g] = (_chrom_int, _pos_mid)
+                    except (ValueError, IndexError):
+                        pass
+                _loo_discounts = _load_loo_discounts(_disease_key_loo, _anchor_positions)
+                if _loo_discounts:
+                    _loo_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    _loo_cache_path.write_text(_json_loo.dumps(_loo_discounts))
             if _loo_discounts:
                 _n_unstable = sum(1 for v in _loo_discounts.values() if v < 1.0)
                 warnings.append(
@@ -251,13 +384,16 @@ def run(
     # Fetched once per gene (API-cached), applied inside the trait loop below.
     _tissue_weights: dict[str, float] = {}
     try:
-        from mcp_servers.single_cell_server import query_gtex_tissue_weight
+        from mcp_servers.single_cell_server import query_gtex_tissue_weight, prefetch_gtex_expression
         from graph.schema import DISEASE_CELL_TYPE_MAP
         _schema_ctx = DISEASE_CELL_TYPE_MAP.get(short, {})
         _primary_tissue = _schema_ctx.get("gtex_tissue", "")
         _secondary_tissues = _schema_ctx.get("gtex_tissues_secondary", [])
         _relevant_tissues = [_primary_tissue] + _secondary_tissues if _primary_tissue else _secondary_tissues
         if _relevant_tissues:
+            # Batch pre-warm cache for all genes at once, fetching only disease-relevant
+            # tissues instead of all 54. Eliminates per-gene API overhead for new genes.
+            prefetch_gtex_expression(list(gene_list), tissue_ids=_relevant_tissues)
             for gene in gene_list:
                 try:
                     _tissue_weights[gene] = query_gtex_tissue_weight(gene, _relevant_tissues)
@@ -277,6 +413,24 @@ def run(
             continue
 
         gene_beta = beta_matrix.get(gene, {})
+        if gene in _locus_betas:  # _locus_betas already scoped to GWAS anchors at build time
+            gene_beta = {**gene_beta, **_locus_betas[gene]}
+        if gene in _cnmf_betas:
+            _cnmf_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
+                          for p, v in _cnmf_betas[gene].items()}
+            gene_beta = {**gene_beta, **_cnmf_gene}
+
+        # REST condition gene_beta: SVD/locus betas shared; only GeneticNMF betas differ
+        gene_beta_rest: dict = {}
+        if _cnmf_betas_rest:
+            gene_beta_rest = dict(beta_matrix.get(gene, {}))
+            if gene in _locus_betas:
+                gene_beta_rest = {**gene_beta_rest, **_locus_betas[gene]}
+            if gene in _cnmf_betas_rest:
+                _rest_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
+                              for p, v in _cnmf_betas_rest[gene].items()}
+                gene_beta_rest = {**gene_beta_rest, **_rest_gene}
+
         gb_result = _gb_priors.get(gene)
 
         for trait in traits:
@@ -313,6 +467,36 @@ def run(
                 # True only when β×γ terms actually summed through cNMF programs.
                 _n_programs_contributing = int(ota_result.get("n_programs_contributing", 0))
 
+                # REST-condition OTA: REST-specific program gammas + REST betas.
+                ota_gamma_rest: float = float('nan')
+                if gene_beta_rest:
+                    try:
+                        # Build REST-specific gamma view: REST GeneticNMF gammas
+                        # override shared gammas so REST programs get correct γ values.
+                        _rest_trait_gammas: dict[str, dict] = dict(trait_gammas)
+                        for _rprog, _rpg in _gnmf_rest_gammas.items():
+                            _rg_val = _rpg.get(trait, _rpg.get("gamma", 0.0))
+                            if _rg_val is None:
+                                _rest_trait_gammas[_rprog] = {"gamma": None, "evidence_tier": "no_evidence"}
+                            elif isinstance(_rg_val, (int, float)):
+                                _rest_trait_gammas[_rprog] = {"gamma": float(_rg_val), "evidence_tier": "Tier3_Provisional"}
+                            else:
+                                _rest_trait_gammas[_rprog] = _rg_val
+                        _rest_result = compute_ota_gamma_with_uncertainty(
+                            gene=gene,
+                            trait=trait,
+                            beta_estimates=gene_beta_rest,
+                            gamma_estimates=_rest_trait_gammas,
+                            genebayes_result=gb_result,
+                            skip_programs=_OTA_SKIP_PROGRAMS,
+                            program_activation_biases=program_activation_biases,
+                            program_gwas_t=_program_gwas_t,
+                        )
+                        _rest_raw = _rest_result.get("ota_gamma")
+                        ota_gamma_rest = float('nan') if _rest_raw is None else float(_rest_raw)
+                    except Exception:
+                        pass
+
                 import math as _math
                 # Stress flag: essential-gene KO artefact signal (Mediator, ESCRT, etc.)
                 # Flagged only — ota_gamma is NOT modified.
@@ -328,13 +512,14 @@ def run(
 
                 # WES directional concordance — annotation only, ota_gamma unchanged.
                 # Concordance/discordance documented in wes_concordant + wes_note.
-                _wes = _wes_concordance_check(ota_gamma, gb_result)
+                _wes = _wes_concordance_check(ota_gamma, gb_result, gene=gene)
 
                 key = f"{gene}__{trait}"
                 r: dict = {
                     "gene":               gene,
                     "trait":              trait,
                     "ota_gamma":          ota_gamma,
+                    "ota_gamma_rest":     ota_gamma_rest,
                     "ota_gamma_raw":      ota_result.get("ota_gamma_raw"),
                     "dominant_tier":      dominant_tier,
                     "top_programs":       top_programs,
@@ -355,6 +540,10 @@ def run(
                 }
                 if _wes["wes_checked"]:
                     r["wes_note"] = _wes["wes_note"]
+                if _wes.get("mechanism_divergence_note"):
+                    r["mechanism_divergence_note"] = _wes["mechanism_divergence_note"]
+                if gene in coloc_h4_per_gene:
+                    r["coloc_h4"] = coloc_h4_per_gene[gene]
                 if not _loo_stable:
                     r["loo_discount"] = _loo_discount
                 gene_gamma[key] = r
@@ -421,7 +610,8 @@ def run(
     # Convert Ota γ recs to CausalEdge-compatible dicts before writing
     causal_edge_dicts: list[dict] = []
     _VALID_TIERS = frozenset({
-        "Tier1_Interventional", "Tier2_Convergent",
+        "Tier1_Interventional", "Tier2_Convergent", "Tier2_PerturbNominated",
+        "Tier2_eQTL_direction",
         "Tier3_Provisional", "moderate_transferred", "moderate_grn",
     })
     for rec in edges_to_write:
@@ -747,6 +937,7 @@ def run(
             {
                 "gene":               r["gene"],
                 "ota_gamma":          r["ota_gamma"],
+                "ota_gamma_rest":     r.get("ota_gamma_rest"),
                 "ota_gamma_raw":      r.get("ota_gamma_raw", r["ota_gamma"]),
                 "ota_gamma_sigma":    r.get("ota_gamma_sigma", 0.0),
                 "ota_gamma_ci_lower": r.get("ota_gamma_ci_lower"),

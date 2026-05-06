@@ -42,6 +42,51 @@ import httpx
 
 from pipelines.api_cache import api_cached
 
+# Local OneK1K lead-eQTL SQLite index (downloaded once, replaces per-gene API calls).
+# Built by: python -m pipelines.eqtl_catalogue_downloader (or see data/eqtl_catalogue/).
+# When present, get_sc_eqtl uses this instead of making 9 HTTP requests per gene.
+_LOCAL_EQTL_DB = Path(__file__).parent.parent / "data" / "eqtl_catalogue" / "onek1k_lead_eqtls.sqlite"
+
+# Cell type label → dataset IDs in priority order (best-matched first)
+_LOCAL_CD4T_DATASETS = ["QTD000612", "QTD000613", "QTD000614", "QTD000625"]
+
+
+def _query_local_eqtl_db(ensembl_id: str) -> list[dict]:
+    """
+    Look up lead eQTLs for a gene from the local OneK1K SQLite index.
+    Returns list of result dicts matching the eQTL Catalogue API response schema,
+    or empty list if the local DB is absent or the gene has no entry.
+    """
+    if not _LOCAL_EQTL_DB.exists():
+        return []
+    try:
+        import sqlite3
+        conn = sqlite3.connect(str(_LOCAL_EQTL_DB), timeout=5)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            "SELECT * FROM lead_eqtls WHERE ensembl_id = ? ORDER BY pvalue ASC",
+            (ensembl_id,),
+        ).fetchall()
+        conn.close()
+        return [
+            {
+                "rsid":            r["variant"],
+                "beta":            r["beta"],
+                "se":              None,
+                "pvalue":          r["pvalue"],
+                "p_perm":          r["p_perm"],
+                "dataset_id":      r["dataset_id"],
+                "condition_label": r["cell_type"],
+                "study_label":     "OneK1K",
+                "chromosome":      r["chromosome"],
+                "position":        r["position"],
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
 try:
     import fastmcp
     mcp = fastmcp.FastMCP("eqtl-catalogue-server")
@@ -125,10 +170,12 @@ def _get(url: str, params: dict | None = None, timeout: float = 10.0) -> dict | 
     return resp.json()
 
 
+@api_cached(ttl_days=90)
 def resolve_gene_to_ensembl(gene_symbol: str) -> str | None:
     """
     Resolve gene symbol to Ensembl ENSG ID via Ensembl REST API.
     Returns None on failure (network or unknown symbol).
+    Cached 90 days — gene symbols are stable.
     """
     try:
         url = f"{ENSEMBL_REST}/lookup/symbol/homo_sapiens/{gene_symbol}"
@@ -239,41 +286,15 @@ def _pick_top_cis_eqtl(
 # Public API — sc-eQTL
 # ---------------------------------------------------------------------------
 
-@_tool
 @api_cached(ttl_days=30)
-def get_sc_eqtl(
+def _get_sc_eqtl_api(
     gene: str,
+    gene_id: str,
     cell_type: str | None = None,
     study_label: str | None = None,
     disease: str | None = None,
 ) -> dict:
-    """
-    Retrieve single-cell eQTL data for a gene from the eQTL Catalogue.
-
-    Cell-type-specific eQTLs capture regulatory effects that are diluted in
-    bulk GTEx tissue data. Useful for immune cell programs (OneK1K) where the
-    cell-type-of-interest is a minor fraction of bulk tissue.
-
-    Args:
-        gene:          Gene symbol (e.g. "CFH", "PCSK9", "IL23R")
-        cell_type:     Cell type label (eQTL Catalogue condition_label)
-                       e.g. "CD4_positive_alpha_beta_T_cell", "monocyte"
-        study_label:   eQTL Catalogue study label (e.g. "Yazar2022" for OneK1K)
-                       Default: tries Yazar2022 (OneK1K) first, then BLUEPRINT_SE
-        disease:       If provided, infer preferred cell types from
-                       DISEASE_SC_EQTL_CELL_TYPES (overrides cell_type)
-
-    Returns:
-        {
-            "gene":      str,
-            "cell_type": str | None,
-            "study":     str | None,
-            "eqtls":     list[{rsid, beta, se, pvalue, dataset_id, condition_label}],
-            "top_eqtl":  dict | None,   # lowest p-value hit
-            "n_found":   int,
-            "data_source": str,
-        }
-    """
+    """Cached API path for get_sc_eqtl — called only when local index has no data."""
     # Resolve cell types to try
     cell_types_to_try: list[str | None] = []
     if disease and disease in DISEASE_SC_EQTL_CELL_TYPES:
@@ -281,15 +302,7 @@ def get_sc_eqtl(
     if cell_type:
         cell_types_to_try = [cell_type] + [c for c in cell_types_to_try if c != cell_type]
     if not cell_types_to_try:
-        cell_types_to_try = [None]  # try without cell type filter
-
-    # Resolve gene → Ensembl ID
-    gene_id = resolve_gene_to_ensembl(gene)
-    if gene_id is None:
-        return {"gene": gene, "cell_type": cell_type, "study": study_label,
-                "eqtls": [], "top_eqtl": None, "n_found": 0,
-                "error": "Could not resolve gene symbol to Ensembl ID",
-                "data_source": "eQTL Catalogue v2"}
+        cell_types_to_try = [None]
 
     # Studies to try (OneK1K first, then Blueprint, then all)
     studies = [study_label] if study_label else [
@@ -352,6 +365,76 @@ def get_sc_eqtl(
         "n_found":     len(all_eqtls),
         "data_source": f"eQTL Catalogue v2 / {used_study or 'unknown study'}",
     }
+
+
+@_tool
+def get_sc_eqtl(
+    gene: str,
+    cell_type: str | None = None,
+    study_label: str | None = None,
+    disease: str | None = None,
+) -> dict:
+    """
+    Retrieve single-cell eQTL data for a gene from the eQTL Catalogue.
+
+    Cell-type-specific eQTLs capture regulatory effects that are diluted in
+    bulk GTEx tissue data. Useful for immune cell programs (OneK1K) where the
+    cell-type-of-interest is a minor fraction of bulk tissue.
+
+    Args:
+        gene:          Gene symbol (e.g. "CFH", "PCSK9", "IL23R")
+        cell_type:     Cell type label (eQTL Catalogue condition_label)
+                       e.g. "CD4_positive_alpha_beta_T_cell", "monocyte"
+        study_label:   eQTL Catalogue study label (e.g. "Yazar2022" for OneK1K)
+                       Default: tries Yazar2022 (OneK1K) first, then BLUEPRINT_SE
+        disease:       If provided, infer preferred cell types from
+                       DISEASE_SC_EQTL_CELL_TYPES (overrides cell_type)
+
+    Returns:
+        {
+            "gene":      str,
+            "cell_type": str | None,
+            "study":     str | None,
+            "eqtls":     list[{rsid, beta, se, pvalue, dataset_id, condition_label}],
+            "top_eqtl":  dict | None,   # lowest p-value hit
+            "n_found":   int,
+            "data_source": str,
+        }
+    """
+    # Resolve gene → Ensembl ID (always needed — for local index and API)
+    gene_id = resolve_gene_to_ensembl(gene)
+    if gene_id is None:
+        return {"gene": gene, "cell_type": cell_type, "study": study_label,
+                "eqtls": [], "top_eqtl": None, "n_found": 0,
+                "error": "Could not resolve gene symbol to Ensembl ID",
+                "data_source": "eQTL Catalogue v2"}
+
+    # Local OneK1K fast path — always checked before cache.
+    # Avoids serving stale cache entries from before local DB was built.
+    _use_local = (study_label in (None, "OneK1K", _SCEQTL_STUDIES.get("OneK1K")))
+    if _use_local:
+        local_hits = _query_local_eqtl_db(gene_id)
+        if local_hits:
+            top = min(local_hits, key=lambda x: x["pvalue"])
+            return {
+                "gene":        gene,
+                "ensembl_id":  gene_id,
+                "cell_type":   top["condition_label"],
+                "study":       "OneK1K",
+                "eqtls":       local_hits,
+                "top_eqtl":    top,
+                "n_found":     len(local_hits),
+                "data_source": "OneK1K local index (Yazar 2022 lead eQTLs)",
+            }
+        elif _LOCAL_EQTL_DB.exists():
+            return {
+                "gene": gene, "ensembl_id": gene_id, "cell_type": None,
+                "study": "OneK1K", "eqtls": [], "top_eqtl": None, "n_found": 0,
+                "data_source": "OneK1K local index (no eQTL found)",
+            }
+
+    # Fall through to cached API path (non-OneK1K studies or local DB absent)
+    return _get_sc_eqtl_api(gene, gene_id, cell_type, study_label, disease)
 
 
 # ---------------------------------------------------------------------------

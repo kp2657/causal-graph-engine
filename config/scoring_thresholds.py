@@ -101,6 +101,46 @@ OTA_GAMMA_EDGE_MIN: float = 0.01
 # Minimum |ota_gamma| for writing a gene→trait edge to the Kùzu graph.
 # Edges below this are noise-level and bloat the graph without adding signal.
 
+# ---------------------------------------------------------------------------
+# Cache-first OTA nomination (replaces SVD cosine / fingerprint gates)
+# Effective score = |pre_OTA| × l2g_weight × eqtl_coherence_weight
+# All three are genetic signals from the Ota/Zhu framework.
+# ---------------------------------------------------------------------------
+
+CACHE_FIRST_L2G_STRONG: float = 0.5   # OT L2G ≥ 0.5 → l2g_weight = 1.0 (specific causal gene)
+CACHE_FIRST_L2G_MODERATE: float = 0.1  # OT L2G ≥ 0.1 → l2g_weight = 0.7 (probable V2G)
+CACHE_FIRST_L2G_WEIGHT_STRONG: float = 1.0
+CACHE_FIRST_L2G_WEIGHT_MODERATE: float = 0.7
+CACHE_FIRST_L2G_WEIGHT_PROXIMAL: float = 0.55  # in Perturb library (GWAS-proximal) but no specific V2G
+CACHE_FIRST_L2G_WEIGHT_NONE: float = 0.1      # no GWAS link
+
+CACHE_FIRST_EQTL_CONCORDANT_WEIGHT: float = 1.0   # sign(eQTL_β × OTA) < 0 → concordant
+CACHE_FIRST_EQTL_DISCORDANT_WEIGHT: float = 0.7   # sign(eQTL_β × OTA) > 0 → discordant
+# Concordant: risk allele increases expression (eQTL_β > 0) AND KO reduces disease (OTA < 0)
+# = more expression promotes disease = inhibiting gene is therapeutic
+
+CACHE_FIRST_EFFECTIVE_SCORE_MIN: float = 0.04
+# Min effective_score = |pre_OTA| × l2g_weight × eqtl_weight for cache-first nomination.
+# Calibrated so KRIT1 (|pre_OTA|=0.137 × 0.4 × 1.0 = 0.055) and
+# PLPP3 (0.115 × 0.4 × 1.0 = 0.046) pass, while noise genes below 0.04 are excluded.
+
+CACHE_FIRST_MAX_NOMINEES: int = 1500
+# Safety cap on total cache-first nominees per disease (sorted by effective_score desc).
+# Set to 1500 to include the full Schnitzler library (1293 genes pass |pre_OTA|≥0.10);
+# the library was pre-selected for GWAS proximity so all passing genes are legitimate.
+
+USE_CACHE_FIRST_NOMINATION: bool = True
+# Feature flag — flip to True after Phase 3 validation. When False, existing
+# SVD cosine + fingerprint + high-OTA paths run unchanged.
+
+PERTURB_NOMINATED_GAMMA_MIN: float = 0.10
+# Legacy gate used by _collect_high_ota_perturbseq_nominees (active when
+# USE_CACHE_FIRST_NOMINATION=False). Kept for backward compat; superseded by
+# CACHE_FIRST_EFFECTIVE_SCORE_MIN when USE_CACHE_FIRST_NOMINATION=True.
+
+PERTURB_NOMINATED_MAX: int = 200
+# Legacy cap for _collect_high_ota_perturbseq_nominees.
+
 CAUSAL_STRESS_MEAN_THRESHOLD: float = 1.2
 # Mean |beta| across programs above which a gene is flagged as a global stress responder.
 # Genes with uniformly large betas across all programs likely reflect transcriptional
@@ -109,6 +149,14 @@ CAUSAL_STRESS_MEAN_THRESHOLD: float = 1.2
 CAUSAL_STRESS_CV_FLOOR: float = 0.35
 # Coefficient of variation below this (betas are uniformly large) triggers stress flag.
 # High mean + low CV = indiscriminate perturbation response.
+# NOTE: CV-based filter only valid for NMF/NES-scale betas. For SVD z-score betas
+# (Schnitzler library), CV is uniformly high (0.5–0.8) even for genuine stress genes.
+# Use CACHE_FIRST_STRESS_MEAN_THRESHOLD instead for cache-first nomination.
+
+CACHE_FIRST_STRESS_MEAN_THRESHOLD: float = 2.5
+# Hard mean|β| cutoff for SVD z-score betas in cache-first nomination.
+# Calibrated so ACTR3C (5.5) and TP53 (3.1) are excluded, while CCM2 (1.9),
+# PLPP3 (1.7), and KRIT1 (0.8) are retained. No CV gate applied.
 
 CAUSAL_STRESS_DISCOUNT: float = 0.25
 # Multiplicative discount applied to ota_gamma when stress pattern is detected.
@@ -214,8 +262,52 @@ FINGERPRINT_SVD_RANK: int = 30
 
 FINGERPRINT_N_BOOTSTRAP: int = 50
 # Bootstrap resampling iterations for disease-to-fingerprint correlation uncertainty.
+
+# ---------------------------------------------------------------------------
+# Genetic-direction NMF — WES-regularized program decomposition
+# ---------------------------------------------------------------------------
+
+GENETIC_NMF_RANK: int = 30
+# Number of programs for the WES-regularized NMF decomposition. Kept equal to
+# FINGERPRINT_SVD_RANK so downstream consumers (S-LDSC, nomination scorer) see
+# the same program dimensionality regardless of which decomposition is active.
+
+GENETIC_NMF_LAMBDA: float = 0.10
+# Incoherence penalty strength: λ × Σ_k pos_k × neg_k.
+# pos_k = Σ_atherogenic W[i,k]×w_i, neg_k = Σ_protective W[i,k]×w_i.
+# Calibration target: programs should move from genetic_direction_score ~0 (SVD
+# baseline) toward |score| ≥ 0.4 without collapsing to single-gene programs.
+# 0.10 is a conservative starting point; increase if programs remain mixed.
+
+GENETIC_NMF_MAX_ITER: int = 300
+# Maximum multiplicative update iterations. 300 is sufficient for convergence
+# at rank-30; higher values add runtime without measurable gain.
+
+GENETIC_NMF_WES_Z_MIN: float = 1.5
+# Minimum WES burden |Z-score| (|β/SE|) for a gene to contribute to the
+# incoherence penalty. Genes with weaker WES signal than this threshold get
+# w_i = 0 and do not influence the regularization, preventing noise injection.
+
+GENETIC_NMF_SHET_SCALE: float = 5.0
+# Multiplier applied to the GeneBayes shet posterior when computing the final
+# gene weight: w_i = burden_z × (1 + SHET_SCALE × shet_post). Constrained genes
+# (shet ~ 0.05–0.2) get up to a 2× boost; near-zero shet genes are unaffected.
 # Each iteration resamples 80% of shared genes; the SD of bootstrap correlations
 # is the SE used for z-score computation and uncertainty quantification.
+
+GENETIC_NMF_EQTL_CONCORDANT_BOOST: float = 1.5
+# Weight multiplier when WES and eQTL signals agree on direction. Applied to
+# the final gene weight w_i before NMF to amplify genes with converging evidence.
+
+GENETIC_NMF_EQTL_DISCORDANT_DISCOUNT: float = 0.5
+# Weight multiplier when WES and eQTL signals disagree on direction. Reduces
+# but does not zero the weight — the gene may still have real signal through
+# one pathway; we just trust it less.
+
+GENETIC_NMF_EQTL_ONLY_WEIGHT: float = 0.5
+# Relative weight given to genes with eQTL evidence but no WES signal.
+# w_i = |eQTL_Z| × EQTL_ONLY_WEIGHT. The 0.5 discount reflects that eQTL
+# alone (without rare-variant orthogonal support) is a weaker direction signal.
 
 FINGERPRINT_MIN_GENE_OVERLAP: int = 50
 # Minimum shared genes required between the disease DE vector and a perturbation

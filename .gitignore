@@ -50,6 +50,12 @@ scripts/populate_motif_library.py
 # Standalone scheduler (not connected to pipeline)
 scheduler/
 
+# Intermediate pipeline artifacts and run logs in outputs/
+outputs/runs/
+outputs/sldsc_*.json
+outputs/svd_*.json
+outputs/*.docx
+
 # Python artifacts
 __pycache__/
 *.pyc

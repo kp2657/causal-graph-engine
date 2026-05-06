@@ -627,6 +627,103 @@ def _query_gtex_v10_median_expression(gene_symbol: str) -> list[float] | None:
             return None
 
 
+def prefetch_gtex_expression(gene_symbols: list[str], tissue_ids: list[str] | None = None) -> None:
+    """
+    Batch pre-warm the SQLite API cache for a list of gene symbols.
+
+    Checks which symbols are not yet cached, resolves their gencodeIds, then fetches
+    medianGeneExpression in batches of 50 (GTEx API supports multi-gene queries).
+
+    tissue_ids: optional list of GTEx tissueSiteDetailId values to fetch (e.g.
+        ["Artery_Coronary", "Whole_Blood"]). None fetches all tissues. Pass only
+        the tissues relevant to the disease to avoid fetching all 54 tissues.
+
+    Call at the start of tier4 before the per-gene OTA loop to eliminate
+    per-gene API latency for uncached genes.
+    """
+    import logging as _log
+    from pipelines.api_cache import get_cache, _make_key as _ck
+    log = _log.getLogger(__name__)
+
+    try:
+        cache = get_cache()
+    except Exception:
+        return
+
+    # Identify uncached symbols using cache.get() — does NOT write to cache
+    uncached = []
+    for sym in gene_symbols:
+        key = _ck("_query_gtex_v10_median_expression", (sym.upper(),), {})
+        if cache.get(key) is None:
+            uncached.append(sym)
+
+    if not uncached:
+        return
+
+    log.info(
+        "prefetch_gtex_expression: %d/%d genes uncached — batch fetching (tissues=%s)",
+        len(uncached), len(gene_symbols),
+        ",".join(tissue_ids) if tissue_ids else "all",
+    )
+
+    BATCH = 50
+    fetched = 0
+    for i in range(0, len(uncached), BATCH):
+        batch = uncached[i:i + BATCH]
+        # Resolve gencodeIds (each individually cached)
+        id_map: dict[str, str] = {}
+        for sym in batch:
+            gid = _resolve_gtex_gencode_id(sym)
+            if gid:
+                id_map[sym] = gid
+
+        if not id_map:
+            continue
+
+        # Batch expression query — only requested tissues
+        try:
+            params: list[tuple[str, str]] = [("datasetId", "gtex_v8")]
+            for gid in id_map.values():
+                params.append(("gencodeId", gid))
+            if tissue_ids:
+                for tid in tissue_ids:
+                    params.append(("tissueSiteDetailId", tid))
+            resp = httpx.get(
+                f"{GTEX_V10_API}/expression/medianGeneExpression",
+                params=params,
+                timeout=30.0,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            records = data.get("data", data if isinstance(data, list) else [])
+
+            # Group records by gencodeId, collecting TPM across requested tissues
+            by_id: dict[str, list[float]] = {}
+            for r in records:
+                gid = r.get("gencodeId") or r.get("geneId")
+                if not gid:
+                    continue
+                val = r.get("median") if r.get("median") is not None else r.get("medianTpm")
+                if val is not None:
+                    by_id.setdefault(gid, []).append(float(val))
+
+            # Write to cache — use get_or_set only if key is still absent
+            rev_map = {v: k for k, v in id_map.items()}
+            for gid, tpm_vals in by_id.items():
+                sym = rev_map.get(gid)
+                if sym:
+                    cache.get_or_set(
+                        "_query_gtex_v10_median_expression", (sym.upper(),), {},
+                        lambda v=tpm_vals: v,
+                        ttl_days=365,
+                    )
+                    fetched += 1
+        except Exception as exc:
+            log.warning("prefetch_gtex_expression batch %d failed: %s", i // BATCH, exc)
+
+    log.info("prefetch_gtex_expression: cached %d/%d previously-uncached genes", fetched, len(uncached))
+
+
 _TISSUE_WEIGHT_CACHE: dict[tuple, float] = {}  # in-process cache (TTL: process lifetime)
 
 
