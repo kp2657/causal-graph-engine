@@ -140,7 +140,11 @@ DISEASE_GWAS_ANCHORS: dict[str, frozenset] = {
 # ---------------------------------------------------------------------------
 GPS_FORCE_GENES: dict[str, list[str]] = {
     "CAD": ["CCM2", "PLPP3",
-            "CHRNA5", "SLC39A14", "THSD7A"],   # novel: ALDH2/COL4A1 cluster, γ<0
+            "ROCK1",    # COL4A1 cluster; Rho kinase downstream of LOX/TGF-β ECM stiffening; γ=−0.447
+            "PLEKHA1",  # COL4A1 cluster; endothelial phosphoinositide signaling; γ=−0.869
+            "GIT1",     # COL4A2/FN1 cluster; focal adhesion ECM integrator; γ=−0.623
+            "NPR2",     # COL4A2/FN1 cluster; natriuretic peptide receptor, anti-fibrotic; γ=−0.569
+            "ELOVL2"],  # LOX cluster; fatty acid elongase, lipid-ECM crosstalk; γ=−0.587
     "RA":  ["NUGGC", "CRTAM", "MACC1"],         # novel: cosine sim to IL12RB2/CD226/TRAF1
 }
 
