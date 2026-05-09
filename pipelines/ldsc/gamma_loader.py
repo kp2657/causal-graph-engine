@@ -113,39 +113,6 @@ def _load_tau_file(disease_key: str) -> dict[str, Any] | None:
         return None
 
 
-def get_all_program_gammas_ldsc(disease_key: str) -> dict[str, dict]:
-    """
-    Return all NMF/Hallmark program γ estimates from S-LDSC for a disease.
-    Dict[program_name -> gamma_estimate_dict].
-    Reads from the non-SVD τ file ({disease_key}_program_taus.json).
-    """
-    data = _load_tau_file(disease_key.upper())
-    if not data:
-        return {}
-
-    program_taus = data.get("program_taus", {})
-    results = {}
-    for prog, tau in program_taus.items():
-        try:
-            tau = float(tau)
-        except (TypeError, ValueError):
-            continue
-        gamma_value = max(-1.0, min(1.0, round(tau, 5)))
-        tau_p, tau_se = 1.0, None
-        for annot in data.get("raw_annotations", []):
-            if annot.get("name") == prog:
-                tau_p  = float(annot.get("tau_p", 1.0))
-                tau_se = annot.get("tau_se")
-                break
-        gamma_se = round(float(tau_se), 5) if tau_se is not None else round(abs(gamma_value) * 0.30, 5)
-        results[prog] = {
-            "gamma":         gamma_value,
-            "gamma_se":      gamma_se,
-            "evidence_tier": "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional",
-            "data_source":   f"S-LDSC_{disease_key}_tau={tau:.4f}",
-            "tau_p":         tau_p,
-        }
-    return results
 
 
 def _cell_type_specificity_weight(disease_key: str, top_genes: list[str]) -> float:
@@ -355,88 +322,8 @@ def get_cnmf_program_gammas(disease_key: str) -> dict[str, dict]:
     return results
 
 
-def get_locus_program_gammas(disease_key: str) -> dict[str, dict]:
-    """
-    Return γ estimates for GWAS-anchored locus programs.
-
-    γ = τ*/max_τ* (normalized to max=1.0, same scale as cNMF programs).
-    Programs with τ* ≤ 0 (heritability-depleted) are excluded from the OTA sum.
-    """
-    live = _RESULTS_DIR / f"{disease_key.upper()}_LOCUS_program_taus.json"
-    if not live.exists():
-        return {}
-    try:
-        with open(live) as fh:
-            data = json.load(fh)
-    except Exception as exc:
-        log.warning("Failed to load locus program taus for %s: %s", disease_key, exc)
-        return {}
-
-    program_gammas: dict[str, float] = data.get("program_gammas", {})
-    gamma_annots: list[dict] = data.get("gamma_annotations", [])
-    annot_by_prog = {a["name"]: a for a in gamma_annots}
-
-    if not program_gammas:
-        program_taus: dict[str, float] = data.get("program_taus", {})
-        if not program_taus:
-            return {}
-        program_gammas = program_taus
-
-    # Normalize by max positive τ* (same convention as cNMF/GeneticNMF programs)
-    # so that β × γ products are on a comparable scale for OTA summation.
-    _max_pos = max((v for v in program_gammas.values() if v > 0), default=None)
-    if _max_pos is None:
-        log.warning("Locus programs for %s: all τ*≤0, returning empty", disease_key.upper())
-        return {}
-
-    results: dict[str, dict] = {}
-    n_depleted = 0
-    for prog, gamma_raw in program_gammas.items():
-        if gamma_raw <= 0:
-            n_depleted += 1
-            continue  # heritability-depleted locus — skip
-        gamma_value = min(1.0, round(gamma_raw / _max_pos, 5))
-        annot = annot_by_prog.get(prog, {})
-        tau   = annot.get("tau") or data.get("program_taus", {}).get(prog, 0.0)
-        tau_p = 1.0
-        tau_se = None
-        for raw in data.get("raw_annotations", []):
-            if raw.get("name") == prog:
-                tau_p  = float(raw.get("tau_p", 1.0))
-                tau_se = raw.get("tau_se")
-                break
-        gamma_se = round(float(tau_se), 5) if tau_se is not None else round(gamma_value * 0.30, 5)
-        results[prog] = {
-            "gamma":         gamma_value,
-            "gamma_se":      gamma_se,
-            "evidence_tier": "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional",
-            "data_source":   f"S-LDSC_locus_{disease_key}_tau={gamma_raw:.4f}",
-            "program":       prog,
-            "trait":         disease_key.upper(),
-            "tau":           tau,
-            "tau_p":         tau_p,
-        }
-
-    log.info(
-        "Locus γ loaded for %s: %d programs with τ*>0, %d depleted (τ*≤0) excluded",
-        disease_key.upper(), len(results), n_depleted,
-    )
-    return results
 
 
-def locus_gammas_available(disease_key: str) -> bool:
-    """Return True if GWAS-locus γ results exist for this disease."""
-    return (_RESULTS_DIR / f"{disease_key.upper()}_LOCUS_program_taus.json").exists()
-
-
-def genetic_nmf_gammas_available(disease_key: str) -> bool:
-    """Return True if GeneticNMF γ results exist for this disease."""
-    return (_RESULTS_DIR / f"{disease_key.upper()}_GeneticNMF_program_taus.json").exists()
-
-
-def ldsc_available(disease_key: str) -> bool:
-    """Return True if pre-computed S-LDSC results exist for this disease."""
-    return (_RESULTS_DIR / f"{disease_key.upper()}_program_taus.json").exists()
 
 
 def load_loo_discounts(

@@ -385,7 +385,7 @@ def annotate_programs(disease_key: str) -> dict[str, dict]:
     data/perturbseq/{dataset_id}/program_annotations.json.
     """
     from graph.schema import DISEASE_CELL_TYPE_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
-    from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas, get_locus_program_gammas
+    from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas
     from config.scoring_thresholds import SLDSC_GAMMA_FLOOR
 
     # Resolve dataset_id
@@ -426,8 +426,6 @@ def annotate_programs(disease_key: str) -> dict[str, dict]:
     gammas = get_genetic_nmf_program_gammas(short_key)
     if not gammas:
         log.info("GeneticNMF gammas not yet computed for %s — run run_genetic_nmf_programs()", short_key)
-    # Merge locus-anchored gammas (LOCUS_* programs take precedence when present)
-    gammas = {**gammas, **get_locus_program_gammas(short_key)}
     gamma_map = {p: d["gamma"] for p, d in gammas.items()}
 
     # --- GWAS alignment scores ---

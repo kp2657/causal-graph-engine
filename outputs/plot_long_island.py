@@ -313,13 +313,9 @@ def _prog_gamma(t3: dict, disease_key: str) -> dict[str, float]:
         _root = _pl.Path(__file__).parent.parent
         if str(_root) not in _sys.path:
             _sys.path.insert(0, str(_root))
-        from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas, get_locus_program_gammas
+        from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas
         nmf_gammas = get_genetic_nmf_program_gammas(disease_key.upper())
         for prog, est in nmf_gammas.items():
-            if est.get("gamma") is not None:
-                out[prog] = est["gamma"]
-        locus_gammas = get_locus_program_gammas(disease_key.upper())
-        for prog, est in locus_gammas.items():
             if est.get("gamma") is not None:
                 out[prog] = est["gamma"]
     except Exception:

@@ -253,41 +253,9 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
 
     work = [(prog, trait) for prog in program_names for trait in traits]
 
-    # Load S-LDSC pre-computed τ coefficients (Mode 2 γ).
-    # Three separate try-blocks so a failure in one source doesn't prevent others.
-    _ldsc_gammas: dict[str, dict] = {}
-    try:
-        from pipelines.ldsc.gamma_loader import (
-            get_all_program_gammas_ldsc,
-            get_locus_program_gammas, ldsc_available,
-        )
-    except ImportError:
-        get_all_program_gammas_ldsc = get_locus_program_gammas = None
-        ldsc_available = lambda _: False
-    try:
-        if ldsc_available(short_name) and get_all_program_gammas_ldsc:
-            _ldsc_gammas.update(get_all_program_gammas_ldsc(short_name))
-    except Exception:
-        pass
-    try:
-        if get_locus_program_gammas:
-            _ldsc_gammas.update(get_locus_program_gammas(short_name))
-    except Exception:
-        pass
-    if _ldsc_gammas:
-        print(f"[S-LDSC] Loaded τ coefficients for {len(_ldsc_gammas)} programs ({short_name})")
-
     def _fetch(prog_trait: tuple[str, str]) -> tuple[str, str, dict]:
         prog, trait = prog_trait
         try:
-            # Mode 2: S-LDSC partitioned heritability (highest priority when available)
-            # τ coefficient = per-SNP heritability enrichment from PLAtlas MVP+UKB+FinnGen
-            if prog in _ldsc_gammas:
-                ldsc_g = _ldsc_gammas[prog]
-                ldsc_g.setdefault("gamma_source_type", "s_ldsc")
-                ldsc_g["trait"] = trait
-                return prog, trait, ldsc_g
-
             result = estimate_gamma(
                 prog, trait,
                 program_gene_set=program_gene_sets.get(prog) or None,
