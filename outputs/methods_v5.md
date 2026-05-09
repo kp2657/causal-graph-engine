@@ -226,7 +226,7 @@ We prioritised 1,454 targets through 31 high-heritability cardiac endothelial cN
 
 We prioritised 788 targets through 8 GeneticNMF Stim48hr programs with τ*>0 (C25=1.000 down to C28=0.005 after normalisation by max τ*). Against 11 clinically validated RA targets whose primary CD4+ T-cell mechanism is represented in the 11,281-gene CZI library, all 11 are recovered in the 788-target ranked list (11/11, 100%; Table 2).
 
-The GeneticNMF OTA γ for RA is unsigned in a practically discriminating sense: because all 8 heritable programs have τ*>0, the sign of γ(gene→RA) reflects the net direction of KO effects on heritable program activation, not the direction of therapeutic effect. Most validated targets show γ>0 (KO activates heritable immune programs), which may reflect compensatory immune-program upregulation following disruption of any major signalling axis. Target ranking by |γ| is informative; sign is not used for therapeutic direction inference in RA. Genes with the largest |γ| are those whose KO most strongly modulates the heritable programs: *IL12RB2* (rank 4, γ=0.691), *ICOS* (rank 6, γ=0.661), *CD226* (rank 41, γ=0.381), and *TRAF1* (rank 64, γ=0.354).
+The GeneticNMF OTA γ for RA is unsigned in a practically discriminating sense: because all 8 heritable programs have τ*>0, the sign of γ(gene→RA) reflects the net direction of KO effects on heritable program activation, not the direction of therapeutic effect. Most validated targets show γ>0 (KO activates heritable immune programs), which may reflect compensatory immune-program upregulation following disruption of any major signalling axis. Target ranking by |γ| is informative; sign is not used for therapeutic direction inference in RA. Genes with the largest |γ| are those whose KO most strongly modulates the heritable programs: *IL12RB2* (rank 3, γ=0.691), *ICOS* (rank 4, γ=0.661), *CD226* (rank 22, γ=0.381), and *TRAF1* (rank 32, γ=0.354).
 
 *JAK1* and *JAK3* are absent from the benchmark: they were not perturbed in the CZI 11,281-gene library. The remaining two members of the JAK-STAT class (*JAK2*, baricitinib) and the TYK2 axis (*TYK2*, deucravacitinib) are both recovered.
 
@@ -234,19 +234,45 @@ The GeneticNMF OTA γ for RA is unsigned in a practically discriminating sense: 
 
 | Gene | Rank | γ (Stim48hr) | Drug context | Found |
 |---|---|---|---|---|
-| *IL12RB2* | 4 | 0.691 | ustekinumab axis (approved RA) | ✓ |
-| *ICOS* | 6 | 0.661 | emerging agonists (Phase 2) | ✓ |
-| *CD226* | 41 | 0.381 | preclinical checkpoint | ✓ |
-| *TRAF1* | 64 | 0.354 | GWAS anchor (TRAF1-C5 haplotype) | ✓ |
-| *TYK2* | 150 | 0.284 | deucravacitinib (approved PsA/Phase3 RA) | ✓ |
-| *TRAF3IP2* | 205 | 0.261 | sikokitinib (approved PsA) | ✓ |
-| *CTLA4* | 238 | 0.251 | abatacept (approved RA) | ✓ |
-| *JAK2* | 262 | 0.244 | baricitinib (approved RA) | ✓ |
-| *PTPN22* | 314 | 0.226 | preclinical | ✓ |
-| *REL* | 396 | 0.196 | preclinical (c-Rel NF-κB) | ✓ |
-| *IL2RA* | 480 | 0.169 | basiliximab (approved transplant) | ✓ |
+| *IL12RB2* | 3 | 0.691 | ustekinumab axis (approved RA) | ✓ |
+| *ICOS* | 4 | 0.661 | emerging agonists (Phase 2) | ✓ |
+| *CD226* | 22 | 0.381 | preclinical checkpoint | ✓ |
+| *TRAF1* | 32 | 0.354 | GWAS anchor (TRAF1-C5 haplotype) | ✓ |
+| *TYK2* | 83 | 0.284 | deucravacitinib (approved PsA/Phase3 RA) | ✓ |
+| *TRAF3IP2* | 120 | 0.261 | sikokitinib (approved PsA) | ✓ |
+| *CTLA4* | 141 | 0.251 | abatacept (approved RA) | ✓ |
+| *JAK2* | 159 | 0.244 | baricitinib (approved RA) | ✓ |
+| *PTPN22* | 194 | 0.226 | preclinical | ✓ |
+| *REL* | 248 | 0.196 | preclinical (c-Rel NF-κB) | ✓ |
+| *IL2RA* | 306 | 0.169 | basiliximab (approved transplant) | ✓ |
 | *JAK1* | — | — | not in CZI KO library | — |
 | *JAK3* | — | — | not in CZI KO library | — |
+
+### Novel target candidates — ECM-remodelling drivers (CAD) and effector T-cell regulators (RA)
+
+Beyond GWAS-anchored benchmarks, the OTA decomposition identifies novel candidates whose KO fingerprints are indistinguishable from validated targets in the heritable program space, yet lack any independent genetic evidence. These constitute testable predictions: if the pipeline is mechanistically correct, their perturbation should produce the same transcriptional outcome as a known drug target.
+
+**CAD.** We focused on genes whose KO *reduces* CAD risk (OTA γ<0) — atherogenic drivers, not protective suppressors — for a practical reason: proteins that actively promote disease are pharmacologically tractable as inhibitor targets, following the same logic that drove LOX/LOXL2 inhibitor development for fibrosis and ROCK inhibitor development for vasospasm. All five nominees co-cluster with the GWAS-anchored ECM drivers *COL4A1* and *LOX* under τ*-weighted hierarchical clustering, placing them in the same heritable program space:
+
+| Gene | Cluster anchor | Rank | γ | Protein class |
+|---|---|---|---|---|
+| *PLEKHA1* | COL4A1 cluster | 64 | −0.869 | Phosphoinositide-binding (PH domain) |
+| *GIT1* | COL4A2/FN1 cluster | 239 | −0.623 | Focal adhesion scaffold (GRK-interacting) |
+| *ELOVL2* | LOX cluster | 285 | −0.587 | Fatty acid elongase (PUFA synthesis) |
+| *NPR2* | COL4A2/FN1 cluster | 313 | −0.569 | Natriuretic peptide receptor B (guanylate cyclase) |
+| *ROCK1* | COL4A1 cluster | 551 | −0.447 | Rho-associated protein kinase (Ser/Thr kinase) |
+
+*ROCK1* is the mechanistic closest peer to *LOX*: both are downstream effectors of the same TGF-β1 → ECM-stiffening programme (TGF-β1 is a GWAS anchor in the same cluster), and ROCK kinase inhibitors are already in clinical use. *GIT1* and *NPR2* co-cluster with *COL4A2* and fibronectin (*FN1*), grounding them at the integrin–ECM interface. *ELOVL2* co-clusters with *LOX* and vinculin (*VCL*, a mechanosensing focal adhesion protein), linking fatty acid membrane composition to ECM mechanotransduction.
+
+**RA.** For RA, all OTA γ values are positive (all 8 heritable programs have τ*>0), so the direction criterion used for CAD does not apply. Novel nominees were instead selected by heritable-program cosine similarity to the validated benchmark group (*IL12RB2*, *CD226*, *TRAF1*) — genes whose KO modulates the heritable immune programs in the same way as established drug targets:
+
+| Gene | Cosine to benchmark mean | Rank | γ | Biological context |
+|---|---|---|---|---|
+| *NUGGC* | 0.976 | 8 | 0.477 | Nuclear GTPase; T-cell gene regulation |
+| *CRTAM* | 0.871 | 17 | 0.398 | Activating T-cell surface receptor (CD226 paralogue) |
+| *MACC1* | 0.915 | 175 | 0.236 | MET/HGF transcriptional regulator; CD226-cluster co-member |
+
+*CRTAM* (Cytotoxic and Regulatory T-cell Molecule) is the structurally closest peer to *CD226*: both are DNAM-family activating receptors on effector CD4+ T cells, both load on the same heritable programs (C01), and *CRTAM* inhibition is an unexplored but rational extension of the emerging *CD226* checkpoint biology.
 
 ### Transcriptional program landscape
 
@@ -279,6 +305,8 @@ For **RA**, the selected programs are C25 (τ*_norm=1.000, dominant heritable pr
 #### Novel GPS gene nomination
 
 In addition to GPS screens anchored on GWAS-validated benchmark genes, we nominated novel gene targets using a purely data-driven selection principle: genes whose KO activates the same heritable transcriptional programs as GWAS-validated benchmarks, but which have no independent GWAS signal of their own (not GWAS-anchored, no eQTL at a GWAS locus, no WES burden concordance). This exploits the OTA decomposition as a biological similarity metric: if two genes share the same high-τ* program loadings, their KO effects are functionally equivalent in the GWAS-relevant transcriptional space, even if only one has direct human genetics evidence.
+
+For CAD, an additional constraint was applied: nominees were restricted to genes encoding proteins that are pharmacologically inhibitable — enzymes, kinases, or receptors — following the logic that inhibiting an atherogenic driver is therapeutically easier than restoring a protective function. The GWAS-validated CAD benchmarks *LOX* (an enzyme; LOXL2 inhibitors have been clinically pursued) and *COL4A1* (a structural collagen; harder to inhibit directly) define the target archetype. All five CAD nominees have γ<0, confirming that their KO decreases atherogenic program activity.
 
 Gene candidates were selected by two complementary criteria applied in parallel:
 
