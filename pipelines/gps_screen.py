@@ -52,12 +52,16 @@ os.environ.setdefault("NUMBA_THREADING_LAYER", "workqueue")
 log = logging.getLogger(__name__)
 
 _DOCKER_IMAGE  = "binchengroup/gpsimage:latest"
-_GPS_TIMEOUT_WITH_BGRD    = 7200   # seconds when BGRD cached; 200-gene sig ~900s, 1000-gene ~4500s
-_GPS_TIMEOUT_NO_BGRD      = 21600  # seconds when BGRD must be computed (permutation: 0.5-6h)
-_GPS_TIMEOUT              = _GPS_TIMEOUT_NO_BGRD  # legacy alias; internal code uses per-run value
+_GPS_TIMEOUT_WITH_BGRD    = 7200   # seconds; 500-gene sig ~900s
+_GPS_TIMEOUT              = _GPS_TIMEOUT_WITH_BGRD  # legacy alias
 _GPS_GENES     = None  # GPS's selected_genes_2198.csv — loaded lazily
 _GPS_BGRD_DIR  = Path(__file__).parent.parent / "data" / "gps_bgrd"  # persistent BGRD cache
 _GPS_LOGS_DIR  = Path(__file__).parent.parent / "data" / "gps_logs"  # GPS internal logfiles
+
+# All GPS screens use exactly this many up/down genes → one shared BGRD__size500.pkl forever.
+_GPS_SIG_N_UP   = 250
+_GPS_SIG_N_DOWN = 250
+_GPS_BGRD_KEY   = "size500"
 
 
 # ---------------------------------------------------------------------------
@@ -99,12 +103,14 @@ def screen_target_for_emulators(
         log.info("GPS screen skipped for %s: no Perturb-seq signature", gene)
         return []
 
-    # GPS BGRD reliability gate: signatures below 50 genes map to BGRD bucket ≤20,
-    # which causes Docker exit 1 (too few permutations for Run_reversal_score.py).
-    if len(sig) < 50:
+    # Minimum gene gate: BGRD__size500.pkl covers all bin sizes 2→499, so any
+    # signature with ≥2 genes per direction is valid. Gate at 20 to ensure
+    # the KS statistic is not degenerate (per-direction check happens in
+    # _check_gps_library_overlap).
+    if len(sig) < 20:
         log.info(
             "GPS emulation screen skipped for %s: only %d GPS-filtered genes "
-            "(need ≥50 for reliable BGRD)", gene, len(sig),
+            "(need ≥20)", gene, len(sig),
         )
         return []
 
@@ -194,6 +200,13 @@ def _get_gps_genes() -> set[str] | None:
     return None  # no filter — GPS will intersect internally
 
 
+def _truncate_sig(sig: dict[str, float], n_up: int = _GPS_SIG_N_UP, n_down: int = _GPS_SIG_N_DOWN) -> dict[str, float]:
+    """Truncate signature to top n_up positive + top n_down negative genes by magnitude."""
+    up   = sorted(((g, v) for g, v in sig.items() if v > 0), key=lambda kv: -kv[1])[:n_up]
+    down = sorted(((g, v) for g, v in sig.items() if v < 0), key=lambda kv:  kv[1])[:n_down]
+    return dict(up + down)
+
+
 def _write_dzsig_csv(sig: dict[str, float], path: Path) -> None:
     """Write GPS disease signature CSV: GeneSymbol, Value."""
     with open(path, "w", newline="") as fh:
@@ -250,21 +263,18 @@ def _run_gps_screen(
 ) -> list[dict]:
     """Write signature, invoke Docker GPS screen, parse and return results.
 
-    Uses a persistent BGRD cache (data/gps_bgrd/) so the expensive RGES permutation
-    step (0.5–6h) is only run once per unique disease signature. Subsequent calls
-    for the same label skip permutation and run only Run_reversal_score.py.
+    Signatures are truncated to top 250 up + 250 down GPS-represented genes so all
+    screens share BGRD__size500.pkl — no per-run permutation ever needed.
     """
+    # Truncate to fixed size (top n_up positive + top n_down negative GPS-represented genes).
+    # All screens share BGRD__size500.pkl — no per-run permutation ever needed.
+    sig = _truncate_sig(sig)
+
     if not _check_gps_library_overlap(label, sig):
         return []
 
-    # BGRD bucket ≤20 (sig_size < 35) causes GPS Docker exit 1 — too few permutations.
-    _SIZE_BUCKETS_CHECK = [5, 10, 20, 50, 100, 200, 300, 500, 700, 1000]
-    _bgrd_size_check = min(_SIZE_BUCKETS_CHECK, key=lambda b: abs(b - len(sig)))
-    if _bgrd_size_check <= 20:
-        log.warning(
-            "GPS screen skipped for %s: sig size %d maps to BGRD bucket %d "
-            "(GPS Docker unreliable at this size)", label, len(sig), _bgrd_size_check,
-        )
+    if len(sig) < 4:
+        log.warning("GPS screen skipped for %s: only %d genes after truncation", label, len(sig))
         return []
 
     safe_label = "".join(c if c.isalnum() or c in "-_" else "_" for c in label)[:40]
@@ -273,13 +283,20 @@ def _run_gps_screen(
     logs_dir = _GPS_LOGS_DIR
     logs_dir.mkdir(parents=True, exist_ok=True)
 
-    # BGRD null distribution depends only on signature SIZE, not gene identity.
-    # Round to the nearest canonical bucket so any two runs with the same size
-    # share one pre-computed BGRD forever (AMD + CAD disease-state both use ~700).
-    _SIZE_BUCKETS = [5, 10, 20, 50, 100, 200, 300, 500, 700, 1000]
-    sig_size = len(sig)
-    bgrd_size = min(_SIZE_BUCKETS, key=lambda b: abs(b - sig_size))
-    bgrd_key  = f"size{bgrd_size}"
+    bgrd_key = _GPS_BGRD_KEY  # always "size500"
+    bgrd_pkl = bgrd_dir / f"BGRD__{bgrd_key}.pkl"
+
+    if not bgrd_pkl.exists():
+        log.error(
+            "GPS screen: BGRD__size500.pkl not found in %s — run GPS once with "
+            "--RGES_bgrd_ID NONE to generate it, then cache as BGRD__size500.pkl",
+            bgrd_dir,
+        )
+        return []
+
+    log.info("GPS screen: %s — using cached BGRD %s (%d sig genes)", label, bgrd_key, len(sig))
+    run_timeout = _GPS_TIMEOUT_WITH_BGRD
+    bgrd_id_arg = ["--RGES_bgrd_ID", bgrd_key]
 
     with tempfile.TemporaryDirectory(prefix="gps_screen_") as tmpdir:
         tmp = Path(tmpdir)
@@ -290,20 +307,6 @@ def _run_gps_screen(
 
         sig_filename = f"DZSIG__{safe_label}.csv"
         _write_dzsig_csv(sig, input_dir / sig_filename)
-
-        # Always pass --RGES_bgrd_ID so GPS names the BGRD file consistently
-        # (size-bucketed key) whether computing fresh or loading from cache.
-        bgrd_pkl = bgrd_dir / f"BGRD__{bgrd_key}.pkl"
-        bgrd_id_arg = ["--RGES_bgrd_ID", bgrd_key]
-        run_timeout = _GPS_TIMEOUT_WITH_BGRD if bgrd_pkl.exists() else _GPS_TIMEOUT_NO_BGRD
-        if bgrd_pkl.exists():
-            log.info("GPS screen: %s — using cached BGRD size=%d (timeout=%ds)", label, bgrd_size, run_timeout)
-        else:
-            log.info(
-                "GPS screen: %s vs %s library (%d sig genes, BGRD size=%d) — running permutation "
-                "(first time, will cache; timeout=%ds)",
-                label, library, len(sig), bgrd_size, run_timeout,
-            )
 
         cmd = [
             "docker", "run", "--rm",
@@ -335,6 +338,7 @@ def _run_gps_screen(
                 )
                 return []
             log.info("GPS Docker done: %s", label)
+
         except subprocess.TimeoutExpired:
             log.warning("GPS screen timed out for %s after %ds", label, run_timeout)
             return []

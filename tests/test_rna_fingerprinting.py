@@ -463,7 +463,7 @@ class TestSvdNominationScores:
 
 
 # ---------------------------------------------------------------------------
-# Split β source in load_replogle_betas
+# Split β source in load_perturbseq_betas
 # ---------------------------------------------------------------------------
 
 class TestSplitBetaSource:
@@ -482,14 +482,14 @@ class TestSplitBetaSource:
             ps._SIG_CACHE.clear()
 
     def test_split_returns_all_genes(self, tmp_path):
-        from pipelines.replogle_parser import _DATASET_SIGNATURES_REGISTRY, load_replogle_betas
+        from pipelines.perturbseq_beta_loader import _DATASET_SIGNATURES_REGISTRY, load_perturbseq_betas
         self._write_both(tmp_path, "split_ds")
-        import pipelines.replogle_parser as rp
+        import pipelines.perturbseq_beta_loader as rp
         orig_reg = dict(rp._DATASET_SIGNATURES_REGISTRY)
         rp._DATASET_SIGNATURES_REGISTRY["split_ds"] = tmp_path / "split_ds" / "signatures.json.gz"
         try:
             prog = {"prog1": list(list(_MOCK_SIGS.values())[0].keys())}
-            result = load_replogle_betas(
+            result = load_perturbseq_betas(
                 prog, dataset_id="split_ds", gwas_gene_set={"IL6R", "JAK2"}
             )
         finally:
@@ -500,17 +500,17 @@ class TestSplitBetaSource:
 
     def test_gwas_genes_have_fingerprint_beta(self, tmp_path):
         """GWAS gene β from split should equal fingerprint-only β."""
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         self._write_both(tmp_path, "split2_ds")
-        import pipelines.replogle_parser as rp
+        import pipelines.perturbseq_beta_loader as rp
         orig_reg = dict(rp._DATASET_SIGNATURES_REGISTRY)
         rp._DATASET_SIGNATURES_REGISTRY["split2_ds"] = tmp_path / "split2_ds" / "signatures.json.gz"
         prog = {"p": list(list(_MOCK_SIGS.values())[0].keys())[:3]}
         try:
-            result_split = load_replogle_betas(
+            result_split = load_perturbseq_betas(
                 prog, dataset_id="split2_ds", gwas_gene_set={"IL6R"}, force_recompute=True
             )
-            result_fp_all = load_replogle_betas(
+            result_fp_all = load_perturbseq_betas(
                 prog, dataset_id="split2_ds", gwas_gene_set=None, force_recompute=True
             )
         finally:

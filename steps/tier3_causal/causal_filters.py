@@ -188,9 +188,26 @@ def _extract_gamma_for_trait(prog_gammas, trait: str) -> float | None:
 
 
 
+# Genes where CRISPRi knockdown and LoF rare-variant burden are known to
+# measure different causal mechanisms — discordance is biologically expected
+# and should not be penalised.  Key: gene symbol. Value: explanation.
+_EXPECTED_CRISPRI_LOF_DIVERGENCE: dict[str, str] = {
+    "TYK2":  "P1104A is a catalytic hypomorph leaving expression near-normal; CRISPRi measures transcription not kinase activity",
+    "IL6R":  "Shed soluble receptor and membrane receptor have opposing eQTL/LoF relationships",
+    "PTPN22": "R620W is a gain-of-function coding variant; CRISPRi measures total transcript loss not GOF",
+    "CTLA4": "LoF increases autoimmunity; abatacept mimics CTLA4 agonism — mechanism inversion expected",
+    "IRF5":  "Splice-site LoF variants alter isoform ratio, not expression level measurable by CRISPRi",
+    "STAT4": "Multiple independent signals at locus; LoF and eQTL instruments may tag different causal variants",
+    "IL23R": "Protective LoF (R381Q) is coding; CRISPRi measures proximal promoter, not distal enhancers driving disease association",
+    "PCSK9": "Therapeutic target is secreted protein; LoF reduces LDL via intracellular degradation pathway not gene expression",
+    "LPA":   "Lp(a) driven by kringle repeat number, not transcript abundance; CRISPRi and LoF are orthogonal instruments",
+}
+
+
 def _wes_concordance_check(
     ota_gamma: float,
     gb_result: dict | None,
+    gene: str = "",
 ) -> dict:
     """
     Check whether the OTA composite γ direction agrees with WES rare LoF burden direction.
@@ -215,12 +232,13 @@ def _wes_concordance_check(
       wes_note:         str
     """
     result = {
-        "wes_checked":      False,
-        "wes_concordant":   None,
-        "wes_gamma_weight": 1.0,
-        "wes_burden_p":     None,
-        "wes_burden_beta":  None,
-        "wes_note":         "",
+        "wes_checked":               False,
+        "wes_concordant":            None,
+        "wes_gamma_weight":          1.0,
+        "wes_burden_p":              None,
+        "wes_burden_beta":           None,
+        "wes_note":                  "",
+        "mechanism_divergence_note": None,
     }
 
     if gb_result is None:
@@ -252,16 +270,27 @@ def _wes_concordance_check(
     concordant = (ota_gamma * burden_beta) > 0
     result["wes_concordant"] = concordant
 
+    expected_divergence = _EXPECTED_CRISPRI_LOF_DIVERGENCE.get(gene)
+
     if concordant:
         result["wes_note"] = (
             f"WES concordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
             f"agrees with ota_gamma={ota_gamma:+.3f}."
         )
     else:
-        result["wes_note"] = (
-            f"WES discordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
-            f"opposes ota_gamma={ota_gamma:+.3f}. Perturbation and rare-variant direction conflict."
-        )
+        if expected_divergence:
+            result["mechanism_divergence_note"] = f"expected divergence: {expected_divergence}"
+            result["wes_note"] = (
+                f"WES discordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
+                f"opposes ota_gamma={ota_gamma:+.3f}. "
+                f"Divergence expected — CRISPRi and LoF measure different mechanisms: {expected_divergence}"
+            )
+        else:
+            result["mechanism_divergence_note"] = "unexplained CRISPRi/LoF discordance — mechanism warrants review"
+            result["wes_note"] = (
+                f"WES discordant (p={burden_p:.1e}): burden_beta={burden_beta:+.3f} "
+                f"opposes ota_gamma={ota_gamma:+.3f}. Perturbation and rare-variant direction conflict."
+            )
 
     return result
 

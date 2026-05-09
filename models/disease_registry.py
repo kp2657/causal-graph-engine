@@ -129,6 +129,18 @@ DISEASE_GWAS_ANCHORS: dict[str, frozenset] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# GPS force-emulate genes — KD/KO targets validated in disease-relevant cells
+# but absent from genome-scale Perturb-seq atlases.  Always attempted for GPS
+# emulation regardless of dominant_tier; GPS skips gracefully if no signature.
+# Source: Schnitzler 2024 Fig. 2a KD targets (GSE210681 HAEC Perturb-seq).
+# ---------------------------------------------------------------------------
+GPS_FORCE_GENES: dict[str, list[str]] = {
+    "CAD": ["CCM2", "PLPP3"],
+    "RA":  [],
+}
+
+
 def resolve(name_or_key: str) -> dict | None:
     """Resolve any disease name or key to a full info dict."""
     key = get_disease_key(name_or_key) or DISEASE_EFO.get(name_or_key.upper().strip()) and name_or_key.upper().strip()

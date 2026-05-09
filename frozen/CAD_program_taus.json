@@ -1,56 +1,618 @@
 {
   "program_taus": {
-    "CAD_NMF_P01": 0.01247,
-    "CAD_NMF_P02": 0.069615,
-    "CAD_NMF_P03": -0.022628,
-    "CAD_NMF_P04": -0.030562,
-    "CAD_NMF_P05": 0.000329
+    "CAD_GeneticNMF_C01": 0.067464,
+    "CAD_GeneticNMF_C02": -0.007534,
+    "CAD_GeneticNMF_C03": 0.043977,
+    "CAD_GeneticNMF_C04": -0.001296,
+    "CAD_GeneticNMF_C05": -0.006425,
+    "CAD_GeneticNMF_C06": 0.00824,
+    "CAD_GeneticNMF_C07": 0.008606,
+    "CAD_GeneticNMF_C08": 0.070739,
+    "CAD_GeneticNMF_C09": 0.020839,
+    "CAD_GeneticNMF_C10": 0.016412,
+    "CAD_GeneticNMF_C11": 0.043545,
+    "CAD_GeneticNMF_C12": 0.020848,
+    "CAD_GeneticNMF_C13": 0.006209,
+    "CAD_GeneticNMF_C14": -0.016282,
+    "CAD_GeneticNMF_C15": -0.00488,
+    "CAD_GeneticNMF_C16": 0.088881,
+    "CAD_GeneticNMF_C17": -0.007121,
+    "CAD_GeneticNMF_C18": -0.008386,
+    "CAD_GeneticNMF_C19": 0.013901,
+    "CAD_GeneticNMF_C20": 0.061926,
+    "CAD_GeneticNMF_C21": 0.037891,
+    "CAD_GeneticNMF_C22": 0.02458,
+    "CAD_GeneticNMF_C23": -0.031362,
+    "CAD_GeneticNMF_C24": 0.034704,
+    "CAD_GeneticNMF_C25": -0.005203,
+    "CAD_GeneticNMF_C26": 0.058598,
+    "CAD_GeneticNMF_C27": 0.00407,
+    "CAD_GeneticNMF_C28": 0.01511,
+    "CAD_GeneticNMF_C29": -0.000158,
+    "CAD_GeneticNMF_C30": 0.036055
   },
   "h2": null,
-  "mean_chisq_genome": 1.0413,
+  "mean_chisq_genome": 0.9994,
   "n_snps_genome": 12266025,
   "raw_annotations": [
     {
-      "name": "CAD_NMF_P01",
-      "tau": 0.01247,
-      "tau_se": 0.00531,
-      "tau_p": 0.018852,
-      "n_snps": 71739,
-      "mean_chisq": 1.0543
-    },
-    {
-      "name": "CAD_NMF_P02",
-      "tau": 0.069615,
-      "tau_se": 0.007836,
+      "name": "CAD_GeneticNMF_C01",
+      "tau": 0.067464,
+      "tau_se": 0.004514,
       "tau_p": 0.0,
-      "n_snps": 36957,
-      "mean_chisq": 1.1138
+      "n_snps": 103633,
+      "mean_chisq": 1.0668
     },
     {
-      "name": "CAD_NMF_P03",
-      "tau": -0.022628,
-      "tau_se": 0.00604,
-      "tau_p": 0.00018,
-      "n_snps": 50157,
-      "mean_chisq": 1.0178
+      "name": "CAD_GeneticNMF_C02",
+      "tau": -0.007534,
+      "tau_se": 0.004325,
+      "tau_p": 0.081488,
+      "n_snps": 100268,
+      "mean_chisq": 0.9918
     },
     {
-      "name": "CAD_NMF_P04",
-      "tau": -0.030562,
-      "tau_se": 0.006346,
-      "tau_p": 1e-06,
-      "n_snps": 49967,
-      "mean_chisq": 1.0095
+      "name": "CAD_GeneticNMF_C03",
+      "tau": 0.043977,
+      "tau_se": 0.004913,
+      "tau_p": 0.0,
+      "n_snps": 92339,
+      "mean_chisq": 1.0433
     },
     {
-      "name": "CAD_NMF_P05",
-      "tau": 0.000329,
-      "tau_se": 0.006719,
-      "tau_p": 0.96095,
-      "n_snps": 49393,
-      "mean_chisq": 1.0417
+      "name": "CAD_GeneticNMF_C04",
+      "tau": -0.001296,
+      "tau_se": 0.004191,
+      "tau_p": 0.757134,
+      "n_snps": 108074,
+      "mean_chisq": 0.9981
+    },
+    {
+      "name": "CAD_GeneticNMF_C05",
+      "tau": -0.006425,
+      "tau_se": 0.004448,
+      "tau_p": 0.148581,
+      "n_snps": 99502,
+      "mean_chisq": 0.9929
+    },
+    {
+      "name": "CAD_GeneticNMF_C06",
+      "tau": 0.00824,
+      "tau_se": 0.004464,
+      "tau_p": 0.064924,
+      "n_snps": 107800,
+      "mean_chisq": 1.0076
+    },
+    {
+      "name": "CAD_GeneticNMF_C07",
+      "tau": 0.008606,
+      "tau_se": 0.004313,
+      "tau_p": 0.046005,
+      "n_snps": 106193,
+      "mean_chisq": 1.008
+    },
+    {
+      "name": "CAD_GeneticNMF_C08",
+      "tau": 0.070739,
+      "tau_se": 0.004792,
+      "tau_p": 0.0,
+      "n_snps": 98998,
+      "mean_chisq": 1.0701
+    },
+    {
+      "name": "CAD_GeneticNMF_C09",
+      "tau": 0.020839,
+      "tau_se": 0.004788,
+      "tau_p": 1.3e-05,
+      "n_snps": 92115,
+      "mean_chisq": 1.0202
+    },
+    {
+      "name": "CAD_GeneticNMF_C10",
+      "tau": 0.016412,
+      "tau_se": 0.003947,
+      "tau_p": 3.2e-05,
+      "n_snps": 127773,
+      "mean_chisq": 1.0158
+    },
+    {
+      "name": "CAD_GeneticNMF_C11",
+      "tau": 0.043545,
+      "tau_se": 0.004446,
+      "tau_p": 0.0,
+      "n_snps": 108759,
+      "mean_chisq": 1.0429
+    },
+    {
+      "name": "CAD_GeneticNMF_C12",
+      "tau": 0.020848,
+      "tau_se": 0.004089,
+      "tau_p": 0.0,
+      "n_snps": 116370,
+      "mean_chisq": 1.0202
+    },
+    {
+      "name": "CAD_GeneticNMF_C13",
+      "tau": 0.006209,
+      "tau_se": 0.004371,
+      "tau_p": 0.155506,
+      "n_snps": 107016,
+      "mean_chisq": 1.0056
+    },
+    {
+      "name": "CAD_GeneticNMF_C14",
+      "tau": -0.016282,
+      "tau_se": 0.004169,
+      "tau_p": 9.4e-05,
+      "n_snps": 113096,
+      "mean_chisq": 0.9831
+    },
+    {
+      "name": "CAD_GeneticNMF_C15",
+      "tau": -0.00488,
+      "tau_se": 0.004357,
+      "tau_p": 0.262735,
+      "n_snps": 104095,
+      "mean_chisq": 0.9945
+    },
+    {
+      "name": "CAD_GeneticNMF_C16",
+      "tau": 0.088881,
+      "tau_se": 0.00464,
+      "tau_p": 0.0,
+      "n_snps": 106933,
+      "mean_chisq": 1.0882
+    },
+    {
+      "name": "CAD_GeneticNMF_C17",
+      "tau": -0.007121,
+      "tau_se": 0.004491,
+      "tau_p": 0.112831,
+      "n_snps": 102556,
+      "mean_chisq": 0.9923
+    },
+    {
+      "name": "CAD_GeneticNMF_C18",
+      "tau": -0.008386,
+      "tau_se": 0.004051,
+      "tau_p": 0.038426,
+      "n_snps": 115417,
+      "mean_chisq": 0.991
+    },
+    {
+      "name": "CAD_GeneticNMF_C19",
+      "tau": 0.013901,
+      "tau_se": 0.004477,
+      "tau_p": 0.001904,
+      "n_snps": 103021,
+      "mean_chisq": 1.0133
+    },
+    {
+      "name": "CAD_GeneticNMF_C20",
+      "tau": 0.061926,
+      "tau_se": 0.004518,
+      "tau_p": 0.0,
+      "n_snps": 107011,
+      "mean_chisq": 1.0613
+    },
+    {
+      "name": "CAD_GeneticNMF_C21",
+      "tau": 0.037891,
+      "tau_se": 0.004568,
+      "tau_p": 0.0,
+      "n_snps": 103315,
+      "mean_chisq": 1.0372
+    },
+    {
+      "name": "CAD_GeneticNMF_C22",
+      "tau": 0.02458,
+      "tau_se": 0.00454,
+      "tau_p": 0.0,
+      "n_snps": 96802,
+      "mean_chisq": 1.0239
+    },
+    {
+      "name": "CAD_GeneticNMF_C23",
+      "tau": -0.031362,
+      "tau_se": 0.004231,
+      "tau_p": 0.0,
+      "n_snps": 106715,
+      "mean_chisq": 0.968
+    },
+    {
+      "name": "CAD_GeneticNMF_C24",
+      "tau": 0.034704,
+      "tau_se": 0.004361,
+      "tau_p": 0.0,
+      "n_snps": 115786,
+      "mean_chisq": 1.034
+    },
+    {
+      "name": "CAD_GeneticNMF_C25",
+      "tau": -0.005203,
+      "tau_se": 0.004421,
+      "tau_p": 0.239217,
+      "n_snps": 106749,
+      "mean_chisq": 0.9942
+    },
+    {
+      "name": "CAD_GeneticNMF_C26",
+      "tau": 0.058598,
+      "tau_se": 0.004446,
+      "tau_p": 0.0,
+      "n_snps": 106767,
+      "mean_chisq": 1.0579
+    },
+    {
+      "name": "CAD_GeneticNMF_C27",
+      "tau": 0.00407,
+      "tau_se": 0.004024,
+      "tau_p": 0.311847,
+      "n_snps": 119413,
+      "mean_chisq": 1.0034
+    },
+    {
+      "name": "CAD_GeneticNMF_C28",
+      "tau": 0.01511,
+      "tau_se": 0.004494,
+      "tau_p": 0.000773,
+      "n_snps": 99453,
+      "mean_chisq": 1.0145
+    },
+    {
+      "name": "CAD_GeneticNMF_C29",
+      "tau": -0.000158,
+      "tau_se": 0.003956,
+      "tau_p": 0.96806,
+      "n_snps": 132509,
+      "mean_chisq": 0.9992
+    },
+    {
+      "name": "CAD_GeneticNMF_C30",
+      "tau": 0.036055,
+      "tau_se": 0.004483,
+      "tau_p": 0.0,
+      "n_snps": 104647,
+      "mean_chisq": 1.0354
     }
   ],
   "method": "gwas_chisq_enrichment_hg38",
-  "disease_key": "CAD"
+  "disease_key": "CAD",
+  "lambda_gc": 1.042,
+  "snp_positions_file": "/Users/kennethpham/Desktop/agentic_AI_casual_graphs_therapeutic_abundance/causal-graph-engine/data/ldsc/results/CAD_program_snp_positions.json",
+  "program_gammas": {
+    "CAD_GeneticNMF_C01": 0.067464,
+    "CAD_GeneticNMF_C02": 0.0,
+    "CAD_GeneticNMF_C03": 0.043977,
+    "CAD_GeneticNMF_C04": 0.0,
+    "CAD_GeneticNMF_C05": 0.0,
+    "CAD_GeneticNMF_C06": 0.00824,
+    "CAD_GeneticNMF_C07": 0.008606,
+    "CAD_GeneticNMF_C08": 0.070739,
+    "CAD_GeneticNMF_C09": -0.020839,
+    "CAD_GeneticNMF_C10": 0.016412,
+    "CAD_GeneticNMF_C11": -0.043545,
+    "CAD_GeneticNMF_C12": -0.020848,
+    "CAD_GeneticNMF_C13": -0.006209,
+    "CAD_GeneticNMF_C14": 0.0,
+    "CAD_GeneticNMF_C15": 0.0,
+    "CAD_GeneticNMF_C16": -0.088881,
+    "CAD_GeneticNMF_C17": 0.0,
+    "CAD_GeneticNMF_C18": 0.0,
+    "CAD_GeneticNMF_C19": -0.013901,
+    "CAD_GeneticNMF_C20": 0.061926,
+    "CAD_GeneticNMF_C21": 0.037891,
+    "CAD_GeneticNMF_C22": 0.02458,
+    "CAD_GeneticNMF_C23": 0.0,
+    "CAD_GeneticNMF_C24": -0.034704,
+    "CAD_GeneticNMF_C25": 0.0,
+    "CAD_GeneticNMF_C26": 0.058598,
+    "CAD_GeneticNMF_C27": -0.00407,
+    "CAD_GeneticNMF_C28": 0.01511,
+    "CAD_GeneticNMF_C29": 0.0,
+    "CAD_GeneticNMF_C30": 0.036055
+  },
+  "gamma_annotations": [
+    {
+      "name": "CAD_GeneticNMF_C01",
+      "tau": 0.067464,
+      "tau_sign": 1,
+      "gamma": 0.067464,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.127096,
+      "sum_abs_loading": 2.172879,
+      "n_eqtl_genes": 17
+    },
+    {
+      "name": "CAD_GeneticNMF_C02",
+      "tau": -0.007534,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.072288,
+      "sum_abs_loading": 5.032761,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C03",
+      "tau": 0.043977,
+      "tau_sign": 1,
+      "gamma": 0.043977,
+      "direction_source": "eqtl_only",
+      "direction_score": 10.120981,
+      "sum_abs_loading": 18.958346,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C04",
+      "tau": -0.001296,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -1.761453,
+      "sum_abs_loading": 5.829057,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C05",
+      "tau": -0.006425,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.553012,
+      "sum_abs_loading": 5.344903,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C06",
+      "tau": 0.00824,
+      "tau_sign": 1,
+      "gamma": 0.00824,
+      "direction_source": "eqtl_only",
+      "direction_score": 1.424294,
+      "sum_abs_loading": 5.436716,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C07",
+      "tau": 0.008606,
+      "tau_sign": 1,
+      "gamma": 0.008606,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.021444,
+      "sum_abs_loading": 4.615604,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C08",
+      "tau": 0.070739,
+      "tau_sign": 1,
+      "gamma": 0.070739,
+      "direction_source": "eqtl_only",
+      "direction_score": 3.263907,
+      "sum_abs_loading": 6.643209,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C09",
+      "tau": 0.020839,
+      "tau_sign": 1,
+      "gamma": -0.020839,
+      "direction_source": "eqtl_only",
+      "direction_score": -5.892079,
+      "sum_abs_loading": 13.012317,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C10",
+      "tau": 0.016412,
+      "tau_sign": 1,
+      "gamma": 0.016412,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.683318,
+      "sum_abs_loading": 3.662112,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C11",
+      "tau": 0.043545,
+      "tau_sign": 1,
+      "gamma": -0.043545,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.008393,
+      "sum_abs_loading": 3.425003,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C12",
+      "tau": 0.020848,
+      "tau_sign": 1,
+      "gamma": -0.020848,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.002681,
+      "sum_abs_loading": 3.874271,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C13",
+      "tau": 0.006209,
+      "tau_sign": 1,
+      "gamma": -0.006209,
+      "direction_source": "eqtl_only",
+      "direction_score": -3.203495,
+      "sum_abs_loading": 4.611826,
+      "n_eqtl_genes": 16
+    },
+    {
+      "name": "CAD_GeneticNMF_C14",
+      "tau": -0.016282,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -1.322931,
+      "sum_abs_loading": 4.435952,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C15",
+      "tau": -0.00488,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.817513,
+      "sum_abs_loading": 4.917327,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C16",
+      "tau": 0.088881,
+      "tau_sign": 1,
+      "gamma": -0.088881,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.612639,
+      "sum_abs_loading": 3.212063,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C17",
+      "tau": -0.007121,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.249604,
+      "sum_abs_loading": 3.937942,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C18",
+      "tau": -0.008386,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -1.283476,
+      "sum_abs_loading": 4.936998,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C19",
+      "tau": 0.013901,
+      "tau_sign": 1,
+      "gamma": -0.013901,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.09455,
+      "sum_abs_loading": 2.934029,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C20",
+      "tau": 0.061926,
+      "tau_sign": 1,
+      "gamma": 0.061926,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.502239,
+      "sum_abs_loading": 3.338409,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C21",
+      "tau": 0.037891,
+      "tau_sign": 1,
+      "gamma": 0.037891,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.437449,
+      "sum_abs_loading": 2.6612,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C22",
+      "tau": 0.02458,
+      "tau_sign": 1,
+      "gamma": 0.02458,
+      "direction_source": "eqtl_only",
+      "direction_score": 1.455888,
+      "sum_abs_loading": 2.49535,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C23",
+      "tau": -0.031362,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.172236,
+      "sum_abs_loading": 3.335371,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C24",
+      "tau": 0.034704,
+      "tau_sign": 1,
+      "gamma": -0.034704,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.455723,
+      "sum_abs_loading": 3.164212,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C25",
+      "tau": -0.005203,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.580046,
+      "sum_abs_loading": 3.139394,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C26",
+      "tau": 0.058598,
+      "tau_sign": 1,
+      "gamma": 0.058598,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.681252,
+      "sum_abs_loading": 2.898003,
+      "n_eqtl_genes": 18
+    },
+    {
+      "name": "CAD_GeneticNMF_C27",
+      "tau": 0.00407,
+      "tau_sign": 1,
+      "gamma": -0.00407,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.768073,
+      "sum_abs_loading": 2.83785,
+      "n_eqtl_genes": 19
+    },
+    {
+      "name": "CAD_GeneticNMF_C28",
+      "tau": 0.01511,
+      "tau_sign": 1,
+      "gamma": 0.01511,
+      "direction_source": "eqtl_only",
+      "direction_score": 3.58412,
+      "sum_abs_loading": 6.015494,
+      "n_eqtl_genes": 16
+    },
+    {
+      "name": "CAD_GeneticNMF_C29",
+      "tau": -0.000158,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.466974,
+      "sum_abs_loading": 3.02654,
+      "n_eqtl_genes": 20
+    },
+    {
+      "name": "CAD_GeneticNMF_C30",
+      "tau": 0.036055,
+      "tau_sign": 1,
+      "gamma": 0.036055,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.061317,
+      "sum_abs_loading": 3.04945,
+      "n_eqtl_genes": 19
+    }
+  ],
+  "all_tau_negative": false
 }

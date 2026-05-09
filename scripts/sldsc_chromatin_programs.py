@@ -31,7 +31,7 @@ import logging
 import os
 import pathlib
 import sys
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -285,10 +285,70 @@ def get_enhancers_for_program(
     abc_df: pd.DataFrame,
     gene_set: list[str],
 ) -> pd.DataFrame:
-    """
-    Return ABC rows whose TargetGene is in gene_set.
-    """
+    """Return ABC rows whose TargetGene is in gene_set."""
     return abc_df[abc_df["TargetGene"].isin(gene_set)].copy()
+
+
+# ---------------------------------------------------------------------------
+# GWAS-locus → gene index (for hybrid BED generation)
+# ---------------------------------------------------------------------------
+
+def build_gene_to_locus_map(dataset_id: str) -> dict[str, list[int]]:
+    """
+    Return {gene_symbol → [locus_indices]} from gwas_anchored_programs.npz.
+    Locus index i corresponds to ra_loci/L{i:02d}.bed.
+    Returns {} if the NPZ is absent (non-RA diseases or missing file).
+    """
+    for ds_dir in (_PERTURBSEQ).iterdir():
+        if not ds_dir.is_dir():
+            continue
+        if dataset_id and ds_dir.name != dataset_id:
+            continue
+        npz = ds_dir / "gwas_anchored_programs.npz"
+        if not npz.exists():
+            continue
+        try:
+            data = np.load(npz, allow_pickle=True)
+            locus_names: list[str] = list(data["locus_names"])
+            locus_genes_raw = data["locus_genes_json"]
+            if locus_genes_raw.ndim == 0:
+                locus_genes_dict: dict = json.loads(str(locus_genes_raw.item()))
+            else:
+                locus_genes_dict = json.loads(str(locus_genes_raw[0]))
+            gene_to_loci: dict[str, list[int]] = {}
+            for i, lname in enumerate(locus_names):
+                for gene in locus_genes_dict.get(lname, []):
+                    gene_to_loci.setdefault(gene, []).append(i)
+            log.info("Loaded GWAS locus gene map: %d loci → %d unique anchor genes", len(locus_names), len(gene_to_loci))
+            return gene_to_loci
+        except Exception as exc:
+            log.warning("Could not parse gwas_anchored_programs.npz in %s: %s", ds_dir, exc)
+    return {}
+
+
+def load_locus_beds(
+    locus_indices: list[int],
+    loci_dir: pathlib.Path,
+) -> pd.DataFrame:
+    """Load and concatenate BED rows from ra_loci/L{i:02d}.bed files."""
+    frames = []
+    for idx in locus_indices:
+        bed_file = loci_dir / f"L{idx:02d}.bed"
+        if not bed_file.exists() or bed_file.stat().st_size == 0:
+            continue
+        try:
+            df = pd.read_csv(
+                bed_file, sep="\t", header=None,
+                usecols=[0, 1, 2],
+                names=["chr", "start", "end"],
+                dtype={"chr": str, "start": int, "end": int},
+            )
+            frames.append(df)
+        except Exception as exc:
+            log.debug("Failed to read locus BED %s: %s", bed_file, exc)
+    if not frames:
+        return pd.DataFrame(columns=["chr", "start", "end"])
+    return pd.concat(frames, ignore_index=True).drop_duplicates()
 
 
 # ---------------------------------------------------------------------------
@@ -399,6 +459,66 @@ def compute_program_stats(
 # Main pipeline
 # ---------------------------------------------------------------------------
 
+def _build_hybrid_bed_for_program(
+    gene_set: list[str],
+    abc_df: pd.DataFrame,
+    gene_to_locus: dict[str, list[int]],
+    loci_dir: pathlib.Path,
+    atac_peaks: Optional[pd.DataFrame],
+) -> tuple[pd.DataFrame, pd.DataFrame, int, int]:
+    """
+    For each gene in gene_set:
+      - If it is a GWAS anchor (has locus BEDs): use Moonen/LOCUS CRE coordinates
+      - Otherwise: use CATLAS ABC enhancer predictions
+
+    Returns (enh_raw_abc, enh_for_bed, n_locus_genes, n_abc_genes)
+    where enh_raw_abc is ABC-only rows (for stats), enh_for_bed is the merged result.
+    """
+    locus_dir_ok = loci_dir.exists()
+
+    locus_frames: list[pd.DataFrame] = []
+    abc_gene_set: list[str] = []
+
+    for gene in gene_set:
+        locus_idxs = gene_to_locus.get(gene, []) if locus_dir_ok else []
+        if locus_idxs:
+            lf = load_locus_beds(locus_idxs, loci_dir)
+            if not lf.empty:
+                locus_frames.append(lf)
+                continue
+        # Fall back to ABC
+        abc_gene_set.append(gene)
+
+    n_locus_genes = len(gene_set) - len(abc_gene_set)
+    n_abc_genes = len(abc_gene_set)
+
+    # ABC rows for non-anchor genes
+    enh_raw_abc = get_enhancers_for_program(abc_df, abc_gene_set) if abc_gene_set else pd.DataFrame(columns=["chr", "start", "end", "TargetGene", "ABC.Score"])
+
+    # Shrink ABC enhancers to 150 bp
+    enh_abc_shrunk = _shrink_to_150bp(enh_raw_abc) if not enh_raw_abc.empty else enh_raw_abc
+
+    # Optionally ATAC-filter ABC enhancers (not applied to LOCUS CREs — those are already specific)
+    if atac_peaks is not None and not enh_abc_shrunk.empty:
+        enh_abc_filtered = filter_by_atac(enh_abc_shrunk, atac_peaks)
+    else:
+        enh_abc_filtered = enh_abc_shrunk
+
+    # Merge locus BEDs and ABC BEDs
+    parts: list[pd.DataFrame] = []
+    for lf in locus_frames:
+        parts.append(lf[["chr", "start", "end"]].copy())
+    if not enh_abc_filtered.empty:
+        parts.append(enh_abc_filtered[["chr", "start", "end"]].copy())
+
+    if parts:
+        enh_for_bed = pd.concat(parts, ignore_index=True).drop_duplicates()
+    else:
+        enh_for_bed = pd.DataFrame(columns=["chr", "start", "end"])
+
+    return enh_raw_abc, enh_for_bed, n_locus_genes, n_abc_genes
+
+
 def run(
     disease_key: str,
     dataset_id: str,
@@ -420,7 +540,15 @@ def run(
     if atac_peaks is not None:
         log.info("ATAC peaks loaded: %d peaks", len(atac_peaks))
     else:
-        log.info("No ATAC peaks — ATAC filter will be skipped")
+        log.info("No ATAC peaks — ATAC filter will be skipped (ABC enhancers used as-is)")
+
+    # Build GWAS-anchor gene → locus-index map for hybrid BED generation.
+    gene_to_locus = build_gene_to_locus_map(dataset_id)
+    loci_dir = _OUT_BASE / f"{disease_key}_loci"
+    if gene_to_locus and loci_dir.exists():
+        log.info("Hybrid BED mode: %d GWAS anchor genes will use LOCUS CREs (ra_loci/); rest use CATLAS ABC", len(gene_to_locus))
+    else:
+        log.info("Pure ABC mode: no GWAS anchor gene map or loci dir — using CATLAS ABC for all genes")
 
     # Condition-specific NMF → separate subdirectory so SVD BEDs (ra/) are untouched.
     if cond_lower:
@@ -437,44 +565,47 @@ def run(
         "programs": [],
     }
 
-    log.info("%-8s  %8s  %10s  %14s  %18s", "Program", "n_genes", "n_enh", "median_abc", "pct_atac_overlap")
-    log.info("-" * 70)
+    log.info("%-8s  %8s  %10s  %14s  %10s  %10s", "Program", "n_genes", "n_enh", "median_abc", "n_locus", "n_abc")
+    log.info("-" * 78)
 
     for prog_id, gene_set in sorted(program_gene_sets.items()):
-        enh_raw = get_enhancers_for_program(abc_df, gene_set)
-        if enh_raw.empty:
-            log.warning("%s: no ABC enhancers found for %d genes — skipping", prog_id, len(gene_set))
-            continue
-
-        enh_shrunk = _shrink_to_150bp(enh_raw)
-
-        enh_atac: Optional[pd.DataFrame] = None
-        if atac_peaks is not None:
-            enh_atac = filter_by_atac(enh_shrunk, atac_peaks)
-            enh_for_bed = enh_atac
-        else:
-            enh_for_bed = enh_shrunk
+        enh_raw_abc, enh_for_bed, n_locus_genes, n_abc_genes = _build_hybrid_bed_for_program(
+            gene_set, abc_df, gene_to_locus, loci_dir, atac_peaks,
+        )
 
         if enh_for_bed.empty:
-            log.warning("%s: 0 enhancers remain after ATAC filter — skipping BED", prog_id)
-            stats = compute_program_stats(prog_id, gene_set, enh_raw, enh_shrunk, enh_atac)
+            log.warning("%s: 0 enhancers after hybrid BED build (locus=%d abc=%d) — skipping BED", prog_id, n_locus_genes, n_abc_genes)
+            stats = {
+                "program_id": prog_id, "n_genes": len(gene_set),
+                "n_enhancers": 0, "median_abc_score": float("nan"),
+                "pct_atac_overlapping": float("nan"),
+                "n_locus_genes": n_locus_genes, "n_abc_genes": n_abc_genes,
+            }
             manifest["programs"].append(stats)
             continue
 
+        # Use enh_raw_abc for stats only (locus rows don't have ABC.Score)
+        n_enh = len(enh_for_bed.drop_duplicates(subset=["chr", "start", "end"]))
+        median_abc = float(enh_raw_abc["ABC.Score"].median()) if not enh_raw_abc.empty else float("nan")
+
         bed_path = write_program_bed(prog_id, enh_for_bed, out_dir)
-        stats = compute_program_stats(prog_id, gene_set, enh_raw, enh_shrunk, enh_atac)
-        stats["bed_path"] = str(bed_path.relative_to(_ROOT))
+        stats = {
+            "program_id": prog_id,
+            "n_genes": len(gene_set),
+            "n_enhancers": n_enh,
+            "median_abc_score": round(median_abc, 5) if median_abc == median_abc else float("nan"),
+            "pct_atac_overlapping": float("nan"),  # hybrid BEDs mix sources; not meaningful
+            "n_locus_genes": n_locus_genes,
+            "n_abc_genes": n_abc_genes,
+            "bed_path": str(bed_path.relative_to(_ROOT)),
+        }
         manifest["programs"].append(stats)
 
         log.info(
-            "%-8s  %8d  %10d  %14.5f  %18s",
-            prog_id,
-            stats["n_genes"],
-            stats["n_enhancers"],
-            stats["median_abc_score"],
-            f"{stats['pct_atac_overlapping']:.1f}%" if not (isinstance(stats["pct_atac_overlapping"], float) and
-                                                              stats["pct_atac_overlapping"] != stats["pct_atac_overlapping"])
-            else "n/a",
+            "%-8s  %8d  %10d  %14s  %10d  %10d",
+            prog_id, stats["n_genes"], stats["n_enhancers"],
+            f"{median_abc:.5f}" if median_abc == median_abc else "n/a",
+            n_locus_genes, n_abc_genes,
         )
 
     _MANIFEST_DIR.mkdir(parents=True, exist_ok=True)

@@ -263,6 +263,110 @@ def _save_signatures(
     log.info("Saved %d gene signatures for %s (variant=%r) → %s", len(signatures), dataset_id, variant, p)
 
 
+def enrich_gps_signatures_for_genes(
+    gene_list: list[str],
+    dataset_id: str = "czi_2025_cd4t_perturb",
+    condition: str = "Stim48hr",
+    top_k: int = 1000,
+    gps_gene_file: str | None = None,
+) -> dict[str, int]:
+    """
+    Re-extract signatures for specific genes from the full h5ad DE stats, prioritizing
+    GPS landmark genes so GPS emulation screens have ≥50 genes.
+
+    For each gene: includes ALL GPS landmark genes in the h5ad, then pads with
+    top genes by |log2FC| up to top_k.  Updates signatures.json.gz in-place.
+
+    Returns {gene: n_gps_genes_in_enriched_signature}.
+    """
+    import numpy as np
+    import anndata
+
+    ds_meta = _DATASET_REGISTRY.get(dataset_id, {})
+    h5ad_local = ds_meta.get("access", {}).get("local_path", "")
+    h5ad_path = Path(__file__).parent.parent / h5ad_local if h5ad_local else None
+    if h5ad_path is None or not h5ad_path.exists():
+        storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+        h5ad_path = _CACHE_DIR / storage_dir / "GWCD4i.DE_stats.h5ad"
+    if not h5ad_path.exists():
+        log.warning("enrich_gps_signatures: h5ad not found at %s", h5ad_path)
+        return {}
+
+    # Load GPS landmark gene set
+    gps_genes: set[str] = set()
+    candidates = []
+    if gps_gene_file:
+        candidates = [Path(gps_gene_file)]
+    candidates += [
+        Path(__file__).parent.parent / "data" / "annotations" / "gps_selected_genes_2198.txt",
+        Path(__file__).parent.parent / "data" / "gps_selected_genes_2198.txt",
+    ]
+    for p in candidates:
+        if p.exists():
+            gps_genes = {l.strip() for l in p.read_text().splitlines() if l.strip()}
+            break
+    if not gps_genes:
+        log.warning("enrich_gps_signatures: GPS gene file not found; using top-%d only", top_k)
+
+    log.info("Loading h5ad for GPS signature enrichment: %s", h5ad_path)
+    adata = anndata.read_h5ad(str(h5ad_path))
+
+    # Build Ensembl → symbol map from var
+    ensembl_to_sym: dict[str, str] = dict(zip(adata.var.index, adata.var.get("gene_name", adata.var.index)))
+    # Build GPS gene set mask in var order (symbols)
+    var_syms = np.array([ensembl_to_sym.get(e, e) for e in adata.var.index])
+    gps_mask = np.array([sym in gps_genes for sym in var_syms], dtype=bool)
+
+    # Load existing signatures to update in-place
+    existing = _load_cached_signatures(dataset_id) or {}
+
+    obs = adata.obs
+    log_fc_layer = adata.layers["log_fc"]
+    results: dict[str, int] = {}
+
+    for gene in gene_list:
+        gene_up = gene.upper()
+        row_mask = (obs["target_contrast_gene_name"] == gene_up) & (obs["culture_condition"] == condition)
+        if not row_mask.any():
+            # Try without condition filter
+            row_mask = obs["target_contrast_gene_name"] == gene_up
+            if not row_mask.any():
+                log.debug("enrich_gps_signatures: %s not found in h5ad obs (%s)", gene, condition)
+                results[gene] = 0
+                continue
+
+        row_idx = adata.obs.index.get_loc(obs[row_mask].index[0])
+        lfc_row = log_fc_layer[row_idx]
+        if hasattr(lfc_row, "toarray"):
+            lfc_row = lfc_row.toarray()
+        lfc_arr = np.array(lfc_row).flatten()
+
+        # Sort genes by |log2FC| descending
+        order = np.argsort(np.abs(lfc_arr))[::-1]
+
+        # Include: all GPS landmark genes present in h5ad, then top by |lfc| up to top_k
+        selected: dict[str, float] = {}
+        # Pass 1: GPS landmark genes
+        for i in order:
+            if gps_mask[i]:
+                selected[var_syms[i]] = float(lfc_arr[i])
+        n_gps = len(selected)
+        # Pass 2: pad with top non-GPS genes until top_k
+        for i in order:
+            if len(selected) >= top_k:
+                break
+            sym = var_syms[i]
+            if sym not in selected:
+                selected[sym] = float(lfc_arr[i])
+
+        existing[gene_up] = selected
+        results[gene_up] = n_gps
+        log.info("enrich_gps_signatures: %s → %d GPS genes, %d total", gene_up, n_gps, len(selected))
+
+    _save_signatures(dataset_id, existing)
+    return results
+
+
 # ---------------------------------------------------------------------------
 # h5ad → signatures preprocessing (offline, called once per dataset)
 # ---------------------------------------------------------------------------
@@ -361,7 +465,7 @@ def preprocess_h5ad(
     }
 
 
-def preprocess_replogle_bulk(
+def preprocess_perturbseq_bulk(
     dataset_id: str,
     h5ad_path: str | Path,
     top_k: int = 200,
@@ -2027,7 +2131,7 @@ def activate_dataset(
     if h5ad_fmt == "czi_de_stats":
         result = preprocess_czi_de_stats(dataset_id, h5ad_path)
     elif h5ad_fmt == "replogle_bulk":
-        result = preprocess_replogle_bulk(dataset_id, h5ad_path, top_k, min_abs_log2fc)
+        result = preprocess_perturbseq_bulk(dataset_id, h5ad_path, top_k, min_abs_log2fc)
     else:
         result = preprocess_h5ad(dataset_id, h5ad_path, top_k, min_abs_log2fc)
 

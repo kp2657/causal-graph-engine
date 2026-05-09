@@ -1,5 +1,5 @@
 """
-scone_sensitivity.py — PolyBIC edge selection.
+polybic_filter.py — PolyBIC edge selection.
 
 Filters causal edge candidates by penalising complexity relative to evidence tier.
 Penalty = (k/2) * log(n) where k is tier-dependent complexity cost.
@@ -21,10 +21,12 @@ def polybic_selection(
     even with modest γ.
     """
     _K: Dict[str, float] = {
-        "Tier1_Interventional":  1.0,
-        "Tier2_Convergent":      2.0,
-        "Tier3_Provisional":     4.0,
-        "provisional_virtual":  10.0,
+        "Tier1_Interventional":    1.0,
+        "Tier2_Convergent":        2.0,
+        "Tier2_eQTL_direction":    2.0,
+        "Tier2_PerturbNominated":  2.0,
+        "Tier3_Provisional":       4.0,
+        "provisional_virtual":    10.0,
     }
     selected = []
     for edge in edges:

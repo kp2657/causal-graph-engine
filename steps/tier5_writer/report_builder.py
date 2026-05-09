@@ -278,7 +278,7 @@ def run(
     disease_name = phenotype_result.get("disease_name", "")
     efo_id       = phenotype_result.get("efo_id", "")
     targets      = prioritization_result.get("targets", [])
-    state_space_targets = prioritization_result.get("state_space_targets", [])
+    state_space_targets: list = []  # unified into main target_list; separate track removed
     # Passthrough from Tier 3 — per-program × per-trait γ map used to populate
     # `inherited_genetic_evidence` and the master-regulator narrative prefix.
     gamma_per_program_per_trait: dict = causal_result.get("gamma_per_program_per_trait", {}) or {}
@@ -373,10 +373,8 @@ def run(
             "ota_gamma_sigma":    t.get("ota_gamma_sigma"),
             "ota_gamma_ci_lower": t.get("ota_gamma_ci_lower"),
             "ota_gamma_ci_upper": t.get("ota_gamma_ci_upper"),
-            "scone_confidence":   t.get("scone_confidence"),
-            "scone_flags":        t.get("scone_flags", []),
             "evidence_tier":      t["evidence_tier"],
-            "ot_score":           t["ot_score"],
+            "ot_score":           t.get("ot_score", 0.0),
             "max_phase":          t["max_phase"],
             "known_drugs":        t["known_drugs"],
             "pli":                t.get("pli"),
@@ -433,7 +431,11 @@ def run(
             "wes_burden_p":   t.get("wes_burden_p"),
             "wes_burden_beta": t.get("wes_burden_beta"),
             "wes_gamma_weight": t.get("wes_gamma_weight", 1.0),
-            "wes_note":       t.get("wes_note"),
+            "wes_note":                  t.get("wes_note"),
+            "mechanism_divergence_note": t.get("mechanism_divergence_note"),
+            # Omnigenic core vs peripheral annotation
+            "is_core_gene":    t.get("is_core_gene", False),
+            "core_evidence":   t.get("core_evidence", "peripheral — program-mediated only"),
             # Heritability bridge for mechanistic-only targets: surfaces the
             # OT γ of programs the gene controls, so a gene with
             # ot_genetic_score < 0.05 can still be defended as genetically
@@ -465,8 +467,6 @@ def run(
             "controller_annotation": t.get("controller_annotation"),
             "therapeutic_redirection_result": t.get("therapeutic_redirection_result"),
             "evidence_disagreement": t.get("evidence_disagreement", []),
-            "scone_confidence": t.get("scone_confidence"),
-            "scone_flags": t.get("scone_flags", []),
             "tau_disease_specificity": t.get("tau_disease_specificity"),
             "tau_disease_log2fc": t.get("disease_log2fc"),
             "tau_specificity_class": t.get("tau_specificity_class"),

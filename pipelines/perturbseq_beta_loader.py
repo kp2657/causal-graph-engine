@@ -1,5 +1,5 @@
 """
-replogle_parser.py — Disease/dataset-aware Perturb-seq β extractor.
+perturbseq_beta_loader.py — Disease/dataset-aware Perturb-seq β extractor.
 
 Reads a Replogle 2022 pseudo-bulk h5ad and computes quantitative β estimates
 for the Ota framework:
@@ -30,10 +30,10 @@ Caching:
   Cache is automatically invalidated when program gene sets change.
 
 Usage:
-  from pipelines.replogle_parser import load_replogle_betas
-  betas = load_replogle_betas(
+  from pipelines.perturbseq_beta_loader import load_perturbseq_betas
+  betas = load_perturbseq_betas(
       program_gene_sets=my_programs,
-      dataset_id="replogle_2022_rpe1",
+      dataset_id="schnitzler_cad_vascular",
   )
 """
 from __future__ import annotations
@@ -74,7 +74,7 @@ _Z95 = 1.96
 
 # ---------------------------------------------------------------------------
 # Dataset registry — maps scperturb_dataset → h5ad access info
-# Keeps replogle_parser self-contained (no MCP import needed).
+# Keeps perturbseq_beta_loader self-contained (no MCP import needed).
 # ---------------------------------------------------------------------------
 _DATASET_H5AD_REGISTRY: dict[str, dict] = {
     "replogle_2022_rpe1": {
@@ -92,8 +92,9 @@ _DATASET_H5AD_REGISTRY: dict[str, dict] = {
 # Datasets whose betas come from pre-computed signatures (not h5ad matrices).
 # Maps dataset_id → path to signatures.json.gz.
 _DATASET_SIGNATURES_REGISTRY: dict[str, Path] = {
-    "Schnitzler_GSE210681":  _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular"  / "signatures.json.gz",
-    "czi_2025_cd4t_perturb": _ROOT / "data" / "perturbseq" / "czi_2025_cd4t_perturb"   / "signatures.json.gz",
+    "Schnitzler_GSE210681":   _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular"  / "signatures.json.gz",
+    "schnitzler_cad_vascular": _ROOT / "data" / "perturbseq" / "schnitzler_cad_vascular" / "signatures.json.gz",
+    "czi_2025_cd4t_perturb":  _ROOT / "data" / "perturbseq" / "czi_2025_cd4t_perturb"   / "signatures.json.gz",
 }
 
 # Keep module-level path for backward compat (old callers that don't pass dataset_id)
@@ -147,6 +148,51 @@ def _load_from_signatures(
             }
         if prog_betas:
             result[pert_gene] = {"programs": prog_betas}
+
+    return result
+
+
+def _load_from_mast_npz(
+    npz_path: "Path",
+    program_gene_sets: dict[str, list[str]],
+) -> dict[str, dict]:
+    """
+    Load β(gene→program) from cnmf_mast_betas.npz (MAST differential usage).
+
+    The npz contains a (n_ko × n_prog) beta matrix with row=ko_genes, col=program_ids.
+    This is the primary β source for Schnitzler cNMF programs — statistically stronger
+    than the signature-overlap approach because MAST regresses program usage directly
+    against each KO, capturing indirect/regulatory effects that don't show up in top-200 DEGs.
+
+    Returns same format as _load_from_signatures / load_replogle_betas.
+    """
+    import numpy as _np
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    beta_mat  = data["beta"].astype(_np.float32)   # (n_ko, n_prog)
+    ko_genes  = [str(g) for g in data["ko_genes"]]
+    prog_ids  = [str(p) for p in data["program_ids"]]
+
+    prog_idx = {p: i for i, p in enumerate(prog_ids)}
+
+    result: dict[str, dict] = {}
+    for row_i, gene in enumerate(ko_genes):
+        prog_betas: dict[str, dict] = {}
+        for prog_name in program_gene_sets:
+            col_i = prog_idx.get(prog_name)
+            if col_i is None:
+                continue
+            b = float(beta_mat[row_i, col_i])
+            if b == 0.0:
+                continue
+            prog_betas[prog_name] = {
+                "beta":     round(b, 6),
+                "se":       0.0,
+                "ci_lower": round(b, 6),
+                "ci_upper": round(b, 6),
+            }
+        if prog_betas:
+            result[gene] = {"programs": prog_betas}
 
     return result
 
@@ -438,7 +484,7 @@ def _project_onto_programs(
     return result
 
 
-def load_replogle_betas(
+def load_perturbseq_betas(
     program_gene_sets: dict[str, list[str]],
     dataset_id: str | None = None,
     h5ad_path: Path | None = None,
@@ -470,8 +516,29 @@ def load_replogle_betas(
     Raises:
         FileNotFoundError: if h5ad file not present and auto_download=False.
     """
-    # --- Signatures-backed datasets (e.g. Schnitzler, CZI) skip h5ad entirely ---
+    # --- MAST npz: Schnitzler cNMF programs (P01-P60) use cnmf_mast_betas.npz ---
+    # MAST betas are statistically stronger than signature-overlap: they regress program
+    # usage directly against each KO, capturing indirect effects that miss the top-200 DEGs.
+    # This is the primary β source for CAD cNMF programs.
     sig_path = _DATASET_SIGNATURES_REGISTRY.get(dataset_id or "")
+    if sig_path is not None and any(k.startswith("P") and k[1:].isdigit() for k in program_gene_sets):
+        _mast_npz = sig_path.parent / "cnmf_mast_betas.npz"
+        if _mast_npz.exists():
+            _mast_cache = _get_cache_path(dataset_id, program_gene_sets, _mast_npz)
+            if not force_recompute and _mast_cache.exists():
+                with open(_mast_cache) as _f:
+                    _cached = json.load(_f)
+                logger.info("Cache hit (MAST npz): %s (%d genes)", _mast_cache, len(_cached))
+                return _cached
+            logger.info("Loading MAST betas from %s for %d cNMF programs", _mast_npz, len(program_gene_sets))
+            _mast_result = _load_from_mast_npz(_mast_npz, program_gene_sets)
+            _mast_cache.parent.mkdir(parents=True, exist_ok=True)
+            with open(_mast_cache, "w") as _f:
+                json.dump(_mast_result, _f)
+            logger.info("MAST β: %d genes cached → %s", len(_mast_result), _mast_cache)
+            return _mast_result
+
+    # --- Signatures-backed datasets (e.g. Schnitzler, CZI) skip h5ad entirely ---
     if sig_path is not None:
         try:
             from config.scoring_thresholds import USE_FINGERPRINT_BETA
@@ -605,5 +672,10 @@ def load_replogle_betas(
     logger.info("Cache written: %s", cache_path)
 
     return betas
+
+
+# Backward-compat alias — load_replogle_betas was the original name before the
+# function was extended to cover Schnitzler and CZI (non-Replogle) datasets.
+load_replogle_betas = load_perturbseq_betas
 
 

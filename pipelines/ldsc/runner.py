@@ -882,13 +882,24 @@ def _parse_ldsc_results(out_prefix: Path, prog: str) -> dict | None:
                     tau_se = float(tau_se_raw)
                     tau_z  = float(tau_z_raw) if tau_z_raw else (tau / (tau_se + 1e-8))
                     tau_p  = 2.0 * (1.0 - _norm_cdf(abs(tau_z)))
+                    # Prop_h2 = fraction of total trait heritability in this annotation
+                    # Enrichment = Prop_h2 / Prop_SNPs (heritability enrichment ratio)
+                    prop_h2_raw  = parts[col["Prop_h2"]]  if "Prop_h2"    in col else None
+                    prop_snp_raw = parts[col["Prop_SNPs"]] if "Prop_SNPs" in col else None
+                    enrich_raw   = parts[col["Enrichment"]] if "Enrichment" in col else None
+                    prop_h2  = round(float(prop_h2_raw),  8) if prop_h2_raw  else None
+                    prop_snp = round(float(prop_snp_raw), 8) if prop_snp_raw else None
+                    enrichment = round(float(enrich_raw), 6) if enrich_raw  else None
                     return {
-                        "name":   prog,
-                        "tau":    round(tau, 6),
-                        "tau_se": round(tau_se, 6),
-                        "tau_p":  round(tau_p, 6),
-                        "n_snps": None,
-                        "method": "sldsc_polyfun",
+                        "name":       prog,
+                        "tau":        round(tau, 6),
+                        "tau_se":     round(tau_se, 6),
+                        "tau_p":      round(tau_p, 6),
+                        "prop_h2":    prop_h2,
+                        "prop_snps":  prop_snp,
+                        "enrichment": enrichment,
+                        "n_snps":     None,
+                        "method":     "sldsc_polyfun",
                     }
                 except (ValueError, IndexError):
                     continue

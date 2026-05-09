@@ -91,9 +91,8 @@ def run(
     short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), "CAD")
 
     # -------------------------------------------------------------------------
-    # Load gwas_t statistics for SVD programs (used as signed γ fallback when
-    # OT L2G returns no gamma — prevents GWAS-negative programs like C08 from
-    # being silently excluded from the OTA sum).
+    # Load gwas_t statistics for GWAS-aligned programs (used for program
+    # filtering and LOCUS beta loading; not for gamma computation).
     # -------------------------------------------------------------------------
     _DISEASE_DATASET_MAP: dict[str, str] = {
         "CAD": "schnitzler_cad_vascular",
@@ -122,48 +121,48 @@ def run(
                 warnings.append(f"gwas_t load failed ({_gwas_t_dataset}): {_gt_exc}")
 
     # -------------------------------------------------------------------------
-    # Override gamma_estimates for SVD programs using signed chi-square τ.
-    # S-LDSC τ provides directional signal: negative τ = heritability-depleted
-    # (anti-atherogenic) program, which OT L2G cannot express (always ≥ 0).
-    # Only overrides programs that have a τ entry; OT L2G remains for NMF/Hallmark.
+    # Load program gammas from S-LDSC.
+    #
+    # Both diseases: GeneticNMF programs (τ*>0 filter applied in loader).
+    # CAD also adds cNMF k=60 (Schnitzler endothelial).
+    # RA uses GeneticNMF Stim48hr (8/30 programs τ*>0; dense β coverage
+    # enables discovery of genes with no prior GWAS locus of their own).
     # -------------------------------------------------------------------------
-    _svd_gammas: dict[str, dict] = {}
+    _program_gammas: dict[str, dict] = {}
+    _gnmf_rest_gammas: dict[str, dict] = {}
     try:
         from pipelines.ldsc.gamma_loader import (
-            get_svd_program_gammas as _get_svd_gammas,
-            get_locus_program_gammas as _get_locus_gammas,
-            get_cnmf_program_gammas as _get_cnmf_gammas,
+            get_cnmf_program_gammas        as _get_cnmf_gammas,
             get_genetic_nmf_program_gammas as _get_gnmf_gammas,
         )
-        # Pass gwas_genes for Zhu et al. 2025 bystander correction (GWAS enrichment γ_P).
-        _gwas_gene_list = list(disease_query.get("gwas_genes") or [])
-        # RA: SVD components C29/C26 are dominated by broad T-cell activation/proliferation
-        # and confound 13/16 RA anchors. Use GeneticNMF + LOCUS only for RA to eliminate
-        # bystander signal; SVD retained for CAD where components are more specific.
-        _use_svd = short != "RA"
-        # RA: load condition-specific GeneticNMF gammas (Stim48hr for primary OTA sum;
-        # REST gammas stored separately for ota_gamma_rest computation below).
-        # Falls back to shared condition="" file if condition-specific file is absent.
-        _gnmf_stim_gammas = _get_gnmf_gammas(short, condition="Stim48hr") or _get_gnmf_gammas(short)
-        _svd_gammas = {
-            **(_get_svd_gammas(short, gwas_genes=_gwas_gene_list) if _use_svd else {}),
-            **_get_locus_gammas(short),
-            **_get_cnmf_gammas(short),   # Schnitzler k=60 cNMF for CAD; no-op for others
-            **_gnmf_stim_gammas,         # WES-regularised GeneticNMF for RA; no-op for CAD
+        # CAD: cNMF k=60 only — direction-corrected via SVD projection (CCM2/PLPP3 validated).
+        #   GeneticNMF excluded: all-positive τ* overwhelms cNMF negative signal for
+        #   atheroprotective genes (PLPP3 flips from -0.317 to +0.58 with GeneticNMF).
+        # RA: GeneticNMF Stim48hr — raw τ* (program_taus); eQTL direction correction
+        #   unreliable for CD4+ T programs; direction from β signs.
+        if short == "CAD":
+            _program_gammas = _get_cnmf_gammas(short)
+            _gnmf_rest_gammas = {}
+        else:
+            _gnmf_stim = (
+                _get_gnmf_gammas(short, condition="Stim48hr", prefer_raw_taus=True)
+                or _get_gnmf_gammas(short, prefer_raw_taus=True)
+            )
+            _program_gammas = _gnmf_stim
+            _gnmf_rest_gammas = _get_gnmf_gammas(short, condition="REST", prefer_raw_taus=True)
+        warnings.append(
+            f"{short} OTA: {'cNMF k=60' if short == 'CAD' else 'GeneticNMF'}"
+            f" ({len(_program_gammas)} programs with τ*>0)"
+        )
+
+        # Purge stale SVD / LOCUS entries from old checkpoints.
+        _svd_pfx   = f"{short}_SVD_"
+        gamma_estimates = {
+            k: v for k, v in gamma_estimates.items()
+            if not k.startswith(_svd_pfx) and not k.startswith("LOCUS_")
         }
-        # REST-condition GeneticNMF gammas: used in the REST OTA sum only.
-        _gnmf_rest_gammas: dict[str, dict] = _get_gnmf_gammas(short, condition="REST") if short == "RA" else {}
-        # Purge any SVD entries already in gamma_estimates (from checkpoint) when SVD is
-        # excluded. The checkpoint preserves gamma_estimates from the original full run;
-        # without active removal those stale SVD gammas survive into the OTA sum.
-        if not _use_svd:
-            _svd_pfx = f"{short}_SVD_"
-            gamma_estimates = {
-                k: v for k, v in gamma_estimates.items()
-                if not k.startswith(_svd_pfx)
-            }
-    except Exception as _svd_exc:
-        warnings.append(f"SVD γ load failed (non-fatal): {_svd_exc}")
+    except Exception as _prog_exc:
+        warnings.append(f"Program γ load failed (non-fatal): {_prog_exc}")
 
     # -------------------------------------------------------------------------
     # Load cNMF betas once (gene → {CAD_cNMF_P*: cosine_proj}) for augmenting
@@ -187,78 +186,41 @@ def run(
     # Two separate OTA sums: Stim48hr (ota_gamma) and REST (ota_gamma_rest).
     # Gammas are program-level properties independent of condition; only betas differ.
 
-    # -------------------------------------------------------------------------
-    # Load z-scored locus betas for additive locus OTA contribution.
-    # Tier 2 uses SVD Vt for β (proper scale); locus Vt is row-z-scored here
-    # so LOCUS_* gamma entries have matching β values in the OTA sum.
-    # -------------------------------------------------------------------------
-    # Locus betas are GWAS-anchor-scoped: locus programs characterise what each GWAS
-    # causal gene does molecularly. Non-GWAS genes already have SVD β; extending to
-    # all 11k+ perturbed genes causes random z-score accumulation that swamps SVD signal.
     _gwas_anchor_genes: frozenset[str] = frozenset(disease_query.get("gwas_genes") or [])
-    _locus_betas: dict[str, dict[str, float]] = {}  # gene -> {LOCUS_P -> z-beta}
-    if _gwas_t_dataset and _svd_gammas and _gwas_anchor_genes:
-        try:
-            import numpy as _np_ota
-            from pipelines.ldsc.gamma_loader import get_locus_program_gammas as _glpg
-            _locus_gmap = _glpg(short)
-            if _locus_gmap:
-                _locus_npz = (
-                    Path(__file__).parent.parent.parent
-                    / "data" / "perturbseq" / _gwas_t_dataset
-                    / "gwas_anchored_programs.npz"
-                )
-                if _locus_npz.exists():
-                    _ld = _np_ota.load(_locus_npz, allow_pickle=True)
-                    _lVt    = _ld["Vt"]                # (n_loci × n_perts)
-                    _lpert  = list(_ld["pert_names"])
-                    _lnames = list(_ld["locus_names"])
-                    # Z-score each row so each locus program spans same β scale as SVD
-                    _row_std = _lVt.std(axis=1, keepdims=True) + 1e-8
-                    _lVt_z  = (_lVt - _lVt.mean(axis=1, keepdims=True)) / _row_std
-                    for _gi, _gname in enumerate(_lpert):
-                        if _gname in _gwas_anchor_genes:  # GWAS anchors only
-                            _locus_betas[_gname] = {
-                                _lnames[_li]: float(_lVt_z[_li, _gi])
-                                for _li in range(len(_lnames))
-                            }
-                    warnings.append(
-                        f"locus_betas_loaded: {len(_locus_betas)}/{len(_gwas_anchor_genes)} "
-                        f"GWAS anchors × {len(_lnames)} locus programs"
-                    )
-        except Exception as _lb_exc:
-            warnings.append(f"locus_beta_load failed (non-fatal): {_lb_exc}")
 
-    if _svd_gammas:
-        gamma_estimates = dict(gamma_estimates)  # shallow copy before mutation
-        _n_overridden = 0
-        for _prog, _svd_est in _svd_gammas.items():
-            _gamma_val = _svd_est.get("gamma")
+    def _build_gamma_estimates_from(
+        source: dict[str, dict], base: dict, trait_name: str
+    ) -> dict:
+        """Merge S-LDSC program gammas into a gamma_estimates-compatible dict."""
+        out = dict(base)
+        for _prog, _prog_est in source.items():
+            _gamma_val = _prog_est.get("gamma")
             if _gamma_val is None:
                 continue
-            # Build a trait-keyed entry compatible with OTA format
-            _svd_trait_entry = {
+            _entry = {
                 trait_key: {
                     "gamma":         _gamma_val,
-                    "gamma_se":      _svd_est.get("gamma_se", abs(_gamma_val) * 0.30),
-                    "evidence_tier": _svd_est.get("evidence_tier", "Tier3_Provisional"),
-                    "data_source":   _svd_est.get("data_source", "S-LDSC_chisq"),
+                    "gamma_se":      _prog_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _prog_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _prog_est.get("data_source", "S-LDSC_chisq"),
                 }
-                for trait_key in (list(gamma_estimates.get(_prog, {}).keys()) or [disease_name])
+                for trait_key in (list(out.get(_prog, {}).keys()) or [trait_name])
             }
-            if not _svd_trait_entry:
-                _svd_trait_entry = {disease_name: {
+            if not _entry:
+                _entry = {trait_name: {
                     "gamma":         _gamma_val,
-                    "gamma_se":      _svd_est.get("gamma_se", abs(_gamma_val) * 0.30),
-                    "evidence_tier": _svd_est.get("evidence_tier", "Tier3_Provisional"),
-                    "data_source":   _svd_est.get("data_source", "S-LDSC_chisq"),
+                    "gamma_se":      _prog_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _prog_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _prog_est.get("data_source", "S-LDSC_chisq"),
                 }}
-            gamma_estimates[_prog] = _svd_trait_entry
-            _n_overridden += 1
-        if _n_overridden:
-            warnings.append(
-                f"svd_ldsc_gamma_override: {_n_overridden} SVD programs got signed γ from χ² τ"
-            )
+            out[_prog] = _entry
+        return out
+
+    if _program_gammas:
+        gamma_estimates = _build_gamma_estimates_from(
+            _program_gammas, gamma_estimates, disease_name
+        )
+        warnings.append(f"program_gamma_override: {len(_program_gammas)} programs got |τ*| γ from S-LDSC")
 
     # -------------------------------------------------------------------------
     # Load program precedence discounts (if available) and apply to gamma_estimates
@@ -413,19 +375,14 @@ def run(
             continue
 
         gene_beta = beta_matrix.get(gene, {})
-        if gene in _locus_betas:  # _locus_betas already scoped to GWAS anchors at build time
-            gene_beta = {**gene_beta, **_locus_betas[gene]}
         if gene in _cnmf_betas:
             _cnmf_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
                           for p, v in _cnmf_betas[gene].items()}
             gene_beta = {**gene_beta, **_cnmf_gene}
-
-        # REST condition gene_beta: SVD/locus betas shared; only GeneticNMF betas differ
+        # REST condition gene_beta: only GeneticNMF betas differ from Stim48hr.
         gene_beta_rest: dict = {}
         if _cnmf_betas_rest:
             gene_beta_rest = dict(beta_matrix.get(gene, {}))
-            if gene in _locus_betas:
-                gene_beta_rest = {**gene_beta_rest, **_locus_betas[gene]}
             if gene in _cnmf_betas_rest:
                 _rest_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
                               for p, v in _cnmf_betas_rest[gene].items()}
@@ -514,6 +471,7 @@ def run(
                 # Concordance/discordance documented in wes_concordant + wes_note.
                 _wes = _wes_concordance_check(ota_gamma, gb_result, gene=gene)
 
+
                 key = f"{gene}__{trait}"
                 r: dict = {
                     "gene":               gene,
@@ -527,7 +485,7 @@ def run(
                     "ota_gamma_sigma":    ota_result.get("ota_gamma_sigma", 0.0),
                     "ota_gamma_ci_lower": ota_result.get("ota_gamma_ci_lower"),
                     "ota_gamma_ci_upper": ota_result.get("ota_gamma_ci_upper"),
-                    "genebayes_grounded":      ota_result.get("genebayes_grounded", False),
+                    "genebayes_grounded":       ota_result.get("genebayes_grounded", False),
                     "stress_flag":              _stress_flagged,
                     "tissue_weight":            round(_tissue_mult, 4),
                     "n_programs_contributing":  _n_programs_contributing,

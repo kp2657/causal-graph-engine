@@ -97,14 +97,48 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         logger.debug("DE vector unavailable for SVD alignment: %s", _de_exc)
 
     # Program source priority:
+    # 0. cNMF Perturb-seq paper programs (signatures-backed datasets without h5ad).
+    #    Schnitzler/CZI: cnmf_program_gene_sets.json (P01-P60) + MAST betas.
+    #    SVD Vt z-scores require the h5ad, which these datasets don't have.
     # 1. GWAS + DE aligned SVD — programs ranked by gwas_t × de_pearson;
     #    island axes and program colors converge; genetic north star + disease
-    #    transcriptional grounding both satisfied
+    #    transcriptional grounding both satisfied (h5ad datasets only)
     # 2. cNMF from disease-specific h5ad (scRNA-seq NMF — separate from Perturb-seq space)
     # 3. MSigDB Hallmark fallback
     raw_programs: list = []
     programs_info: dict = {}
-    if disease_key_for_programs:
+
+    # Priority 0: signatures-backed datasets have pre-computed cNMF program gene sets.
+    # Use them directly — SVD betas can't be loaded without h5ad.
+    _sig_backed_programs_loaded = False
+    try:
+        from pipelines.perturbseq_beta_loader import _DATASET_SIGNATURES_REGISTRY as _SIG_REG
+        _early_ctx = DISEASE_CELL_TYPE_MAP.get(disease_key_for_programs, {})
+        _early_dataset = _early_ctx.get("scperturb_dataset")
+        if _early_dataset and _early_dataset in _SIG_REG:
+            _gene_sets_path = _SIG_REG[_early_dataset].parent / "cnmf_program_gene_sets.json"
+            if _gene_sets_path.exists():
+                import json as _json
+                _cnmf_gs = _json.loads(_gene_sets_path.read_text())
+                raw_programs = [
+                    {"program_id": pid, "gene_set": genes}
+                    for pid, genes in _cnmf_gs.items()
+                ]
+                programs_info = {
+                    "programs": raw_programs,
+                    "source": f"cNMF_paper_programs_{_early_dataset}",
+                    "cell_type": _early_dataset,
+                }
+                _sig_backed_programs_loaded = True
+                logger.info(
+                    "Using %d cNMF paper programs for %s (source=%s, dataset=%s)",
+                    len(raw_programs), disease_key_for_programs,
+                    programs_info["source"], _early_dataset,
+                )
+    except Exception as _sig_prog_exc:
+        logger.debug("Signatures-backed program load failed, falling through: %s", _sig_prog_exc)
+
+    if not _sig_backed_programs_loaded and disease_key_for_programs:
         svd_info = get_svd_programs_for_disease(
             disease_key_for_programs,
             gwas_genes=gwas_gene_set_for_programs or None,
@@ -150,6 +184,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
 
     beta_matrix: dict[str, dict[str, float | None]] = {}
     evidence_tier_per_gene: dict[str, str] = {}
+    coloc_h4_per_gene: dict[str, float] = {}  # Phase E: PIP-weighted proxy H4 per gene
     warnings: list[str] = []
 
     # ------------------------------------------------------------------
@@ -185,6 +220,16 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # Disease-specific rationale is in DISEASE_CELL_TYPE_MAP (schema.py).
     # Example: AMD → ["Liver", "Whole_Blood"] catches CFH/C3/CFD (liver-synthesised complement).
     gtex_tissues_secondary: list[str] = ctx.get("gtex_tissues_secondary", [])
+
+    # Diseases whose primary cell type is not a GTEx bulk tissue (e.g. RA → CD4+ T cell)
+    # get sc-eQTL (eQTL Catalogue) as primary instrument; GTEx is a last-resort fallback.
+    _GTEX_BULK_TISSUES = frozenset({
+        "Whole_Blood", "Liver", "Lung", "Kidney_Cortex", "Heart_Left_Ventricle",
+        "Artery_Coronary", "Artery_Aorta", "Artery_Tibial", "Spleen", "Muscle_Skeletal",
+        "Adipose_Subcutaneous", "Brain_Cortex", "Thyroid", "Skin_Sun_Exposed_Lower_leg",
+        "Colon_Sigmoid", "Colon_Transverse", "Small_Intestine_Terminal_Ileum",
+    })
+    _prefer_sc_eqtl = ctx.get("primary_tissue", "Whole_Blood") not in _GTEX_BULK_TISSUES
     efo_id: str   = disease_query.get("efo_id", "")
 
     # Phase Z7: Motif and Library for Latent Hijack
@@ -232,7 +277,10 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
     # Defaults to "K562" because burden_perturb_server (qualitative fallback) is K562-based.
     loaded_perturb_cell_type: str = "K562"
     try:
-        from pipelines.replogle_parser import load_replogle_betas, _get_h5ad_path, _download_h5ad
+        from pipelines.perturbseq_beta_loader import (
+            load_perturbseq_betas, _get_h5ad_path, _download_h5ad,
+            _DATASET_SIGNATURES_REGISTRY,
+        )
         # Use disease-specific dataset (e.g. replogle_2022_rpe1 for AMD, replogle_2022_k562 generic)
         scperturb_dataset = ctx.get("scperturb_dataset")
         _h5ad_path = _get_h5ad_path(scperturb_dataset) if scperturb_dataset else None
@@ -250,7 +298,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             # SVD programs: use z-scored Vt values as β (bypasses NES saturation cap).
             # For each SVD component c, β = (Vt[c,g] - mean_c) / std_c, giving ±1-2
             # scale per gene with component-specific differentiation.  For non-SVD
-            # programs (NMF, MSigDB), fall back to NES via load_replogle_betas.
+            # programs (NMF, MSigDB), fall back to NES via load_perturbseq_betas.
             _is_svd = programs_info.get("source", "").startswith("SVD_")
             if _is_svd and scperturb_dataset:
                 try:
@@ -270,7 +318,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             if not _is_svd:
                 prog_gene_sets_list = {pid: list(gset) for pid, gset in program_gene_sets.items()}
                 if any(prog_gene_sets_list.values()):
-                    perturbseq_data = load_replogle_betas(
+                    perturbseq_data = load_perturbseq_betas(
                         program_gene_sets=prog_gene_sets_list,
                         dataset_id=scperturb_dataset,
                         gwas_gene_set=gwas_gene_set if gwas_gene_set else None,
@@ -280,10 +328,24 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
             # for CAD, "replogle_2022_rpe1" for AMD).
             if scperturb_dataset:
                 loaded_perturb_cell_type = scperturb_dataset
+        elif scperturb_dataset and scperturb_dataset in _DATASET_SIGNATURES_REGISTRY:
+            # Signatures-backed datasets (e.g. Schnitzler GSE210681, CZI CD4+ T):
+            # load_perturbseq_betas handles cnmf_mast_betas.npz and signatures.json.gz
+            # internally — no h5ad required.
+            _is_svd = programs_info.get("source", "").startswith("SVD_")
+            if not _is_svd:
+                prog_gene_sets_list = {pid: list(gset) for pid, gset in program_gene_sets.items()}
+                if any(prog_gene_sets_list.values()):
+                    perturbseq_data = load_perturbseq_betas(
+                        program_gene_sets=prog_gene_sets_list,
+                        dataset_id=scperturb_dataset,
+                        gwas_gene_set=gwas_gene_set if gwas_gene_set else None,
+                    )
+            loaded_perturb_cell_type = scperturb_dataset
         elif _h5ad_path:
             warnings.append(
                 f"Replogle h5ad not found for {scperturb_dataset}: {_h5ad_path}. "
-                "Run load_replogle_betas(auto_download=True) to download."
+                "Run load_perturbseq_betas(auto_download=True) to download."
             )
 
         # SVD cosine nomination: extend gene_list with non-GWAS perturb-seq genes
@@ -341,7 +403,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         # 1) Replogle quantitative perturb-seq betas (fast dict lookup if loaded)
         try:
             if isinstance(perturbseq_data, dict):
-                # load_replogle_betas outputs a dict keyed by gene in most versions
+                # load_perturbseq_betas outputs a dict keyed by gene in most versions
                 if gene in perturbseq_data:
                     return True
         except Exception:
@@ -410,12 +472,65 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         is_gwas_gene = (not gwas_gene_set) or (gene in gwas_gene_set)
 
         # --------------------------------------------------------------
-        # Fetch eQTL data for this gene once (reused across all programs)
-        # Supports both real GTEx format {"eqtls": [...]} and test mocks
-        # that return {"data": [...]}.
+        # Fetch eQTL data for this gene once (reused across all programs).
+        #
+        # Routing priority:
+        #   _prefer_sc_eqtl=True  (RA, immune): eQTL Catalogue CD4+ T → GTEx fallback (flagged)
+        #   _prefer_sc_eqtl=False (CAD, AMD):   GTEx primary → GTEx secondary → eQTL Catalogue
+        #
+        # eQTL Catalogue returns beta; GTEx returns nes.  Both are normalised to
+        # the "nes" key that estimate_beta expects.
         # --------------------------------------------------------------
         eqtl_data_for_gene: dict | None = None
-        if is_gwas_gene:
+        if is_gwas_gene and _prefer_sc_eqtl:
+            # --- sc-eQTL first path (CD4+ T cell diseases) ---
+            _sc_cell_types = ctx.get("sc_eqtl_cell_types", [])
+            _sc_study      = ctx.get("sc_eqtl_study")
+            if _sc_cell_types and _sc_study:
+                try:
+                    from mcp_servers.eqtl_catalogue_server import get_sc_eqtl as _get_sc_eqtl
+                    _sc_result = _get_sc_eqtl(
+                        gene,
+                        cell_type=_sc_cell_types[0],
+                        study_label=_sc_study,
+                        disease=disease_key or None,
+                    )
+                    _top_sc = _sc_result.get("top_eqtl")
+                    if _top_sc and _sc_result.get("n_found", 0) > 0:
+                        _beta = _top_sc.get("beta") or _top_sc.get("nes") or _top_sc.get("effect_size")
+                        if _beta is not None:
+                            eqtl_data_for_gene = {
+                                "nes":    float(_beta),
+                                "se":     _top_sc.get("se"),
+                                "pvalue": float(_top_sc.get("pvalue") or 1.0),
+                                "tissue": _sc_result.get("cell_type", _sc_cell_types[0]),
+                                "source": f"eQTL_Catalogue_{_sc_study}_{_sc_cell_types[0]}",
+                            }
+                except Exception as exc:
+                    warnings.append(f"{gene}: sc-eQTL (primary) prefetch failed: {exc}")
+
+            # GTEx Whole Blood as last-resort fallback — flagged as cell-type-mismatched
+            if eqtl_data_for_gene is None:
+                try:
+                    eqtl_result = query_gtex_eqtl(gene, gtex_tissue)
+                    eqtls = eqtl_result.get("eqtls", []) or eqtl_result.get("data", [])
+                    if eqtls:
+                        top = eqtls[0]
+                        nes = top.get("nes") or top.get("effect_size")
+                        if nes is not None:
+                            eqtl_data_for_gene = {
+                                "nes":              float(nes),
+                                "se":               top.get("se"),
+                                "pvalue":           float(top.get("pval_nominal") or top.get("pvalue") or 1.0),
+                                "tissue":           gtex_tissue,
+                                "source":           f"GTEx_fallback_mismatched({gtex_tissue})",
+                                "cell_type_mismatch": True,
+                            }
+                except Exception as exc:
+                    warnings.append(f"{gene}: GTEx eQTL fallback failed: {exc}")
+
+        elif is_gwas_gene:
+            # --- GTEx-first path (CAD, AMD, tissue-matched bulk diseases) ---
             try:
                 eqtl_result = query_gtex_eqtl(gene, gtex_tissue)
                 eqtls = eqtl_result.get("eqtls", []) or eqtl_result.get("data", [])
@@ -426,6 +541,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                         eqtl_data_for_gene = {
                             "nes":    float(nes),
                             "se":     top.get("se"),
+                            "pvalue": float(top.get("pval_nominal") or top.get("pvalue") or 1.0),
                             "tissue": gtex_tissue,
                         }
             except Exception as exc:
@@ -447,6 +563,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                                 eqtl_data_for_gene = {
                                     "nes":    float(_nes),
                                     "se":     _top.get("se"),
+                                    "pvalue": float(_top.get("pval_nominal") or _top.get("pvalue") or 1.0),
                                     "tissue": _sec_tissue,
                                     "source": f"GTEx_secondary_tissue({_sec_tissue})",
                                 }
@@ -469,6 +586,41 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                 warnings.append(f"{gene}: OT instruments prefetch failed: {exc}")
 
         # --------------------------------------------------------------
+        # Phase E: PIP-weighted proxy COLOC H4 (Pritchard P4).
+        #
+        # eqtl_coloc_mapper runs in parallel with this module so true COLOC
+        # posteriors are unavailable here.  When both a cis-eQTL and an OT GWAS
+        # instrument exist for the same gene, proxy H4 = 0.85 (strong signal that
+        # the eQTL shares a causal variant with the GWAS locus).  This is then
+        # downscaled by the gene's fine-mapped PIP:
+        #
+        #   proxy_h4 = 0.85 × min(pip / PIP_ANCHOR, 1.0)
+        #
+        # where PIP_ANCHOR = 0.10.  A gene at a well-fine-mapped locus (PIP≥0.10)
+        # keeps proxy_h4=0.85 ≥ COLOC_H4_MIN (0.80) → Tier2.
+        # A gene with PIP=0.05 → proxy_h4=0.43 < 0.80 → routed to Tier2.5
+        # (direction-only, higher sigma).  This is the first time coloc_h4 is
+        # non-None in the live pipeline; it activates the gating in estimate_beta_tier2.
+        # --------------------------------------------------------------
+        coloc_h4_for_gene: float | None = None
+        _PIP_ANCHOR = 0.10
+        _PROXY_H4_MAX = 0.85
+        if eqtl_data_for_gene is not None and ot_instruments_for_gene is not None:
+            _gwas_instrs = [
+                i for i in ot_instruments_for_gene.get("instruments", [])
+                if i.get("instrument_type") == "gwas_credset"
+            ]
+            if _gwas_instrs:
+                try:
+                    from mcp_servers.gwas_genetics_server import get_gene_max_pip_for_trait
+                    _pip_res = get_gene_max_pip_for_trait(gene, efo_id)
+                    _pip = float(_pip_res.get("max_pip") or 0.0)
+                except Exception:
+                    _pip = 0.0
+                # Scale proxy H4 by PIP: full credit at PIP≥0.10, proportional below
+                coloc_h4_for_gene = _PROXY_H4_MAX * min(_pip / _PIP_ANCHOR, 1.0) if _pip > 0 else _PROXY_H4_MAX * 0.5
+
+        # --------------------------------------------------------------
         # Pre-fetch pQTL instruments (Tier 2p): protein QTL from UKB-PPP /
         # INTERVAL / deCODE via eQTL Catalogue.  Used for genes with coding
         # variants where cis-eQTL is absent (CFH Y402H, LPA, TREM2 R47H).
@@ -488,12 +640,13 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
 
         # --------------------------------------------------------------
         # Pre-fetch sc-eQTL (Tier 2c): cell-type-specific eQTL from
-        # eQTL Catalogue (OneK1K, Blueprint).  Fills gaps where GTEx bulk
-        # dilutes signal present in a minority cell type.
-        # Only fetch if GTEx eQTL was not found.
+        # eQTL Catalogue (OneK1K, Blueprint).
+        # For _prefer_sc_eqtl diseases this was already run above as primary;
+        # skip here to avoid a duplicate API call.
+        # For GTEx-first diseases, run as gap-filler when GTEx found nothing.
         # --------------------------------------------------------------
         sc_eqtl_data_for_gene: dict | None = None
-        if is_gwas_gene and eqtl_data_for_gene is None:
+        if is_gwas_gene and not _prefer_sc_eqtl and eqtl_data_for_gene is None:
             _sc_cell_types = ctx.get("sc_eqtl_cell_types", [])
             _sc_study      = ctx.get("sc_eqtl_study")
             try:
@@ -528,7 +681,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
 
         # Vt-direct fast path was removed: Vt values (~0.01) are 10-20x smaller
         # than NES betas (~0.3-0.8), causing OTA gamma to collapse below ranking
-        # thresholds. NES computed by load_replogle_betas against SVD component
+        # thresholds. NES computed by load_perturbseq_betas against SVD component
         # gene sets (top-|U_scaled[:,c]| genes) gives the correct scale.
         tier = "provisional_virtual"
         best_tier_rank = _TIER_RANK["provisional_virtual"]
@@ -553,6 +706,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
                     gene, pid,
                     perturbseq_data=perturbseq_data,
                     eqtl_data=eqtl_data_for_gene,
+                    coloc_h4=coloc_h4_for_gene,
                     ot_instruments=ot_instruments_for_gene,
                     sc_eqtl_data=sc_eqtl_data_for_gene,
                     pqtl_data=pqtl_data_for_gene,
@@ -611,12 +765,14 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
 
         beta_matrix[gene] = gene_betas
         evidence_tier_per_gene[gene] = tier
+        if coloc_h4_for_gene is not None:
+            coloc_h4_per_gene[gene] = round(coloc_h4_for_gene, 3)
 
     # ------------------------------------------------------------------
     # Consolidate tier counts from evidence_tier_per_gene
     # ------------------------------------------------------------------
     n_tier1 = sum(1 for t in evidence_tier_per_gene.values() if t == "Tier1_Interventional")
-    n_tier2 = sum(1 for t in evidence_tier_per_gene.values() if t == "Tier2_Convergent")
+    n_tier2 = sum(1 for t in evidence_tier_per_gene.values() if t in ("Tier2_Convergent", "Tier2_eQTL_direction", "Tier2_PerturbNominated"))
     n_tier3 = sum(1 for t in evidence_tier_per_gene.values() if t in ("Tier3_Provisional", "moderate_transferred", "moderate_grn"))
     n_virtual = sum(1 for t in evidence_tier_per_gene.values() if t == "provisional_virtual")
 
@@ -672,6 +828,7 @@ def run(gene_list: list[str], disease_query: dict) -> dict:
         "programs":                   program_ids,
         "beta_matrix":                beta_matrix,
         "evidence_tier_per_gene":     evidence_tier_per_gene,
+        "coloc_h4_per_gene":          coloc_h4_per_gene,   # Phase E: PIP-weighted proxy H4
         "n_tier1":                    n_tier1,
         "n_tier2":                    n_tier2,
         "n_tier3":                    n_tier3,

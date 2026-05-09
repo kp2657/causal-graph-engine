@@ -262,13 +262,15 @@ def compute_ota_gamma(
 
     # Dominant tier = lowest (most reliable) tier
     tier_priority = {
-        "Tier1_Interventional": 1,
-        "Tier2_Convergent": 2,
-        "Tier3_Provisional": 3,
-        "moderate_transferred": 3,
-        "moderate_grn": 3,
-        "provisional_virtual": 4,  # β has no h5ad basis — excluded from graph by calculator
-        "no_perturb_data": 4,      # no programs contributed to OTA sum (tiers_used empty)
+        "Tier1_Interventional":   1,
+        "Tier2_Convergent":       2,
+        "Tier2_eQTL_direction":   2,
+        "Tier2_PerturbNominated": 2,
+        "Tier3_Provisional":      3,
+        "moderate_transferred":   3,
+        "moderate_grn":           3,
+        "provisional_virtual":    4,  # β has no h5ad basis — excluded from graph by calculator
+        "no_perturb_data":        4,  # no programs contributed to OTA sum (tiers_used empty)
     }
     if tiers_used:
         dominant_tier = min(tiers_used, key=lambda t: tier_priority.get(t, 99))
@@ -514,24 +516,13 @@ def compute_ota_gamma_with_uncertainty(
     sigma_ota = math.sqrt(variance) if variance > 0 else 0.5 # wide prior if no data
     ota_gamma = base["ota_gamma"]
 
-    # --- Dataset 1 Convergence: GeneBayes Grounding ---
+    # WES burden is used for directional annotation only (via _wes_concordance_check).
+    # Backman2021 log-ORs are not regularised posteriors: sparse-carrier genes produce
+    # extreme ORs (e.g. MLN OR=25.6) that would inflate OTA γ when used as Bayesian
+    # priors. The Ota framework γ = Σ β×γ is the authoritative causal estimate.
     fused_gamma = ota_gamma
     sigma_fused = sigma_ota
     gb_note = ""
-
-    if genebayes_result:
-        # Weiner et al. (Nature 2023) GeneBayes posterior mean and SE
-        gb_mean = genebayes_result.get("burden_beta")
-        gb_se   = genebayes_result.get("burden_se")
-        
-        if gb_mean is not None and gb_se is not None and gb_se > 0:
-            # Precision-weighted fusion (Bayesian Update)
-            w_gb  = 1.0 / (gb_se ** 2)
-            w_ota = 1.0 / (sigma_ota ** 2)
-            
-            fused_gamma = (gb_mean * w_gb + ota_gamma * w_ota) / (w_gb + w_ota)
-            sigma_fused = math.sqrt(1.0 / (w_gb + w_ota))
-            gb_note = f"Fused with GeneBayes direct prior (beta={gb_mean:.3f}, se={gb_se:.3f})"
 
     return {
         **base,

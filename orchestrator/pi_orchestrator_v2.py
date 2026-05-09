@@ -182,23 +182,43 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     from pipelines.ota_gamma_estimation import estimate_gamma
     from mcp_servers.burden_perturb_server import get_program_gene_loadings
     from pipelines.cnmf_programs import get_programs_for_disease, get_svd_programs_for_disease
-    from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS
+    from graph.schema import DISEASE_TRAIT_MAP, _DISEASE_SHORT_NAMES_FOR_ANCHORS, DISEASE_CELL_TYPE_MAP
 
     disease_name = disease_query.get("disease_name", "coronary artery disease")
     efo_id       = disease_query.get("efo_id") or None
     short_name   = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), disease_name.upper())
     traits       = DISEASE_TRAIT_MAP.get(short_name, [short_name])
 
-    # Program source: SVD components preferred (same names as beta_matrix_builder uses),
-    # falling back to NMF when SVD not available. Critical: beta and gamma must use
-    # the same program IDs — mismatched names → β × γ sum = 0 for every gene.
+    # Program source: must match what beta_matrix_builder selects (same program IDs).
+    # Priority 0: signatures-backed datasets (Schnitzler/CZI) → cNMF paper programs
+    #   (P01-P60). SVD programs require h5ad which these datasets lack.
+    # Priority 1: SVD components for h5ad-backed datasets.
+    # Priority 2: NMF from disk / MSigDB.
     gwas_genes_for_gamma = set(disease_query.get("gwas_genes", []))
-    svd_info    = get_svd_programs_for_disease(short_name, gwas_genes=gwas_genes_for_gamma or None)
-    if svd_info.get("programs"):
-        programs_info = svd_info
-    else:
-        programs_info = get_programs_for_disease(short_name)
-    raw_programs  = programs_info.get("programs", [])
+    raw_programs: list = []
+    programs_info: dict = {}
+
+    try:
+        from pipelines.perturbseq_beta_loader import _DATASET_SIGNATURES_REGISTRY as _SIG_REG
+        _gctx = DISEASE_CELL_TYPE_MAP.get(short_name, {})
+        _gds = _gctx.get("scperturb_dataset")
+        if _gds and _gds in _SIG_REG:
+            import json as _gjson
+            _gp = _SIG_REG[_gds].parent / "cnmf_program_gene_sets.json"
+            if _gp.exists():
+                _gs = _gjson.loads(_gp.read_text())
+                raw_programs = [{"program_id": pid, "gene_set": genes} for pid, genes in _gs.items()]
+                programs_info = {"programs": raw_programs, "source": f"cNMF_paper_programs_{_gds}"}
+    except Exception:
+        pass
+
+    if not raw_programs:
+        svd_info = get_svd_programs_for_disease(short_name, gwas_genes=gwas_genes_for_gamma or None)
+        if svd_info.get("programs"):
+            programs_info = svd_info
+        else:
+            programs_info = get_programs_for_disease(short_name)
+        raw_programs = programs_info.get("programs", [])
     program_names = [
         p if isinstance(p, str) else (p.get("program_id") or p.get("name", ""))
         for p in raw_programs
@@ -238,20 +258,15 @@ def _get_gamma_estimates(disease_query: dict) -> dict:
     _ldsc_gammas: dict[str, dict] = {}
     try:
         from pipelines.ldsc.gamma_loader import (
-            get_all_program_gammas_ldsc, get_svd_program_gammas,
+            get_all_program_gammas_ldsc,
             get_locus_program_gammas, ldsc_available,
         )
     except ImportError:
-        get_all_program_gammas_ldsc = get_svd_program_gammas = get_locus_program_gammas = None
+        get_all_program_gammas_ldsc = get_locus_program_gammas = None
         ldsc_available = lambda _: False
     try:
         if ldsc_available(short_name) and get_all_program_gammas_ldsc:
             _ldsc_gammas.update(get_all_program_gammas_ldsc(short_name))
-    except Exception:
-        pass
-    try:
-        if get_svd_program_gammas:
-            _ldsc_gammas.update(get_svd_program_gammas(short_name))
     except Exception:
         pass
     try:
@@ -336,7 +351,21 @@ def _collect_gene_list(
 
     Gene list is entirely data-derived: OT L2G GWAS associations + GWAS-validated genes
     from the statistical geneticist. CHIP / somatic excluded — GWAS/perturb-seq targets only.
+
+    The full result is frozen to data/checkpoints/{disease_key}_gene_list.json on first run
+    and reloaded on subsequent runs so results are stable across OT Platform releases.
+    Force a refresh by deleting that file.
     """
+    import pathlib as _pl, json as _json
+    _dkey = (disease_query.get("disease_key") or "unknown").lower()
+    _freeze_path = _pl.Path(f"data/checkpoints/{_dkey}_gene_list.json")
+
+    if _freeze_path.exists():
+        _frozen = _json.loads(_freeze_path.read_text())
+        _log("GENE_LIST_CACHE", "_collect_gene_list",
+             f"loaded frozen gene list ({len(_frozen['genes'])} genes) from {_freeze_path}")
+        return _frozen["genes"], _frozen["ot_scores"], _frozen["ot_cache"]
+
     genes: list[str] = []
     ot_scores: dict[str, float] = {}
     ot_cache: dict = {"targets": [], "source": None, "efo_id": disease_query.get("efo_id") or ""}
@@ -415,6 +444,18 @@ def _collect_gene_list(
     except Exception:
         pass
 
+    # Freeze gene list so subsequent runs are stable across OT Platform releases.
+    try:
+        _freeze_path.parent.mkdir(parents=True, exist_ok=True)
+        _freeze_path.write_text(_json.dumps(
+            {"genes": genes, "ot_scores": ot_scores, "ot_cache": ot_cache},
+            indent=2,
+        ))
+        _log("GENE_LIST_CACHE", "_collect_gene_list",
+             f"froze gene list ({len(genes)} genes) → {_freeze_path}")
+    except Exception as _fe:
+        _log("GENE_LIST_CACHE_FAIL", "_collect_gene_list", str(_fe))
+
     return genes, ot_scores, ot_cache
 
 
@@ -439,8 +480,8 @@ def _collect_perturbseq_genes(disease_query: dict) -> list[str]:
         return []
 
     try:
-        from pipelines.replogle_parser import _PERTURBSEQ_DIR
-        cache_dir = _PERTURBSEQ_DIR / dataset_id
+        import pipelines.perturbseq_beta_loader as _pbl
+        cache_dir = _pbl._PERTURBSEQ_DIR / dataset_id
         # Any beta cache for this dataset works — we only need the gene keys
         cache_files = list(cache_dir.glob("beta_cache_*.json")) if cache_dir.exists() else []
         if not cache_files:
@@ -614,8 +655,9 @@ def _collect_cache_first_nominees(
         return [], set()
 
     try:
-        from pipelines.replogle_parser import _PERTURBSEQ_DIR
-        from pipelines.ldsc.gamma_loader import get_svd_program_gammas, get_locus_program_gammas
+        import numpy as _np
+        import pathlib as _pl
+        from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas, get_cnmf_program_gammas
         from config.scoring_thresholds import (
             SLDSC_GAMMA_FLOOR,
             CACHE_FIRST_L2G_STRONG, CACHE_FIRST_L2G_MODERATE,
@@ -626,25 +668,77 @@ def _collect_cache_first_nominees(
             PERTURB_NOMINATED_GAMMA_MIN,
         )
 
-        # --- S-LDSC program gammas (genetic backbone) — merge locus + SVD ---
-        gammas = {**get_svd_program_gammas(disease_key), **get_locus_program_gammas(disease_key)}
+        # --- GeneticNMF program gammas (Stim48hr primary; cNMF for CAD) ---
+        gnmf_gammas = get_genetic_nmf_program_gammas(disease_key, condition="Stim48hr") \
+                      or get_genetic_nmf_program_gammas(disease_key)
+        cnmf_gammas = get_cnmf_program_gammas(disease_key)
+        gammas = {**gnmf_gammas, **cnmf_gammas}
         active_gammas = {p: d["gamma"] for p, d in gammas.items() if abs(d["gamma"]) >= SLDSC_GAMMA_FLOOR}
         if not active_gammas:
             return [], set()
 
-        # --- SVD beta cache ---
-        cache_dir = _PERTURBSEQ_DIR / dataset_id
-        split_files = list(cache_dir.glob("beta_cache_*split*.json")) if cache_dir.exists() else []
-        if not split_files:
-            split_files = list(cache_dir.glob("beta_cache_*.json"))
-        if not split_files:
+        # --- GeneticNMF U_scaled loadings (gene × program matrix) ---
+        _perturb_dir = _pl.Path(__file__).parent.parent / "data" / "perturbseq" / dataset_id
+        _npz_path = _perturb_dir / "genetic_nmf_loadings_stim48hr.npz"
+        if not _npz_path.exists():
+            _npz_path = _perturb_dir / "genetic_nmf_loadings.npz"
+        if not _npz_path.exists():
             return [], set()
-        cache_path = max(split_files, key=lambda p: p.stat().st_size)
-        with open(cache_path) as f:
-            beta_cache = json.load(f)
+        _ld = _np.load(_npz_path, allow_pickle=True)
+        _U   = _ld["U_scaled"]   # shape: (n_genes, k)
+        _gnames = [str(g) for g in _ld["gene_names"]]
+        _gene_idx: dict[str, int] = {g: i for i, g in enumerate(_gnames)}
+
+        # Map active GeneticNMF program names → column indices in U_scaled
+        # GeneticNMF programs: RA_GeneticNMF_Stim48hr_C01 → col 0
+        import re as _re
+        _CPFX = _re.compile(r'_C(\d+)$')
+        _prog_col: dict[str, int] = {}
+        for pname in active_gammas:
+            if "_GeneticNMF_" not in pname and "_cNMF_" not in pname.replace("cNMF", ""):
+                m = _CPFX.search(pname)
+                if m:
+                    col = int(m.group(1)) - 1
+                    if 0 <= col < _U.shape[1]:
+                        _prog_col[pname] = col
+            elif "_GeneticNMF_" in pname:
+                m = _CPFX.search(pname)
+                if m:
+                    col = int(m.group(1)) - 1
+                    if 0 <= col < _U.shape[1]:
+                        _prog_col[pname] = col
+
+        # --- cNMF MAST betas (CAD-specific; RA has no cNMF) ---
+        # Loads cnmf_mast_betas.npz to include Schnitzler-style programs in pre-OTA
+        _cnmf_B: _np.ndarray | None = None
+        _cnmf_ko_idx: dict[str, int] = {}
+        _cnmf_gamma_vec: _np.ndarray | None = None
+        _PPFX = _re.compile(r'_P(\d+)$')
+        _cnmf_npz_path = _perturb_dir / "cnmf_mast_betas.npz"
+        if _cnmf_npz_path.exists():
+            _cld = _np.load(_cnmf_npz_path, allow_pickle=True)
+            _cnmf_B = _cld["beta"].astype(_np.float32)   # (n_ko, n_prog)
+            _cnmf_ko_genes = [str(g) for g in _cld["ko_genes"]]
+            _cnmf_prog_ids = [str(p) for p in _cld["program_ids"]]
+            _cnmf_ko_idx = {g: i for i, g in enumerate(_cnmf_ko_genes)}
+            # Build γ vector for cNMF programs (P01..P60 → CAD_cNMF_P01..P60)
+            _cnmf_gamma_vec = _np.zeros(len(_cnmf_prog_ids))
+            for j, pid in enumerate(_cnmf_prog_ids):
+                for pname, gamma in active_gammas.items():
+                    m = _PPFX.search(pname)
+                    if m and int(m.group(1)) == int(pid.lstrip("P")):
+                        _cnmf_gamma_vec[j] = gamma
+                        break
+            # Normalise cNMF gamma scale to GeneticNMF scale for unified threshold
+            _gnmf_scale = max(abs(active_gammas[p]) for p in _prog_col) if _prog_col else 1.0
+            _cnmf_scale = float(_np.max(_np.abs(_cnmf_gamma_vec))) if _cnmf_gamma_vec.any() else 1.0
+            if _cnmf_scale > 0:
+                _cnmf_gamma_vec = _cnmf_gamma_vec * (_gnmf_scale / _cnmf_scale)
+
+        if not _prog_col and _cnmf_B is None:
+            return [], set()
 
         # --- eQTL index for direction coherence ---
-        import pathlib as _pl
         _eqtl_dir = _pl.Path(__file__).parent.parent / "data" / "eqtl" / "indices"
         eqtl_betas: dict[str, float] = {}
         for eqtl_file in _eqtl_dir.glob(f"{disease_key}_*_top_eqtls.json"):
@@ -658,6 +752,8 @@ def _collect_cache_first_nominees(
             except Exception:
                 pass
 
+        gnmf_gene_set: set[str] = set(_gnames)
+
         def _l2g_weight(gene: str) -> float:
             score = ot_scores.get(gene, 0.0)
             if isinstance(score, dict):
@@ -667,52 +763,76 @@ def _collect_cache_first_nominees(
                 return CACHE_FIRST_L2G_WEIGHT_STRONG
             if score >= CACHE_FIRST_L2G_MODERATE:
                 return CACHE_FIRST_L2G_WEIGHT_MODERATE
-            if gene in beta_cache:
-                return CACHE_FIRST_L2G_WEIGHT_PROXIMAL  # GWAS-proximal (in Perturb library)
+            if gene in gnmf_gene_set:
+                return CACHE_FIRST_L2G_WEIGHT_PROXIMAL  # in Perturb library
             return CACHE_FIRST_L2G_WEIGHT_NONE
 
         def _eqtl_weight(gene: str, pre_ota: float) -> float:
             eqtl_b = eqtl_betas.get(gene)
             if eqtl_b is None or pre_ota == 0.0:
-                return 1.0  # no data — no penalty
-            # Concordant: sign(eQTL_β) × sign(OTA) < 0
-            # risk allele ↑ expression (eQTL_β > 0) AND KO ↓ disease (OTA < 0)
-            # = more expression promotes disease = inhibition is therapeutic
+                return 1.0
             return CACHE_FIRST_EQTL_CONCORDANT_WEIGHT if (eqtl_b * pre_ota) < 0 else CACHE_FIRST_EQTL_DISCORDANT_WEIGHT
 
-        # Standard gene symbol: 2-20 chars, starts with letter, no run of digits only
-        # Excludes: Enhancer-BP-etc-*, lncRNAs (AL123456, AC001234), controls (safe-*)
-        import re as _re
-        _GENE_SYMBOL_RE  = _re.compile(r'^[A-Z][A-Z0-9\-]{1,19}$')
-        _LNCRNA_RE       = _re.compile(r'^A[CL]\d{6}')  # AC/AL + 6-digit accession
-        _SAFE_TARGET_RE  = _re.compile(r'^(safe|non)-', _re.I)
+        _GENE_SYMBOL_RE = _re.compile(r'^[A-Z][A-Z0-9\-]{1,19}$')
+        _LNCRNA_RE      = _re.compile(r'^A[CL]\d{6}')
+        _SAFE_TARGET_RE = _re.compile(r'^(safe|non)-', _re.I)
 
         from config.scoring_thresholds import CACHE_FIRST_STRESS_MEAN_THRESHOLD
-        import statistics as _stats
 
-        # --- Compute effective score for all cached genes ---
+        # Vectorized pre-OTA from GeneticNMF: (n_genes,) = U_scaled @ γ_vec
+        _gamma_vec = _np.zeros(_U.shape[1])
+        for pname, col in _prog_col.items():
+            _gamma_vec[col] = active_gammas[pname]
+        _pre_ota_gnmf: _np.ndarray = _U @ _gamma_vec
+
+        # cNMF contribution: (n_ko_genes,) = cnmf_B @ cnmf_γ_vec
+        _pre_ota_cnmf_map: dict[str, float] = {}
+        if _cnmf_B is not None and _cnmf_gamma_vec is not None:
+            _pre_ota_cnmf_all = _cnmf_B @ _cnmf_gamma_vec
+            _cnmf_ko_genes_list = list(_cnmf_ko_idx.keys())
+            for _ci, _cg in enumerate(_cnmf_ko_genes_list):
+                _pre_ota_cnmf_map[_cg] = float(_pre_ota_cnmf_all[_ci])
+
+        # All genes: union of GeneticNMF genes and cNMF KO genes
+        _all_candidate_genes: dict[str, tuple[float, float]] = {}  # gene → (gnmf_pre_ota, gnmf_mean_abs_b)
+        for i, gene in enumerate(_gnames):
+            _all_candidate_genes[gene] = (float(_pre_ota_gnmf[i]), float(_np.mean(_np.abs(_U[i]))))
+        # cNMF-only genes (not in GeneticNMF)
+        for _cg in _pre_ota_cnmf_map:
+            if _cg not in _all_candidate_genes:
+                _all_candidate_genes[_cg] = (0.0, 0.0)
+
+        gnmf_gene_set = set(_gnames)
+        # Extend with cNMF KO genes for l2g_weight proximity check
+        _all_perturb_genes = gnmf_gene_set | set(_cnmf_ko_idx.keys())
+
+        # Override l2g_weight helper to use combined perturb gene set
+        def _l2g_weight(gene: str) -> float:  # type: ignore[override]
+            score = ot_scores.get(gene, 0.0)
+            if isinstance(score, dict):
+                score = score.get("score", 0.0) or 0.0
+            score = float(score or 0.0)
+            if score >= CACHE_FIRST_L2G_STRONG:
+                return CACHE_FIRST_L2G_WEIGHT_STRONG
+            if score >= CACHE_FIRST_L2G_MODERATE:
+                return CACHE_FIRST_L2G_WEIGHT_MODERATE
+            if gene in _all_perturb_genes:
+                return CACHE_FIRST_L2G_WEIGHT_PROXIMAL
+            return CACHE_FIRST_L2G_WEIGHT_NONE
+
         nominees: list[dict] = []
-        cached_genes: set[str] = set(beta_cache.keys())
-
-        for gene, entry in beta_cache.items():
+        for gene, (gnmf_pre_ota, gnmf_mean_abs_b) in _all_candidate_genes.items():
             if gene in exclude_genes:
                 continue
-            # Filter non-gene entries: enhancers, lncRNA accessions, controls
             if not _GENE_SYMBOL_RE.match(gene):
                 continue
             if _LNCRNA_RE.match(gene) or _SAFE_TARGET_RE.match(gene):
                 continue
-            betas = {k: v["beta"] for k, v in entry.get("programs", {}).items() if "SVD" in k}
-            if not betas:
+            # Stress filter on GeneticNMF betas (cNMF-only genes skip this)
+            if gnmf_mean_abs_b > CACHE_FIRST_STRESS_MEAN_THRESHOLD:
                 continue
-            # Pre-screen essential-gene stress responders using hard mean|β| cutoff.
-            # SVD z-score betas have uniformly high CV (0.5–0.8) even for true stress genes,
-            # so CV-gating is unreliable at this stage. Plain amplitude threshold suffices:
-            # ACTR3C (5.5) and TP53 (3.1) filtered; CCM2 (1.9) and KRIT1 (0.8) retained.
-            _beta_vals = [abs(v) for v in betas.values()]
-            if len(_beta_vals) > 5 and _stats.mean(_beta_vals) > CACHE_FIRST_STRESS_MEAN_THRESHOLD:
-                continue
-            pre_ota = sum(betas.get(p, 0.0) * g for p, g in active_gammas.items())
+            # Combined pre-OTA: GeneticNMF + cNMF contributions
+            pre_ota = gnmf_pre_ota + _pre_ota_cnmf_map.get(gene, 0.0)
             if pre_ota == 0.0:
                 continue
 
@@ -725,9 +845,6 @@ def _collect_cache_first_nominees(
                 l2g_score = l2g_score.get("score", 0.0) or 0.0
             has_l2g = float(l2g_score or 0.0) >= CACHE_FIRST_L2G_MODERATE
 
-            # For genes with OT L2G, gate on penalized effective_score.
-            # For genes without OT L2G (PerturbNominated), gate on |pre_OTA| alone —
-            # the l2g_weight=0.10 penalty reflects uncertainty, not absence of signal.
             if has_l2g:
                 if eff < CACHE_FIRST_EFFECTIVE_SCORE_MIN:
                     continue
@@ -753,10 +870,10 @@ def _collect_cache_first_nominees(
         nominees.sort(key=lambda x: -x["effective_score"])
         nominees = nominees[:CACHE_FIRST_MAX_NOMINEES]
 
-        # --- OT L2G genes not in beta cache still need h5ad β ---
+        # OT L2G genes not in GeneticNMF or cNMF gene sets still need h5ad β estimation
         uncached_ot_genes = {
             g for g in ot_scores
-            if g not in cached_genes and g not in exclude_genes
+            if g not in _all_perturb_genes and g not in exclude_genes
         }
 
         n_tier1 = sum(1 for n in nominees if n["nomination_tier"] == "Tier1_Interventional")
@@ -781,11 +898,10 @@ def _collect_high_ota_perturbseq_nominees(
 ) -> list[str]:
     """
     Nominate Perturb-seq genes with |OTA γ| >= PERTURB_NOMINATED_GAMMA_MIN
-    that are not already in the gene list via OT L2G or SVD/fingerprint paths.
+    that are not already in the gene list via OT L2G or fingerprint paths.
 
-    Uses the SVD beta cache + program gammas to pre-estimate OTA before the
-    full pipeline runs. All genes in the Schnitzler/CZI library were selected
-    from within ±500 kb of GWAS signals, so GWAS proximity is implicit.
+    Uses GeneticNMF U_scaled loadings + program gammas to pre-estimate OTA
+    before the full pipeline runs.
 
     Returns: list of gene symbols, sorted by |pre-OTA| descending.
     """
@@ -805,35 +921,47 @@ def _collect_high_ota_perturbseq_nominees(
         return []
 
     try:
-        from pipelines.replogle_parser import _PERTURBSEQ_DIR
-        from pipelines.ldsc.gamma_loader import get_svd_program_gammas, get_locus_program_gammas
+        import numpy as _np
+        import pathlib as _pl
+        from pipelines.ldsc.gamma_loader import get_genetic_nmf_program_gammas, get_cnmf_program_gammas
         from config.scoring_thresholds import PERTURB_NOMINATED_GAMMA_MIN, SLDSC_GAMMA_FLOOR
 
-        # Load SVD + locus program gammas
-        gammas = {**get_svd_program_gammas(disease_key), **get_locus_program_gammas(disease_key)}
+        # GeneticNMF + cNMF program gammas
+        gnmf_gammas = get_genetic_nmf_program_gammas(disease_key, condition="Stim48hr") \
+                      or get_genetic_nmf_program_gammas(disease_key)
+        gammas = {**gnmf_gammas, **get_cnmf_program_gammas(disease_key)}
         active_gammas = {p: d["gamma"] for p, d in gammas.items() if abs(d["gamma"]) >= SLDSC_GAMMA_FLOOR}
         if not active_gammas:
             return []
 
-        # Pick the largest SVD-keyed beta cache
-        cache_dir = _PERTURBSEQ_DIR / dataset_id
-        cache_files = list(cache_dir.glob("beta_cache_*split*.json")) if cache_dir.exists() else []
-        if not cache_files:
-            cache_files = list(cache_dir.glob("beta_cache_*.json"))
-        if not cache_files:
+        # GeneticNMF U_scaled loadings
+        _perturb_dir = _pl.Path(__file__).parent.parent / "data" / "perturbseq" / dataset_id
+        _npz_path = _perturb_dir / "genetic_nmf_loadings_stim48hr.npz"
+        if not _npz_path.exists():
+            _npz_path = _perturb_dir / "genetic_nmf_loadings.npz"
+        if not _npz_path.exists():
             return []
-        cache_path = max(cache_files, key=lambda p: p.stat().st_size)
-        with open(cache_path) as f:
-            beta_cache = json.load(f)
+        _ld = _np.load(_npz_path, allow_pickle=True)
+        _U   = _ld["U_scaled"]
+        _gnames = [str(g) for g in _ld["gene_names"]]
+
+        import re as _re
+        _CPFX = _re.compile(r'_C(\d+)$')
+        _gamma_vec = _np.zeros(_U.shape[1])
+        for pname, gamma in active_gammas.items():
+            m = _CPFX.search(pname)
+            if m:
+                col = int(m.group(1)) - 1
+                if 0 <= col < _U.shape[1]:
+                    _gamma_vec[col] = gamma
+
+        _pre_ota_all: _np.ndarray = _U @ _gamma_vec
 
         nominees: list[tuple[str, float]] = []
-        for gene, entry in beta_cache.items():
+        for i, gene in enumerate(_gnames):
             if gene in exclude_genes:
                 continue
-            betas = {k: v["beta"] for k, v in entry.get("programs", {}).items() if "SVD" in k}
-            if not betas:
-                continue
-            pre_ota = sum(betas.get(p, 0.0) * g for p, g in active_gammas.items())
+            pre_ota = float(_pre_ota_all[i])
             if abs(pre_ota) >= PERTURB_NOMINATED_GAMMA_MIN:
                 nominees.append((gene, pre_ota))
 
@@ -1429,6 +1557,58 @@ def _write_plots(disease_name: str) -> None:
         except Exception as _e:
             print(f"  Plot (gnmf) skipped ({disease_key}): {_e}")
 
+    # β-program cluster heatmap: shows which gene KOs co-regulate heritable programs
+    # and whether winner-takes-all program assignment is biologically coherent.
+    try:
+        from outputs.plot_beta_heatmap import plot_beta_heatmap
+        plot_beta_heatmap(disease_key)
+    except Exception as _e:
+        print(f"  Beta heatmap skipped ({disease_key}): {_e}")
+
+    # De novo anchor discovery: cluster β profiles, score clusters by GWAS grounding.
+    try:
+        import json as _json
+        from outputs.anchor_discovery import (
+            rank_denovo_anchors, plot_anchor_cluster_landscape, _benchmark_direction_map,
+        )
+        _anchors = rank_denovo_anchors(disease_key, min_n_genes=3)
+        _anchor_path = f"outputs/anchor_clusters_{disease_key}.json"
+        with open(_anchor_path, "w") as _af:
+            _json.dump(_anchors, _af, indent=2)
+        print(f"  Anchor clusters: {len(_anchors)} clusters → {_anchor_path}")
+        for _r in _anchors[:5]:
+            print(f"    #{_r['cluster_id']:2d}  n={_r['n_genes']:4d}  "
+                  f"score={_r['anchor_score']:.4f}  dir={_r.get('kd_direction','?'):20s}  "
+                  f"anchor={_r['top_gwas_gene']}")
+        # Cluster-specific landscape plots for top 5 anchors by score
+        _plotted: set = set()
+        for _r in _anchors[:5]:
+            _ag = _r["top_gwas_gene"]
+            _plotted.add(_ag)
+            try:
+                plot_anchor_cluster_landscape(disease_key, _ag)
+            except Exception as _le:
+                print(f"    Landscape skipped ({_ag}): {_le}")
+        # Benchmark-centric landscape plots: one per cluster containing ≥1 benchmark gene
+        # (deduplicated so each cluster only generates one plot)
+        _bench_map = _benchmark_direction_map(disease_key)
+        _seen_clusters: set = set()
+        for _r in _anchors:
+            _bench_in_cluster = [g for g in _r["genes"] if g in _bench_map]
+            if not _bench_in_cluster or _r["cluster_id"] in _seen_clusters:
+                continue
+            _seen_clusters.add(_r["cluster_id"])
+            _ag = _r["top_gwas_gene"]
+            if _ag in _plotted:
+                continue
+            _plotted.add(_ag)
+            try:
+                plot_anchor_cluster_landscape(disease_key, _ag)
+            except Exception as _le:
+                print(f"    Benchmark landscape skipped ({_ag}): {_le}")
+    except Exception as _e:
+        print(f"  Anchor discovery skipped ({disease_key}): {_e}")
+
     # Per-program biological annotations
     try:
         from pipelines.program_annotator import annotate_programs
@@ -1600,6 +1780,15 @@ def run_tier4_from_checkpoint(disease_name: str) -> dict[str, Any]:
     _post_filter_genes_t4 = {r["gene"] for r in causal_result.get("top_genes", [])}
     if _post_filter_genes_t4:
         disease_query = {**disease_query, "_gps_target_whitelist": _post_filter_genes_t4}
+
+    # Inject benchmark KD targets for GPS emulation regardless of tier
+    # (genes validated by targeted KD/KO in disease-relevant cells but absent from
+    # genome-scale Perturb-seq atlas — GPS will skip if no signature is available).
+    from models.disease_registry import GPS_FORCE_GENES
+    _dkey = disease_query.get("disease_key", "")
+    _force = GPS_FORCE_GENES.get(_dkey, [])
+    if _force:
+        disease_query = {**disease_query, "gps_force_genes": _force}
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         fut_chem = pool.submit(_chem_run, prioritization_result, disease_query)

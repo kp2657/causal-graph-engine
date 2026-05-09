@@ -237,7 +237,7 @@ class TestProgramGeneLoadings:
 
 
 # ---------------------------------------------------------------------------
-# Stub tools — inspre + SCONE
+# Stub tools — inspre
 # ---------------------------------------------------------------------------
 
 class TestStubTools:

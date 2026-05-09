@@ -250,11 +250,43 @@ def run_clinical_trial_auc(
 
     auroc = compute_auroc(scores, labels)
 
+    # -----------------------------------------------------------------------
+    # Arm 2: L2G-holdout AUROC (Pritchard P3 — anti-circularity check).
+    #
+    # L2G is trained on approved drug targets, so seeding anchors by L2G ≥ 0.05
+    # and validating by clinical-trial AUROC is partially circular: genes seeded
+    # by L2G will tend to be approved targets.  The holdout arm restricts the
+    # scored gene set to genes with L2G < 0.05 — these were not used to train L2G
+    # and therefore provide a circularity-free test.
+    #
+    # If holdout_auroc is comparable to auroc: the L2G seeding choice does not
+    # materially inflate performance (circularity concern refuted).
+    # -----------------------------------------------------------------------
+    holdout_scores: list[float] = []
+    holdout_labels: list[int]   = []
+    for entry, score, label in zip(scored_genes[:n_queried], scores, labels):
+        l2g = float(entry.get("ot_l2g_score") or entry.get("ot_genetic_score") or 0.0)
+        if l2g < 0.05:
+            holdout_scores.append(score)
+            holdout_labels.append(label)
+
+    holdout_result: dict = {"skipped": True, "reason": "insufficient_holdout_labels"}
+    if sum(holdout_labels) >= 3 and len(holdout_labels) - sum(holdout_labels) >= 3:
+        holdout_auroc = compute_auroc(holdout_scores, holdout_labels)
+        holdout_result = {
+            "auroc":          round(holdout_auroc, 4),
+            "above_random":   holdout_auroc > 0.55,
+            "n_genes":        len(holdout_labels),
+            "n_success":      sum(holdout_labels),
+            "note":           "L2G<0.05 subset — circularity-free validation arm",
+        }
+
     return {
-        "disease_key":    disease_key,
-        "n_genes_queried": n_queried,
-        "n_success":      n_success,
-        "n_failure":      n_failure,
-        "auroc":          round(auroc, 4),
-        "above_random":   auroc > 0.55,
+        "disease_key":      disease_key,
+        "n_genes_queried":  n_queried,
+        "n_success":        n_success,
+        "n_failure":        n_failure,
+        "auroc":            round(auroc, 4),
+        "above_random":     auroc > 0.55,
+        "auroc_l2g_holdout": holdout_result,
     }

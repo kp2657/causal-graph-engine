@@ -237,7 +237,7 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         # Liver covers LDLR/PCSK9/HMGCR (hepatic lipid); heart for cardiomyocyte-specific genes.
         "gtex_tissues_secondary": ["Liver", "Heart_Left_Ventricle", "Artery_Coronary"],
         "perturb_seq_source": "schnitzler_cad_vascular",  # 332 CAD GWAS genes in HCASMC/HAEC
-        "scperturb_dataset": "Schnitzler_GSE210681",
+        "scperturb_dataset": "schnitzler_cad_vascular",
         "lincs_cell_line":   "VCAP",           # LINCS proxy — best available for metabolic
         # pQTL instruments — key for LPA (no eQTL; driven by kringle repeat number)
         "pqtl_study_priority": ["Sun2023", "Sun2018", "Ferkingstad2021"],
@@ -387,4 +387,6 @@ _DISEASE_SHORT_NAMES_FOR_ANCHORS: dict[str, str] = {
     "rheumatoid arthritis":              "RA",
     "ra":                                "RA",
     "seropositive rheumatoid arthritis": "RA",
+    "age-related macular degeneration":  "AMD",
+    "macular degeneration":              "AMD",
 }

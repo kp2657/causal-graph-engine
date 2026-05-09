@@ -22,10 +22,13 @@ from __future__ import annotations
 import functools
 import hashlib
 import json
+import logging
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Callable
+
+log = logging.getLogger(__name__)
 
 _DEFAULT_DB = Path(__file__).parent.parent / "data" / "api_cache.sqlite"
 _SCHEMA = """
@@ -70,8 +73,12 @@ class ApiCache:
             return None
         value_json, cached_at, ttl_seconds = row
         if time.time() > cached_at + ttl_seconds:
-            return None  # expired
+            self._last_miss_was_expired = True
+            return None
+        self._last_miss_was_expired = False
         return json.loads(value_json)
+
+    _last_miss_was_expired: bool = False
 
     def set(self, key: str, value: Any, ttl_seconds: int) -> None:
         with self._connect() as conn:
@@ -93,6 +100,8 @@ class ApiCache:
         cached = self.get(key)
         if cached is not None:
             return cached
+        if self._last_miss_was_expired:
+            log.warning("api_cache: expired entry hit — re-fetching live  fn=%s  args=%s", fn_name, args)
         result = fetch_fn()
         if result is not None:
             self.set(key, result, ttl_days * 86400)

@@ -2,8 +2,7 @@
 target_ranker.py — Tier 4: multi-dimensional target ranking.
 
 Output dimensions (independent lines of evidence, not folded into a formula):
-  causal_gamma          — OTA γ (primary sort key)
-  genetic_evidence_score — L2G / OT genetic association proxy in [0, 1]
+  causal_gamma          — OTA γ = Σ(β×γ), primary sort key
   entry_score           — enrichment in cells entering pathological basins
   persistence_score     — enrichment in cells dwelling in pathological basins
   recovery_score        — enrichment in cells exiting toward healthy basins
@@ -12,17 +11,16 @@ Output dimensions (independent lines of evidence, not folded into a formula):
   max_phase / known_drugs / pli — translatability (reported verbatim)
   entropy_score         — program loading specificity (high = non-specific)
 
-Partition label (informational; no effect on rank):
-  "genetically_grounded": ot_genetic_score ≥ 0.05  OR  max_phase > 0
-  "high_reward_mechanistic": ot_genetic_score < 0.05 AND TR ≥ 0.4 AND stability ≥ 0.8
-  "mechanistic_only":     ot_genetic_score < 0.05  AND max_phase == 0
+Ranking: purely by |ota_gamma| descending. OT L2G is NOT used for sorting or
+partitioning — genetic grounding is already embedded in OTA γ via S-LDSC τ.
+
+Partition label (annotation only; no effect on rank):
+  "clinical":  max_phase > 0 — existing clinical history
+  "novel":     max_phase == 0 — no prior clinical targeting
 
 Flags replace discounts — no dimension is modified by evidence classification:
-  "no_genetic_grounding"  — mechanistic_only gene; review genetic_evidence_score
-  "convergent_controller" — high TR + high Stability; candidate for high_reward_mechanistic
+  "convergent_controller" — high TR + high Stability
   "marker_gene"           — marker_score ≥ 0.3; likely disease-state consequence
-
-Ranking: purely by causal_gamma (ota_gamma) descending. Consumers filter by flags.
 
 target_score = causal_gamma (= ota_gamma) — kept for backward compat with writer/orchestrator.
 """
@@ -40,6 +38,26 @@ from config.scoring_thresholds import (
     PLI_ESSENTIAL_THRESHOLD as PLI_ESSENTIAL,
     PLI_SAFETY_PENALTY      as PLI_PENALTY,
 )
+
+_REPO_ROOT = Path(__file__).parent.parent.parent
+
+_PERTURB_BETA_PATHS: dict[str, Path] = {
+    "CAD": _REPO_ROOT / "data/perturbseq/schnitzler_cad_vascular/cnmf_mast_betas.npz",
+    "RA":  _REPO_ROOT / "data/perturbseq/czi_2025_cd4t_perturb/genetic_nmf_de_betas.npz",
+}
+
+
+def _load_perturb_ko_genes(disease_key: str) -> frozenset[str]:
+    """Return the set of genes with real measured Perturb-seq β for disease_key."""
+    import numpy as np
+    path = _PERTURB_BETA_PATHS.get(disease_key.upper())
+    if path is None or not path.exists():
+        return frozenset()
+    try:
+        data = np.load(path, allow_pickle=True)
+        return frozenset(str(g) for g in data["ko_genes"])
+    except Exception:
+        return frozenset()
 
 # Clinical trial phase bonuses
 TRIAL_BONUS: dict[int, float] = {1: 0.1, 2: 0.3, 3: 0.6, 4: 1.0}
@@ -168,9 +186,8 @@ def run(
         disease_query:           DiseaseQuery dict
 
     Returns:
-        list of TargetRecord-compatible dicts, sorted by partition then causal_gamma
+        list of TargetRecord-compatible dicts, sorted by |ota_gamma| descending
     """
-    from mcp_servers.open_targets_server import get_open_targets_disease_targets
     from mcp_servers.gwas_genetics_server import query_gnomad_lof_constraint
     from mcp_servers.single_cell_server import (
         get_gene_tau_specificity,
@@ -181,7 +198,6 @@ def run(
 
     efo_id       = disease_query.get("efo_id", "")
     disease_name = disease_query.get("disease_name", "")
-    # Derive short disease key for disease-specific program classification
     from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS as _DSN
     _short_key = _DSN.get(disease_name.lower(), "CAD")
     top_genes_all = causal_discovery_result.get("top_genes", [])
@@ -189,10 +205,8 @@ def run(
     brg_candidates = kg_completion_result.get("brg_novel_candidates", [])
     warnings: list[str] = []
 
-    # Genes present in Perturb-seq but absent from GWAS loci — primary discovery track
     perturb_only_set: set[str] = set(disease_query.get("perturb_only_genes") or [])
 
-    # Index BRG scores for quick lookup
     brg_score_map: dict[str, float] = {
         c["gene"]: c["brg_score"] for c in brg_candidates if c.get("gene")
     }
@@ -200,52 +214,14 @@ def run(
     if not top_genes_all:
         return {"targets": [], "warnings": ["No genes in causal_discovery_result"]}
 
-    # Separate instrumented (genetic-causal) targets from state-space nominees.
-    # Policy: state-space targets are reported separately (not mixed into top ranks).
     top_genes: list[dict] = list(top_genes_all)
 
     # -------------------------------------------------------------------------
-    # Load Open Targets scores for all top genes at once (or L2G-only if assoc API off)
+    # Drug / clinical phase lookup — from KG completion only.
+    # OT L2G genetic scores are NOT used: genetic grounding is embedded in
+    # OTA γ via S-LDSC τ at the program level.
     # -------------------------------------------------------------------------
-    ot_scores: dict[str, float] = {}
-    ot_genetic: dict[str, float] = {}
-    ot_max_phase: dict[str, int] = {}
-    ot_known_drugs: dict[str, list[str]] = {}
-    _assoc_off = os.getenv("OPEN_TARGETS_ASSOC_DISABLED", "").strip().lower() in {"1", "true", "yes", "on"}
-    _ot_cache = disease_query.get("_ot_disease_targets_cache") or {}
-    try:
-        if _assoc_off and efo_id:
-            from mcp_servers.gwas_genetics_server import aggregate_l2g_scores_for_program_genes
-            genes = [r["gene"] for r in top_genes if r.get("gene")]
-            agg = aggregate_l2g_scores_for_program_genes(efo_id, genes)
-            gmap = agg.get("gene_scores") or {}
-            for g in genes:
-                sc = float(gmap.get(g.upper(), 0.0))
-                ot_genetic[g] = sc
-                ot_scores[g] = sc
-        else:
-            # Prefer orchestrator-cached OT disease→targets payload to avoid a second large call.
-            if isinstance(_ot_cache, dict) and (_ot_cache.get("efo_id") == efo_id) and _ot_cache.get("targets"):
-                ot_targets = _ot_cache.get("targets") or []
-            else:
-                ot_result = get_open_targets_disease_targets(efo_id, max_targets=500)
-                ot_targets = ot_result.get("targets", []) or []
-
-            for t in ot_targets:
-                # Live OT GraphQL returns "gene_symbol"; cached fallback uses "symbol"
-                gene = t.get("gene_symbol") or t.get("symbol") or t.get("gene", "")
-                if not gene:
-                    continue
-                ot_scores[gene]    = float(t.get("overall_score") or 0.0)
-                ot_genetic[gene]   = float(t.get("genetic_score") or 0.0)
-                ot_max_phase[gene] = int(t.get("max_clinical_phase") or 0)
-                if t.get("known_drugs"):
-                    ot_known_drugs[gene] = t["known_drugs"]
-    except Exception as exc:
-        warnings.append(f"Open Targets disease targets failed: {exc}")
-
-    # Drug-target map — seed from OT batch results, then augment from KG completion
-    drug_for_gene: dict[str, list[str]] = {g: list(drugs) for g, drugs in ot_known_drugs.items()}
+    drug_for_gene: dict[str, list[str]] = {}
     phase_from_kg: dict[str, int] = {}
     for entry in drug_target_summary:
         gene = entry.get("target", "")
@@ -257,7 +233,6 @@ def run(
             phase_from_kg[gene] = max(phase_from_kg.get(gene, 0), phase)
 
     # gnomAD constraint
-    # query_gnomad_lof_constraint returns {"genes": [{"symbol": ..., "pLI": ...}, ...]}
     gene_names = [r["gene"] for r in top_genes]
     pli_map: dict[str, float] = dict(_tier4_ctx.get("pli_map") or {})
     if not pli_map:
@@ -273,8 +248,6 @@ def run(
 
     # -------------------------------------------------------------------------
     # Cell-type specificity: tau index + bimodality coefficient
-    # Per Virtual Biotech recommendation: use minimum tau across drug targets
-    # so multi-target drugs are not misleadingly high-scored.
     # -------------------------------------------------------------------------
     gene_names = [r["gene"] for r in top_genes]
     tau_map: dict[str, float | None]  = {}
@@ -294,31 +267,6 @@ def run(
             warnings.append(f"Bimodality coefficient lookup failed: {exc}")
 
     # -------------------------------------------------------------------------
-    # Fine-mapped PIP: max posterior inclusion probability per gene across GWAS credible sets.
-    # Fetched for genetically_grounded candidates only (requires efo_id).
-    # Used as tiebreaker 2 in sort (after L2G score) to elevate fine-mapped targets.
-    # -------------------------------------------------------------------------
-    pip_map: dict[str, float] = {}
-    if efo_id and not minimal_tier4:
-        try:
-            from mcp_servers.gwas_genetics_server import get_gene_max_pip_for_trait
-            from config.scoring_thresholds import FINE_MAPPED_PIP_MIN
-            _gwas_genes = [
-                r["gene"] for r in top_genes
-                if (ot_genetic.get(r["gene"], 0.0) >= 0.05)
-            ][:100]  # cap at 100 to limit API calls
-            for _g in _gwas_genes:
-                try:
-                    _pip_res = get_gene_max_pip_for_trait(_g, efo_id)
-                    _pip_val = float(_pip_res.get("max_pip") or 0.0)
-                    if _pip_val >= FINE_MAPPED_PIP_MIN:
-                        pip_map[_g] = _pip_val
-                except Exception:
-                    pass
-        except Exception as exc:
-            warnings.append(f"Fine-mapped PIP lookup failed: {exc}")
-
-    # -------------------------------------------------------------------------
     # Multi-dimensional scoring — transparent per-dimension, no composite formula
     # -------------------------------------------------------------------------
     max_gamma = max(
@@ -330,8 +278,6 @@ def run(
     # Score each gene
     # -------------------------------------------------------------------------
     target_records: list[dict] = []
-    n_mech_no_geno = 0
-    mech_example_genes: list[str] = []
 
     for rec in top_genes:
         gene         = rec["gene"]
@@ -340,15 +286,10 @@ def run(
         tier         = rec.get("tier", "provisional_virtual")
         top_programs = rec.get("programs", [])
 
-        # ---- Dimension 1: Causal magnitude (ota_gamma ± CI) -----------------
         gamma_ci_lower = rec.get("ota_gamma_ci_lower")
         gamma_ci_upper = rec.get("ota_gamma_ci_upper")
 
-        # ---- Dimension 2: Genetic evidence (OT GWAS/coloc/burden) -----------
-        ot_gen_score = ot_genetic.get(gene, 0.0)
-        ot_score     = ot_scores.get(gene, 0.0)
-
-        # ---- Dimension 3: Mechanistic signal — state-space + TR --------------
+        # ---- Mechanistic signal — state-space + TR ---------------------------
         tr_data   = rec.get("therapeutic_redirection_result")
         traj_data = rec.get("trajectory")
         mechanistic_score            = 0.0
@@ -379,56 +320,31 @@ def run(
             )
             mechanistic_score = max(0.0, min(legacy_mech, 1.0))
 
-        # ---- Dimension 4: Translatability ------------------------------------
-        max_phase = max(
-            ot_max_phase.get(gene, 0),
-            phase_from_kg.get(gene, 0),
-        )
+        tr_val_raw    = abs(float(tr_data.get("therapeutic_redirection", 0.0))) if tr_data else 0.0
+        stability_val = float(tr_data.get("stability_score", 1.0)) if tr_data else 1.0
 
-        # Safety (reported as flags; does not modify rank)
+        # ---- Translatability -------------------------------------------------
+        max_phase = phase_from_kg.get(gene, 0)
+
+        # ---- Partition (annotation only; does NOT affect sort) ---------------
+        partition = "clinical" if max_phase > 0 else "novel"
+
+        # ---- Safety ----------------------------------------------------------
         pli = pli_map.get(gene)
         safety_flags: list[str] = []
         if pli is not None and pli > PLI_ESSENTIAL:
             safety_flags.append(f"pLI={pli:.2f} > 0.9 — essential gene; on-target toxicity")
 
-        # Cell-type specificity (reporting only; not a sort key)
+        # ---- Cell-type specificity (reporting only) --------------------------
         tau    = tau_map.get(gene)
         bc     = bc_map.get(gene)
         bc_norm = min(bc / 1.0, 1.0) if bc is not None else 0.5
         tau_val = tau if tau is not None else 0.5
-        # Convenience composite for downstream consumers; not used in ranking
         specificity_score = round(0.6 * tau_val + 0.4 * bc_norm, 4)
 
-        # ---- Partitioning: grounded vs mechanistic-only ----------------------
-        # Genetically grounded: pipeline genetic score (L2G aggregate or OT
-        # genetic_association when assoc API enabled) ≥ 0.05, OR drug development
-        # history (max_phase > 0).
-        #
-        # Phase Z7: High-Risk/High-Reward (HRHR) path for "Convergent Controllers"
-        # Genes with high Therapeutic Redirection and high Stability score,
-        # even without GWAS support.
-        is_grounded = ot_gen_score >= 0.05 or max_phase > 0
-        
-        tr_val_raw = abs(float(tr_data.get("therapeutic_redirection", 0.0))) if tr_data else 0.0
-        # Use stability_score from tr_data if present (Phase Z7)
-        stability_val = float(tr_data.get("stability_score", 1.0)) if tr_data else 1.0
-        is_hrhr = not is_grounded and tr_val_raw >= 0.4 and stability_val >= 0.8
+        target_score = ota_gamma   # backward compat alias
 
-        if is_grounded:
-            partition = "genetically_grounded"
-        elif is_hrhr:
-            partition = "high_reward_mechanistic"
-        else:
-            partition = "mechanistic_only"
-
-        # ---- target_score = causal_gamma (backward compat) ------------------
-        # Primary sort key within each partition.  Kept as "target_score" so
-        # downstream writer / orchestrator fields are unchanged.
-        target_score = ota_gamma
-
-        # Phase H: compute marker score for flagging only — does NOT modify any dimension.
-        # A gene classified as a disease marker (consequence of disease state, not cause)
-        # is noted via the "marker_gene" flag so consumers can filter; scores are unchanged.
+        # ---- Marker score (annotation only) ----------------------------------
         marker_score = 0.0
         if tr_data is not None:
             ctrl_data = rec.get("controller_annotation")
@@ -450,25 +366,19 @@ def run(
 
         # ---- Flags -----------------------------------------------------------
         flags: list[str] = []
-        if max_phase >= 2 and ot_score > 0.5:
+        if max_phase >= 2:
             flags.append("repurposing_candidate")
         if max_phase == 0 and ota_gamma > 0.5 * max_gamma:
             flags.append("first_in_class")
         if tier == "provisional_virtual":
             flags.append("provisional_virtual")
-            flags.append("not_in_perturb_library")  # gene absent from Replogle 2022 RPE1/K562 CRISPR screen; causal_gamma derived from OT L2G + COLOC fusion only
+            flags.append("not_in_perturb_library")
         if tau is not None and tau >= 0.70:
             flags.append("highly_specific")
         if bc is not None and bc > 0.555:
             flags.append("bimodal_expression")
-        if is_hrhr:
+        if tr_val_raw >= 0.4 and stability_val >= 0.8:
             flags.append("convergent_controller")
-            warnings.append(f"{gene}: high TR ({tr_val_raw:.2f}) + high Stability ({stability_val:.2f}) — high_reward_mechanistic")
-        elif not is_grounded:
-            flags.append("no_genetic_grounding")
-            n_mech_no_geno += 1
-            if len(mech_example_genes) < 10:
-                mech_example_genes.append(gene)
         if marker_score >= 0.3:
             flags.append("marker_gene")
             warnings.append(
@@ -479,7 +389,7 @@ def run(
         if brg_score is not None:
             flags.append("brg_novel_candidate")
         if gene in perturb_only_set:
-            flags.append("perturb_novel")   # no GWAS prior; causal evidence from Perturb-seq only
+            flags.append("perturb_novel")
         if tr_data is not None:
             if tr_data.get("therapeutic_redirection", 0) > 0.1:
                 flags.append("strong_trajectory_signal")
@@ -502,7 +412,6 @@ def run(
         elif has_flag:
             flags.append("evidence_disagreement_flag")
 
-        # Evidence keys from drug_target_summary
         key_evidence: list[str] = []
         if drug_for_gene.get(gene):
             key_evidence.append(f"Drug: {', '.join(drug_for_gene[gene][:3])}")
@@ -511,25 +420,19 @@ def run(
             "target_gene":        gene,
             "rank":               0,  # filled after sort
 
-            # Dimension 1 — causal magnitude
             "causal_gamma":       round(ota_gamma, 4),
-            "target_score":       round(target_score, 4),   # = causal_gamma; backward compat
+            "target_score":       round(target_score, 4),
             "ota_gamma":          rec.get("ota_gamma", 0.0),
+            "ota_gamma_rest":     rec.get("ota_gamma_rest"),
             "ota_gamma_raw":      rec.get("ota_gamma_raw", rec.get("ota_gamma", 0.0)),
             "ota_gamma_sigma":    round(ota_sigma, 4),
             "ota_gamma_ci_lower": round(gamma_ci_lower, 4) if gamma_ci_lower is not None else None,
             "ota_gamma_ci_upper": round(gamma_ci_upper, 4) if gamma_ci_upper is not None else None,
             "evidence_tier":      tier,
-            "dominant_tier":      tier,   # alias for gps_compound_screener and downstream consumers
+            "dominant_tier":      tier,
 
-            # Dimension 2 — genetic evidence
-            "genetic_evidence_score": round(ot_gen_score, 4),
-            "ot_genetic_score":   ot_gen_score,   # backward compat alias
-            "ot_l2g_score":       round(ot_gen_score, 4),  # same as genetic_evidence_score (L2G aggregate or OT genetic)
-            "ot_score":           ot_score,
-            "partition":          partition,       # genetically_grounded | mechanistic_only
+            "partition":          partition,   # "clinical" | "novel" — annotation only
 
-            # Dimension 3 — mechanistic signal
             "mechanistic_score":            round(mechanistic_score, 4),
             "mechanistic_score_components": mechanistic_score_components if tr_data else None,
             "mechanistic_category":         mechanistic_category,
@@ -539,48 +442,36 @@ def run(
             "persistence_score":     round(persist_s, 4),
             "recovery_score":        round(recovery_s, 4),
             "boundary_score":        round(boundary_s, 4),
-            "marker_score":          round(marker_score, 4),   # informational; not a discount
+            "marker_score":          round(marker_score, 4),
 
-            # Dimension 4 — translatability
             "max_phase":          max_phase,
             "known_drugs":        drug_for_gene.get(gene, []),
             "pli":                pli,
             "safety_flags":       safety_flags,
 
-            # Specificity (reporting; not a sort key)
             "tau_specificity":    None if minimal_tier4 else tau,
             "bimodality_coeff":   None if minimal_tier4 else bc,
-            "specificity_score":  None if minimal_tier4 else specificity_score,   # reporting only
+            "specificity_score":  None if minimal_tier4 else specificity_score,
 
-            # Other
             "brg_score":          brg_score,
             "entropy_score":      rec.get("entropy_score"),
             "entropy_discount":   rec.get("entropy_discount"),
-            "scone_confidence":   rec.get("scone_confidence"),
-            "scone_flags":        rec.get("scone_flags", []),
             "flags":              flags,
             "top_programs":       top_programs,
             "_max_prog_contrib":  (
                 max((abs(v) for v in top_programs.values() if isinstance(v, (int, float))), default=0.0)
                 if isinstance(top_programs, dict) else 0.0
-            ),  # internal; stripped before output (see below)
+            ),
             "program_drivers":    None if minimal_tier4 else _classify_program_drivers(top_programs, abs(rec.get("ota_gamma", 0.0)), disease_key=_short_key),
             "key_evidence":       key_evidence,
             "therapeutic_redirection_result": tr_data,
             "evidence_disagreement":          disagreement_records,
             "controller_annotation":          rec.get("controller_annotation"),
-            "trajectory":                     traj_data,   # kept for backward compat
-            # Phase R pass-through
+            "trajectory":                     traj_data,
             "tau_disease_specificity": rec.get("tau_disease_specificity"),
             "disease_log2fc":          rec.get("disease_log2fc"),
             "tau_specificity_class":   rec.get("tau_specificity_class"),
-            # beta_program_concentration: fraction of β-mass in AMD-specific programs [0,1].
-            # Diagnostic for pleiotropic genes: low value = β spread across generic programs
-            # (e.g. JAZF1 with high β everywhere gets low concentration).
-            # ota_gamma is NOT modified — this is reporting only; CSO interprets it.
             "beta_program_concentration": rec.get("beta_program_concentration"),
-            # Fine-mapped PIP: max posterior inclusion probability across GWAS credible sets.
-            "fine_mapped_pip": pip_map.get(gene, 0.0),
             # WES rare-variant burden concordance — annotation only, ota_gamma unchanged
             "wes_checked":    rec.get("wes_checked", False),
             "wes_concordant": rec.get("wes_concordant"),
@@ -588,65 +479,37 @@ def run(
             "wes_burden_beta": rec.get("wes_burden_beta"),
             "wes_gamma_weight": rec.get("wes_gamma_weight", 1.0),
             "wes_note":       rec.get("wes_note"),
-            # tier_upgrade_log: records any re-scoring events applied after initial tier assignment.
-            # Format: [{"from_tier": str, "to_tier": str, "reason": str, "data_source": str}]
-            # Empty list means the gene kept its originally assigned tier throughout the run.
+            "mechanism_divergence_note": rec.get("mechanism_divergence_note"),
+            "coloc_h4":       rec.get("coloc_h4"),
             "tier_upgrade_log": rec.get("tier_upgrade_log", []),
-            # causal_gamma_source: explains how causal_gamma was derived.
-            # "perturb_x_program" = direct Σ(β×γ) from Perturb-seq β.
-            # "ot_l2g_fusion"     = gene absent from Perturb-seq library; γ derived from OT L2G + COLOC Bayesian fusion.
-            "causal_gamma_source": (
-                "ot_l2g_fusion" if tier == "provisional_virtual" else "perturb_x_program"
-            ),
-            # ------------------------------------------------------------------
-            # Evidence summary — one structured dict per gene, all sources explicit.
-            # Primary sort key is causal_gamma (|ota_gamma|); every other field
-            # is a column in the evidence table, not a multiplier.
-            # ------------------------------------------------------------------
+            "causal_gamma_source": "perturb_x_program" if tier != "provisional_virtual" else "virtual_beta",
             "evidence_summary": {
-                # Causal magnitude
                 "causal_gamma":        round(ota_gamma, 4),
-                "causal_gamma_source": "ot_l2g_fusion" if tier == "provisional_virtual" else "perturb_x_program",
+                "causal_gamma_source": "perturb_x_program" if tier != "provisional_virtual" else "virtual_beta",
                 "evidence_tier":       tier,
                 "top_program":         (list(top_programs.keys())[0] if isinstance(top_programs, dict) and top_programs else None),
-                # Genetic evidence
-                "gwas_l2g":            round(ot_gen_score, 4),
-                "ot_phase":            max_phase,
-                # Mechanistic evidence (raw sub-scores, no formula)
+                "max_phase":           max_phase,
                 "therapeutic_redirection": round(tr_val_raw, 4),
                 "state_influence":     round(float(tr_data.get("state_influence_score", 0.0)) if tr_data else 0.0, 4),
                 "entry_score":         round(entry_s, 4),
                 "persistence_score":   round(persist_s, 4),
                 "recovery_score":      round(recovery_s, 4),
                 "boundary_score":      round(boundary_s, 4),
-                # Safety
                 "pli":                 pli,
                 "safety_flags":        safety_flags,
-                # GPS convergence — filled in post-processing
                 "gps_converged_compounds": [],
                 "gps_novel_mechanism_compounds": [],
             },
         })
 
-    if n_mech_no_geno > 0:
-        ex = ", ".join(mech_example_genes)
-        more = f" (+{n_mech_no_geno - len(mech_example_genes)} more)" if n_mech_no_geno > len(mech_example_genes) else ""
-        warnings.append(
-            f"Partition: {n_mech_no_geno} target(s) classified as mechanistic_only "
-            f"(pipeline genetic score <0.05 and no drug with trials phase >0). "
-            f"Tier1 Perturb-seq / trajectory evidence can still be strong. Examples: {ex}{more}"
-        )
-
-    # Filter out non-druggable loci: genomic coordinate strings, enhancers, and
-    # Ensembl IDs that entered the gene list from GWAS locus expansion but are
-    # not actual gene symbols.  These cannot be targeted pharmacologically.
+    # Filter out non-druggable loci
     import re as _re
     _NON_GENE_PATTERNS = (
         r"^ENHANCER",
         r"^Enhancer",
-        r"^ENSG\d+",           # bare Ensembl IDs
-        r"-chr\d+[-:]",        # e.g. "AT-CAD-SNP-RS...-chr..."
-        r"^chr\d+[_:-]",       # chromosome coords
+        r"^ENSG\d+",
+        r"-chr\d+[-:]",
+        r"^chr\d+[_:-]",
         r"intergenic",
     )
     _non_gene_re = _re.compile("|".join(_NON_GENE_PATTERNS))
@@ -656,47 +519,45 @@ def run(
     if _n_non_gene_filtered:
         warnings.append(f"non_gene_filter: removed {_n_non_gene_filtered} non-druggable loci (Enhancer/ENSG/chr entries)")
 
-    # Sort: partition first (genetically_grounded > high_reward_mechanistic > mechanistic_only),
-    # then |ota_gamma| descending within partition.
-    # Tiebreakers use human genetic evidence: L2G score, then clinical validation (max_phase).
-    # This prevents high-β cell-line artefacts from outranking GWAS-grounded modest-γ targets.
-    _PARTITION_ORDER = {"genetically_grounded": 0, "high_reward_mechanistic": 1, "mechanistic_only": 2}
-    target_records.sort(
-        key=lambda r: (
-            _PARTITION_ORDER.get(r.get("partition", "mechanistic_only"), 2),
-            -abs(r.get("ota_gamma", 0.0)),
-            -(r.get("ot_l2g_score") or 0.0),    # tiebreaker 1: GWAS L2G score
-            -(r.get("fine_mapped_pip") or 0.0),  # tiebreaker 2: fine-mapped PIP
-            -(r.get("max_phase") or 0),           # tiebreaker 3: clinical validation history
-        )
-    )
+    # Perturb-seq gate: keep only genes with real measured β + benchmark genes.
+    # Vt-matrix virtual β genes (no library KO) inflate OTA γ artificially and
+    # crowd out genes with actual perturbation evidence.
+    _perturb_ko = _load_perturb_ko_genes(_short_key)
+    if _perturb_ko:
+        from config.drug_target_registry import get_validated_targets as _get_vt
+        _benchmark_genes = frozenset(t["gene"] for t in _get_vt(_short_key))
+        _whitelist = _perturb_ko | _benchmark_genes
+        _before_perturb_filter = len(target_records)
+        target_records = [r for r in target_records if r.get("target_gene", "") in _whitelist]
+        _n_virtual_removed = _before_perturb_filter - len(target_records)
+        if _n_virtual_removed:
+            warnings.append(
+                f"perturb_gate: removed {_n_virtual_removed} virtual-β genes "
+                f"(not in Perturb-seq library of {len(_perturb_ko)} KO genes)"
+            )
 
-    # Essential/housekeeping gene sink: genes whose ota_gamma is inflated because their
-    # Perturb-seq β saturates every program equally (RNA Pol, primase, proteasome, etc.).
-    # Signature: |ota_gamma|>1.0 AND max program contribution > 0.7 AND no GWAS grounding.
-    # Threshold lowered from 2.0 to 1.0 to catch mid-range essential KO artefacts.
+    # Sort purely by |ota_gamma| descending.
+    # Genetic grounding is embedded in γ via S-LDSC τ at the program level — no
+    # per-gene GWAS L2G tiebreaker needed or used.
+    target_records.sort(key=lambda r: -abs(r.get("ota_gamma", 0.0)))
+
+    # Essential/housekeeping gene sink: KO artefact signal (RNA Pol, primase, proteasome).
+    # Signature: |ota_gamma|>1.0 AND max program contribution > 0.7.
     _essential_flagged: list[str] = []
     for r in target_records:
-        if r.get("partition") == "genetically_grounded":
-            continue  # never sink GWAS-anchored genes
         max_contrib = r.get("_max_prog_contrib", 0.0)
         if max_contrib == 0.0:
             progs = r.get("top_programs") or {}
             if isinstance(progs, dict):
                 max_contrib = max((abs(v) for v in progs.values() if isinstance(v, (int, float))), default=0.0)
-        if (
-            abs(r.get("ota_gamma", 0.0)) > 1.0
-            and max_contrib > 0.7
-            and (r.get("ot_l2g_score") or r.get("ot_genetic_score") or 0.0) < 0.05
-        ):
+        if abs(r.get("ota_gamma", 0.0)) > 1.0 and max_contrib > 0.7:
             r["flags"] = list(r.get("flags", [])) + ["inflated_gamma_essential"]
             _essential_flagged.append(r["target_gene"])
 
     if _essential_flagged:
         warnings.append(
-            f"Essential gene sink: {len(_essential_flagged)} gene(s) with |ota_gamma|>1.0, "
-            f"max_prog_contrib>0.7, no GWAS support — ranked last. "
-            f"Examples: {', '.join(_essential_flagged[:5])}"
+            f"Essential gene sink: {len(_essential_flagged)} gene(s) with |ota_gamma|>1.0 "
+            f"and max_prog_contrib>0.7. Examples: {', '.join(_essential_flagged[:5])}"
         )
         _normal = [r for r in target_records if "inflated_gamma_essential" not in r.get("flags", [])]
         _sunk   = [r for r in target_records if "inflated_gamma_essential" in r.get("flags", [])]
