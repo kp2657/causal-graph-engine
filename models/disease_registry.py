@@ -130,14 +130,18 @@ DISEASE_GWAS_ANCHORS: dict[str, frozenset] = {
 
 
 # ---------------------------------------------------------------------------
-# GPS force-emulate genes — KD/KO targets validated in disease-relevant cells
-# but absent from genome-scale Perturb-seq atlases.  Always attempted for GPS
-# emulation regardless of dominant_tier; GPS skips gracefully if no signature.
-# Source: Schnitzler 2024 Fig. 2a KD targets (GSE210681 HAEC Perturb-seq).
+# GPS force-emulate genes — always attempted for GPS emulation regardless of
+# dominant_tier; GPS skips gracefully if no signature is available.
+# Two categories:
+# (1) GWAS-validated benchmark KD targets (Schnitzler 2024 Fig. 2a GSE210681)
+# (2) Novel pipeline-nominated genes: no GWAS signal; selected by τ*-weighted
+#     cluster co-membership (Criterion A) or heritable program cosine similarity
+#     (Criterion B) with GWAS-validated benchmarks.
 # ---------------------------------------------------------------------------
 GPS_FORCE_GENES: dict[str, list[str]] = {
-    "CAD": ["CCM2", "PLPP3"],
-    "RA":  [],
+    "CAD": ["CCM2", "PLPP3",
+            "CHRNA5", "SLC39A14", "THSD7A"],   # novel: ALDH2/COL4A1 cluster, γ<0
+    "RA":  ["NUGGC", "CRTAM", "MACC1"],         # novel: cosine sim to IL12RB2/CD226/TRAF1
 }
 
 
