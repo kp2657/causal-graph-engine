@@ -101,6 +101,46 @@ OTA_GAMMA_EDGE_MIN: float = 0.01
 # Minimum |ota_gamma| for writing a gene→trait edge to the Kùzu graph.
 # Edges below this are noise-level and bloat the graph without adding signal.
 
+# ---------------------------------------------------------------------------
+# Cache-first OTA nomination (replaces SVD cosine / fingerprint gates)
+# Effective score = |pre_OTA| × l2g_weight × eqtl_coherence_weight
+# All three are genetic signals from the Ota/Zhu framework.
+# ---------------------------------------------------------------------------
+
+CACHE_FIRST_L2G_STRONG: float = 0.5   # OT L2G ≥ 0.5 → l2g_weight = 1.0 (specific causal gene)
+CACHE_FIRST_L2G_MODERATE: float = 0.1  # OT L2G ≥ 0.1 → l2g_weight = 0.7 (probable V2G)
+CACHE_FIRST_L2G_WEIGHT_STRONG: float = 1.0
+CACHE_FIRST_L2G_WEIGHT_MODERATE: float = 0.7
+CACHE_FIRST_L2G_WEIGHT_PROXIMAL: float = 0.55  # in Perturb library (GWAS-proximal) but no specific V2G
+CACHE_FIRST_L2G_WEIGHT_NONE: float = 0.1      # no GWAS link
+
+CACHE_FIRST_EQTL_CONCORDANT_WEIGHT: float = 1.0   # sign(eQTL_β × OTA) < 0 → concordant
+CACHE_FIRST_EQTL_DISCORDANT_WEIGHT: float = 0.7   # sign(eQTL_β × OTA) > 0 → discordant
+# Concordant: risk allele increases expression (eQTL_β > 0) AND KO reduces disease (OTA < 0)
+# = more expression promotes disease = inhibiting gene is therapeutic
+
+CACHE_FIRST_EFFECTIVE_SCORE_MIN: float = 0.04
+# Min effective_score = |pre_OTA| × l2g_weight × eqtl_weight for cache-first nomination.
+# Calibrated so KRIT1 (|pre_OTA|=0.137 × 0.4 × 1.0 = 0.055) and
+# PLPP3 (0.115 × 0.4 × 1.0 = 0.046) pass, while noise genes below 0.04 are excluded.
+
+CACHE_FIRST_MAX_NOMINEES: int = 1500
+# Safety cap on total cache-first nominees per disease (sorted by effective_score desc).
+# Set to 1500 to include the full Schnitzler library (1293 genes pass |pre_OTA|≥0.10);
+# the library was pre-selected for GWAS proximity so all passing genes are legitimate.
+
+USE_CACHE_FIRST_NOMINATION: bool = True
+# Feature flag — flip to True after Phase 3 validation. When False, existing
+# SVD cosine + fingerprint + high-OTA paths run unchanged.
+
+PERTURB_NOMINATED_GAMMA_MIN: float = 0.10
+# Legacy gate used by _collect_high_ota_perturbseq_nominees (active when
+# USE_CACHE_FIRST_NOMINATION=False). Kept for backward compat; superseded by
+# CACHE_FIRST_EFFECTIVE_SCORE_MIN when USE_CACHE_FIRST_NOMINATION=True.
+
+PERTURB_NOMINATED_MAX: int = 200
+# Legacy cap for _collect_high_ota_perturbseq_nominees.
+
 CAUSAL_STRESS_MEAN_THRESHOLD: float = 1.2
 # Mean |beta| across programs above which a gene is flagged as a global stress responder.
 # Genes with uniformly large betas across all programs likely reflect transcriptional
@@ -109,6 +149,14 @@ CAUSAL_STRESS_MEAN_THRESHOLD: float = 1.2
 CAUSAL_STRESS_CV_FLOOR: float = 0.35
 # Coefficient of variation below this (betas are uniformly large) triggers stress flag.
 # High mean + low CV = indiscriminate perturbation response.
+# NOTE: CV-based filter only valid for NMF/NES-scale betas. For SVD z-score betas
+# (Schnitzler library), CV is uniformly high (0.5–0.8) even for genuine stress genes.
+# Use CACHE_FIRST_STRESS_MEAN_THRESHOLD instead for cache-first nomination.
+
+CACHE_FIRST_STRESS_MEAN_THRESHOLD: float = 2.5
+# Hard mean|β| cutoff for SVD z-score betas in cache-first nomination.
+# Calibrated so ACTR3C (5.5) and TP53 (3.1) are excluded, while CCM2 (1.9),
+# PLPP3 (1.7), and KRIT1 (0.8) are retained. No CV gate applied.
 
 CAUSAL_STRESS_DISCOUNT: float = 0.25
 # Multiplicative discount applied to ota_gamma when stress pattern is detected.
@@ -177,6 +225,13 @@ SLDSC_TAU_SIGNIFICANT_P: float = 0.05
 # τ_p threshold below which a program is considered significantly heritability-enriched.
 # Used to annotate program contributions in the OTA sum output.
 
+SLDSC_GAMMA_FLOOR: float = 0.02
+# Minimum |γ(P→trait)| for a program to contribute to the OTA sum β×γ.
+# Programs below this threshold have near-zero heritability enrichment; large β on them
+# adds noise without signal (γ_SE-weighting is insufficient when SE << |γ|).
+# Matches MIN_PROG_GAMMA in the long-island plot for consistency.
+# Derived from S-LDSC τ distribution: max=0.113, floor cuts programs with |τ|<0.02 (~15%).
+
 # ---------------------------------------------------------------------------
 # Multi-timepoint Perturb-seq — condition-specific β quality
 # ---------------------------------------------------------------------------
@@ -194,6 +249,103 @@ TIMEPOINT_ACTIVATION_BIAS_MIN: float = 1.5
 # Programs below this threshold are discounted by SLDSC_BYSTANDER_WEIGHT (0.30):
 # Zhu et al. (2025) Fig 7A: Rest-dominant regulator clusters show no RA/SLE/T1D
 # enrichment; Stim8hr/Stim48hr clusters drive autoimmune disease association.
+
+# ---------------------------------------------------------------------------
+# RNA fingerprinting — SVD-denoised Perturb-seq β
+# ---------------------------------------------------------------------------
+
+FINGERPRINT_SVD_RANK: int = 30
+# Number of latent factors for truncated SVD denoising of the gene × perturbation
+# log2FC matrix. Matches the default k=30 in the RNA fingerprinting paper
+# (Elorbany et al. 2025, PMC12458102). Higher k retains more variance but less
+# denoising; lower k is smoother but may lose perturbation-specific signal.
+
+FINGERPRINT_N_BOOTSTRAP: int = 50
+# Bootstrap resampling iterations for disease-to-fingerprint correlation uncertainty.
+
+# ---------------------------------------------------------------------------
+# Genetic-direction NMF — WES-regularized program decomposition
+# ---------------------------------------------------------------------------
+
+GENETIC_NMF_RANK: int = 30
+# Number of programs for the WES-regularized NMF decomposition. Kept equal to
+# FINGERPRINT_SVD_RANK so downstream consumers (S-LDSC, nomination scorer) see
+# the same program dimensionality regardless of which decomposition is active.
+
+GENETIC_NMF_LAMBDA: float = 0.10
+# Incoherence penalty strength: λ × Σ_k pos_k × neg_k.
+# pos_k = Σ_atherogenic W[i,k]×w_i, neg_k = Σ_protective W[i,k]×w_i.
+# Calibration target: programs should move from genetic_direction_score ~0 (SVD
+# baseline) toward |score| ≥ 0.4 without collapsing to single-gene programs.
+# 0.10 is a conservative starting point; increase if programs remain mixed.
+
+GENETIC_NMF_MAX_ITER: int = 300
+# Maximum multiplicative update iterations. 300 is sufficient for convergence
+# at rank-30; higher values add runtime without measurable gain.
+
+GENETIC_NMF_WES_Z_MIN: float = 1.5
+# Minimum WES burden |Z-score| (|β/SE|) for a gene to contribute to the
+# incoherence penalty. Genes with weaker WES signal than this threshold get
+# w_i = 0 and do not influence the regularization, preventing noise injection.
+
+GENETIC_NMF_SHET_SCALE: float = 5.0
+# Multiplier applied to the GeneBayes shet posterior when computing the final
+# gene weight: w_i = burden_z × (1 + SHET_SCALE × shet_post). Constrained genes
+# (shet ~ 0.05–0.2) get up to a 2× boost; near-zero shet genes are unaffected.
+# Each iteration resamples 80% of shared genes; the SD of bootstrap correlations
+# is the SE used for z-score computation and uncertainty quantification.
+
+GENETIC_NMF_EQTL_CONCORDANT_BOOST: float = 1.5
+# Weight multiplier when WES and eQTL signals agree on direction. Applied to
+# the final gene weight w_i before NMF to amplify genes with converging evidence.
+
+GENETIC_NMF_EQTL_DISCORDANT_DISCOUNT: float = 0.5
+# Weight multiplier when WES and eQTL signals disagree on direction. Reduces
+# but does not zero the weight — the gene may still have real signal through
+# one pathway; we just trust it less.
+
+GENETIC_NMF_EQTL_ONLY_WEIGHT: float = 0.5
+# Relative weight given to genes with eQTL evidence but no WES signal.
+# w_i = |eQTL_Z| × EQTL_ONLY_WEIGHT. The 0.5 discount reflects that eQTL
+# alone (without rare-variant orthogonal support) is a weaker direction signal.
+
+FINGERPRINT_MIN_GENE_OVERLAP: int = 50
+# Minimum shared genes required between the disease DE vector and a perturbation
+# fingerprint for correlation to be computed. Below this threshold the correlation
+# is too noisy to be meaningful given the bootstrap SE.
+
+USE_FINGERPRINT_BETA: bool = True
+# When True, `load_replogle_betas` prefers `signatures_fingerprint.json.gz` for
+# GWAS-anchored genes and raw `signatures.json.gz` for non-GWAS nominees.
+# Set to False to revert to raw log2FC signatures everywhere (baseline mode).
+
+FINGERPRINT_SVD_COSINE_MIN: float = 0.30
+# Minimum cosine similarity between a non-GWAS perturbed gene's SVD loading vector
+# and the mean GWAS gene loading vector for the gene to be nominated as a
+# fingerprint-based candidate. Genes below this threshold co-vary in latent
+# directions unrelated to the GWAS signal and are not nominated.
+
+FINGERPRINT_DISEASE_R_THRESHOLD: float = 0.20
+# Minimum |r| required for a Perturb-seq KO to be nominated as a disease-fingerprint
+# candidate. Only KOs with r ≤ −FINGERPRINT_DISEASE_R_THRESHOLD (i.e. KO anti-correlates
+# with the disease DEG profile) pass the floor gate. After this gate, nominees are
+# further capped at FINGERPRINT_MAX_FP_NOMINEES (top-N by most negative r) to prevent
+# the smooth r distribution from flooding the gene list.
+# RA calibration: IL6R r=−0.241 passes at 0.20; DHODH r=−0.137 / TYK2 r=−0.168 do not
+# but are recovered via SVD cosine path (cosine ≥ 0.30 in GWAS centroid space).
+
+FINGERPRINT_MAX_FP_NOMINEES: int = 200
+# Hard cap on the number of disease-fingerprint nominees added per run (after r floor gate).
+# The r distribution is smooth with no natural gap, so a top-N cap prevents the fingerprint
+# path from dominating the gene list. 200 adds O(200) functionally-driven reversal candidates
+# on top of O(50–450) SVD cosine nominees. Genes are taken in order of most negative r.
+
+USE_SVD_GENE_NOMINATION: bool = True
+# When True, the orchestrator replaces the full Perturb-seq union (all KO genes)
+# with SVD cosine-nominated genes only (those co-regulated with the GWAS centroid
+# in latent SVD space, cosine ≥ FINGERPRINT_SVD_COSINE_MIN). This collapses
+# ~2000 mechanistic candidates to ~50 principled nominees. Set False to revert to
+# the full Perturb-seq union (session 92 behaviour).
 
 # ---------------------------------------------------------------------------
 # GPS disease signature — genetic credibility weighting
@@ -294,14 +446,22 @@ GPS_Z_RGES_DEFAULT: float = 3.5
 # The threshold governs the z-scored path; GPS_MAX_HITS is only the non-z-scored fallback cap.
 # Source: [GPS] — connectivity-map approach; Z-threshold selection is application-specific.
 
-GPS_Z_RGES_PROGRAM: float = 2.0
-# Z_RGES threshold for program-level GPS screens (lower than disease-state threshold).
-# Program signatures are smaller (~50–200 genes vs ~500 for disease-state), producing
-# fewer reverters per screen. 2.0σ balances sensitivity vs. noise for program screens.
+GPS_Z_RGES_PROGRAM: float = 3.5
+# Z_RGES threshold for program-level GPS screens. Matched to GPS_Z_RGES_DEFAULT (3.5σ):
+# the BGRD permutation normalises for signature size, so Z-scores are comparable across
+# disease-state and program screens. 2.0σ produced ~4,149 hits (19.6% of the LINCS
+# library) — no discriminative power. 3.5σ gives O(10–100) hits per program.
 
 GPS_MAX_HITS: int = 500
 # Safety cap for the non-z-scored GPS fallback path (top_n by |RGES|).
 # Not applied when GPS output contains Z_RGES column — threshold governs in that case.
+
+GPS_Z_STEPOFF_MIN_RATIO: float = 3.0
+# Gap-detection sensitivity for the Z_RGES step-off threshold.
+# The step-off is the largest gap in the sorted Z distribution.
+# A gap is accepted as a real signal/noise boundary only when it is at least
+# GPS_Z_STEPOFF_MIN_RATIO × the median inter-compound gap.
+# Larger values = stricter (fewer hits); 3.0 requires the gap to be 3× typical spacing.
 
 GPS_BGRD_MIN_GENES: int = 500
 # Minimum signature genes for BGRD elbow-trim. GPS sets n_permutations=n_sig_genes;

@@ -341,6 +341,104 @@ def get_programs_for_disease(
 
 
 # ---------------------------------------------------------------------------
+# SVD-component programs (Perturb-seq first-principles programs)
+# ---------------------------------------------------------------------------
+
+def get_svd_programs_for_disease(
+    disease_key: str,
+    gwas_genes: list[str] | set[str] | None = None,
+    de_vector: dict[str, float] | None = None,
+    top_n_genes: int = 100,
+) -> dict:
+    """
+    Return Perturb-seq SVD components as programs, ranked by joint GWAS + DE alignment.
+
+    Scoring hierarchy (human genetics as north star):
+      1. GWAS + DE aligned: gwas_t[c] × de_pearson[c] — both genetic and
+         transcriptional disease evidence required; cell-cycle components sink to 0
+      2. GWAS-only aligned: gwas_t[c] — when no DE vector available
+      3. Variance-ranked (unsupervised): fallback when no GWAS genes provided
+
+    Args:
+        disease_key:  Short disease key ("CAD", "RA")
+        gwas_genes:   GWAS-anchored gene symbols (from tier1 output)
+        de_vector:    {gene: log2FC(disease vs healthy)} from scRNA-seq h5ad
+        top_n_genes:  Genes per program (by |U_scaled[:,c]|); default 100
+
+    Returns:
+        Standard program dict (same schema as get_programs_for_disease).
+        Each program carries gwas_t_stat, de_pearson, combined_score metadata.
+    """
+    from graph.schema import DISEASE_CELL_TYPE_MAP
+    from mcp_servers.perturbseq_server import (
+        get_gwas_aligned_svd_programs,
+        get_svd_program_gene_sets,
+    )
+
+    ctx               = DISEASE_CELL_TYPE_MAP.get(disease_key, {})
+    scperturb_dataset = ctx.get("scperturb_dataset", "")
+    cell_type         = ctx.get("perturb_seq_source", "unknown")
+
+    if not scperturb_dataset:
+        return {
+            "programs":   [],
+            "n_programs": 0,
+            "source":     "svd_no_dataset",
+            "cell_type":  cell_type,
+            "disease":    disease_key,
+        }
+
+    # GWAS-aligned path (preferred): rank components by genetic + DE disease direction
+    if gwas_genes:
+        programs = get_gwas_aligned_svd_programs(
+            scperturb_dataset, disease_key, gwas_genes,
+            de_vector=de_vector,
+            top_n_genes=top_n_genes,
+        )
+        if programs:
+            has_de = de_vector is not None
+            source = f"SVD_GWAS_DE_aligned_{scperturb_dataset}" if has_de \
+                     else f"SVD_GWAS_aligned_{scperturb_dataset}"
+            return {
+                "programs":   programs,
+                "n_programs": len(programs),
+                "source":     source,
+                "cell_type":  cell_type,
+                "disease":    disease_key,
+            }
+
+    # Unsupervised fallback: variance-ranked (no GWAS genes available)
+    prog_gene_sets = get_svd_program_gene_sets(scperturb_dataset, disease_key, top_n=top_n_genes)
+    if not prog_gene_sets:
+        return {
+            "programs":   [],
+            "n_programs": 0,
+            "source":     "svd_no_loadings",
+            "cell_type":  cell_type,
+            "disease":    disease_key,
+            "note":       "Run preprocess_rna_fingerprints() to generate U_scaled in svd_loadings.npz",
+        }
+
+    programs = []
+    for prog_id, top_genes in prog_gene_sets.items():
+        programs.append({
+            "program_id": prog_id,
+            "name":       prog_id,
+            "gene_set":   [g["gene"] for g in top_genes],
+            "top_genes":  top_genes,
+            "source":     "svd_component",
+        })
+
+    return {
+        "programs":   programs,
+        "n_programs": len(programs),
+        "source":     f"SVD_Perturb-seq_{scperturb_dataset}",
+        "cell_type":  cell_type,
+        "disease":    disease_key,
+    }
+
+
+# ---------------------------------------------------------------------------
 # S-LDSC τ annotation and program ranking
 # ---------------------------------------------------------------------------
 

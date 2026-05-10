@@ -178,47 +178,64 @@ def get_gwas_catalog_associations(
             "associations": list[dict]  # rsId, pvalue, orPerCopyNum, beta, ci, reportedGenes
         }
     """
-    # If GWAS Catalog is flaky (TLS handshake timeouts), fall back to a local "hardcopy".
+    # Hardcopy-first: use the local snapshot if it has associations.
+    # Only hits the live API when the hardcopy is absent or has zero associations.
+    # To refresh, delete the hardcopy file or call download_gwas_catalog_hardcopy().
     cache_path = _gwas_hardcopy_path(efo_id, f"associations_page_{page}_size_{page_size}")
-    try:
-        # Legacy endpoint (v1-ish)
-        url = f"{GWAS_CATALOG_BASE}/efoTraits/{efo_id}/associations"
-        params = {"page": page, "size": page_size, "projection": "associationByEfoTrait"}
-        time.sleep(_GWAS_CATALOG_DELAY)
-        resp = _gwas_get(
-            url,
-            params=params,
-            headers=_gwas_headers(),
-            timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
-            follow_redirects=True,
-        )
+    data_source = "unknown"
 
-        data_source = "GWAS Catalog REST API (legacy)"
-        if resp.status_code == 404:
-            # REST v2 fallback. GWAS Catalog moved many direct trait endpoints behind
-            # the new query-style routes.
-            url_v2 = f"{GWAS_CATALOG_BASE_V2}/associations"
-            params_v2 = {"efo_id": efo_id, "page": page, "size": page_size}
+    cached = _read_hardcopy(cache_path)
+    _hardcopy_ok = (
+        isinstance(cached, dict)
+        and isinstance(cached.get("data"), dict)
+        and cached["data"].get("_embedded", {}).get("associations")
+    )
+    if _hardcopy_ok:
+        data = cached["data"]
+        data_source = f"GWAS Catalog hardcopy ({cache_path.name})"
+    else:
+        try:
+            # Legacy endpoint (v1-ish)
+            url = f"{GWAS_CATALOG_BASE}/efoTraits/{efo_id}/associations"
+            params = {"page": page, "size": page_size, "projection": "associationByEfoTrait"}
             time.sleep(_GWAS_CATALOG_DELAY)
             resp = _gwas_get(
-                url_v2,
-                params=params_v2,
+                url,
+                params=params,
                 headers=_gwas_headers(),
                 timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
                 follow_redirects=True,
             )
-            data_source = "GWAS Catalog REST API v2 (fallback)"
 
-        resp.raise_for_status()
-        data = resp.json()
-        _write_hardcopy(cache_path, {"data": data, "data_source": data_source, "cached_at": time.time()})
-    except Exception as exc:
-        cached = _read_hardcopy(cache_path)
-        if isinstance(cached, dict) and isinstance(cached.get("data"), dict):
-            data = cached["data"]
-            data_source = f"GWAS Catalog hardcopy ({cache_path.name})"
-        else:
-            raise exc
+            data_source = "GWAS Catalog REST API (legacy)"
+            if resp.status_code == 404:
+                # v2 fallback — GWAS Catalog v2 uses efoTrait, not efo_id
+                url_v2 = f"{GWAS_CATALOG_BASE_V2}/associations"
+                for _param_name in ("efoTrait", "efo_id"):
+                    params_v2 = {_param_name: efo_id, "page": page, "size": page_size}
+                    time.sleep(_GWAS_CATALOG_DELAY)
+                    resp = _gwas_get(
+                        url_v2,
+                        params=params_v2,
+                        headers=_gwas_headers(),
+                        timeout=httpx.Timeout(connect=5.0, read=20.0, write=5.0, pool=5.0),
+                        follow_redirects=True,
+                    )
+                    data_source = f"GWAS Catalog REST API v2 ({_param_name})"
+                    if resp.status_code == 200:
+                        _d = resp.json()
+                        if _d.get("_embedded", {}).get("associations") or _d.get("page", {}).get("totalElements", 0) > 0:
+                            break
+
+            resp.raise_for_status()
+            data = resp.json()
+            _write_hardcopy(cache_path, {"data": data, "data_source": data_source, "cached_at": time.time()})
+        except Exception as exc:
+            if isinstance(cached, dict) and isinstance(cached.get("data"), dict):
+                data = cached["data"]
+                data_source = f"GWAS Catalog hardcopy ({cache_path.name})"
+            else:
+                raise exc
 
     raw_assocs = data.get("_embedded", {}).get("associations", []) if isinstance(data, dict) else []
     total = (data.get("page", {}) if isinstance(data, dict) else {}).get("totalElements", len(raw_assocs))

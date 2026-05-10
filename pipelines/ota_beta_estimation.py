@@ -354,15 +354,16 @@ def estimate_beta_tier2(
     if nes is None:
         return None
 
-    # Scale by program loading when available; raw NES otherwise
-    loading = program_loading if program_loading is not None else 1.0
+    if program_loading is None:
+        return None
+    loading = float(program_loading)
     beta = nes * loading
 
     tissue = eqtl_data.get("tissue", "unknown_tissue")
     coloc_str = f"_COLOC_H4={coloc_h4:.2f}" if coloc_h4 is not None else ""
 
     raw_sigma = (
-        abs((eqtl_data.get("se") or 0.0) * (loading if loading is not None else 1.0))
+        abs((eqtl_data.get("se") or 0.0) * loading)
         or _se_from_pval(beta, float(eqtl_data.get("pval_nominal") or 0.05))
     )
     # COLOC H4 magnitude scales beta_sigma: borderline H4 (0.80) has ~2x the
@@ -435,8 +436,10 @@ def estimate_beta_tier2_ot_instrument(
     """
     if not ot_instruments or not ot_instruments.get("instruments"):
         return None
+    if program_loading is None:
+        return None
 
-    loading = program_loading if program_loading is not None else 1.0
+    loading = float(program_loading)
 
     # Prefer eQTL instrument (direct expression effect, same logic as GTEx Tier2)
     best_eqtl = next(
@@ -525,8 +528,10 @@ def estimate_beta_tier2_sc_eqtl(
     pvalue = float(top.get("pvalue", 1.0))
     if pvalue > 1e-4:  # weak sc-eQTL — don't use
         return None
+    if program_loading is None:
+        return None
 
-    loading = program_loading if program_loading is not None else 1.0
+    loading = float(program_loading)
     cell_type = (
         top.get("condition_label")
         or sc_eqtl_data.get("cell_type")
@@ -626,8 +631,10 @@ def estimate_beta_tier2_pqtl(
     pvalue = float(top.get("pvalue", 1.0))
     if pvalue > 0.05:  # relaxed from 1e-5: complement pQTLs (e.g. CFH p=0.019) pass
         return None
+    if program_loading is None:
+        return None
 
-    loading = program_loading if program_loading is not None else 1.0
+    loading = float(program_loading)
     beta    = beta_pqtl * loading
     se_pqtl = top.get("se")
     sigma   = abs((se_pqtl or 0.0) * loading) or _se_from_pval(beta, pvalue)
@@ -716,11 +723,12 @@ def estimate_beta_tier2_rare_burden(
         return None
     if not math.isfinite(burden_beta):
         return None
+    if program_loading is None:
+        return None
 
-    loading = program_loading if program_loading is not None else 1.0
-
-    if program_loading is not None and abs(float(program_loading)) > 0:
-        beta = math.copysign(abs(float(program_loading)), burden_beta)
+    loading = float(program_loading)
+    if abs(loading) > 0:
+        beta = math.copysign(abs(loading), burden_beta)
     else:
         beta = burden_beta
 
@@ -785,21 +793,34 @@ def estimate_beta_tier2_eqtl_direction(
     """
     if eqtl_data is None:
         return None
-    # Only activate this tier when COLOC would reject Tier2 (H4 < COLOC_H4_MIN or absent)
-    if coloc_h4 is not None and coloc_h4 >= COLOC_H4_MIN:
+    # Only defer to Tier2 when COLOC is high AND Tier2 can actually run (needs a loading).
+    # If program_loading is None, Tier2 will also fail — fall through to direction-only.
+    if coloc_h4 is not None and coloc_h4 >= COLOC_H4_MIN and program_loading is not None:
         return None  # caller should use estimate_beta_tier2 instead
 
     nes = eqtl_data.get("nes")
     if nes is None or not math.isfinite(float(nes)):
         return None
 
-    loading = program_loading if program_loading is not None else 1.0
+    _loading_fallback = False
+    if program_loading is None:
+        # Fallback for genes absent from Perturb-seq SVD loadings but with a
+        # genome-wide significant eQTL in the primary tissue: use a small proxy
+        # loading so the eQTL direction can propagate through OTA.
+        pval = float(eqtl_data.get("pvalue") or eqtl_data.get("pval_nominal") or 1.0)
+        if pval < 1e-6:
+            program_loading = 0.10
+            _loading_fallback = True
+        else:
+            return None
 
+    loading = float(program_loading)
     beta = math.copysign(abs(loading), float(nes))
     beta_sigma = 0.50
 
     tissue = eqtl_data.get("tissue", "unknown_tissue")
     coloc_str = f"H4={coloc_h4:.2f}" if coloc_h4 is not None else "H4=absent"
+    fallback_note = " [loading=0.10 proxy: gene absent from Perturb-seq]" if _loading_fallback else ""
 
     return {
         "beta":          beta,
@@ -813,7 +834,7 @@ def estimate_beta_tier2_eqtl_direction(
         "mr_method":     "eQTL_NES_x_sqrt_coloc_credibility_x_loading",
         "note":          (
             f"eQTL exists ({tissue}, NES={float(nes):.3f}) but COLOC {coloc_str} — "
-            f"β = sign(NES)×|loading|; beta_sigma={beta_sigma:.2f}."
+            f"β = sign(NES)×|loading|; beta_sigma={beta_sigma:.2f}.{fallback_note}"
         ),
     }
 

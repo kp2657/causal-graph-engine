@@ -7,19 +7,20 @@ Usage (run once before the pipeline):
     python -m pipelines.ldsc.setup install_ldsc
 
 Data sources:
-  CAD: PLAtlas Phe_414 (ICD-9 414 other ischemic heart disease)
-       MVP + UK Biobank + FinnGen meta-analysis, N≈820k
-       https://g-fce312.fd635.8443.data.globus.org/sumstats_downsized/EUR/Phe_414.EUR.gwama.sumstats.txt.gz
+  CAD: Aragam 2022 GCST90132314 — 181,522 cases / 984,168 controls (EUR, GRCh38 harmonised)
+       Aragam et al. 2022 Nat Genet — largest cardiac-endpoint-adjudicated CAD GWAS
+       https://ftp.ebi.ac.uk/pub/databases/gwas/summary_statistics/GCST90132001-GCST90133000/GCST90132314/harmonised/GCST90132314.h.tsv.gz
 
-  RA:  PLAtlas Phe_714 (ICD-9 714 rheumatoid arthritis)
-       MVP + UK Biobank + FinnGen meta-analysis, N≈820k
-       https://g-fce312.fd635.8443.data.globus.org/sumstats_downsized/EUR/Phe_714.EUR.gwama.sumstats.txt.gz
+  RA:  GWAS Catalog GCST90132222 — Sakaue et al. 2021 (PMID 36333501)
+       Seropositive RA, 35,871 cases / 240,149 controls (multi-cohort EUR, GRCh38 harmonised)
+       https://ftp.ebi.ac.uk/pub/databases/gwas/summary_statistics/GCST90132001-GCST90133000/GCST90132222/harmonised/GCST90132222.h.tsv.gz
 
   LD scores: Zenodo 10515792 — 1000G Phase3 EUR baselineLD v2.2 (~645 MB)
   LD weights: Zenodo 10515792 — 1000G Phase3 EUR weights HapMap3 (~12 MB)
 
 References:
-  PLAtlas: Verma Lab, ANL — PLeiotropic ATLAS (MVP+UKB+FinnGen, 1678 traits)
+  Aragam 2022: PMID 36474045 — cardiac-endpoint adjudicated CAD GWAS
+  Sakaue 2021: PMID 36333501 — seropositive RA, replaces PLAtlas Phe_714 (ICD-EHR case dilution)
   LDSC: Bulik-Sullivan et al. 2015 Nature Genetics
   Finucane et al. 2018 Nature Genetics (S-LDSC cell-type specific analysis)
 """
@@ -70,30 +71,38 @@ _MUNGE_BIN = _find_munge_bin()
 
 GWAS_CONFIG: dict[str, dict] = {
     "CAD": {
-        "url": "https://g-fce312.fd635.8443.data.globus.org/sumstats_downsized/EUR/Phe_414.EUR.gwama.sumstats.txt.gz",
-        "filename": "Phe_414.EUR.gwama.sumstats.txt.gz",
-        "description": "PLAtlas Phe_414 — ICD-9 414 other chronic ischaemic heart disease (MVP+UKB+FinnGen, N≈820k)",
-        "snp_col": "#ID",
-        "a1_col": "ALT",
-        "a2_col": "REF",
-        "beta_col": "BETA",
-        "se_col": "SE",
-        "p_col": "P",
-        "n_col": "N",
-        "n_value": 818469,  # from header row
+        # Aragam 2022 (PMID 36474045) — cardiac-endpoint adjudicated CAD GWAS
+        # 181,522 cases / 984,168 controls, EUR, GRCh38 harmonised
+        # Replaces PLAtlas Phe_414 (ICD-9 EHR-derived, case dilution → phenotype heterogeneity)
+        "url": "https://ftp.ebi.ac.uk/pub/databases/gwas/summary_statistics/GCST90132001-GCST90133000/GCST90132314/harmonised/GCST90132314.h.tsv.gz",
+        "filename": "GCST90132314.h.tsv.gz",
+        "description": "GCST90132314 — Aragam 2022 CAD (181,522 cases / 984,168 controls, EUR GRCh38 harmonised)",
+        "snp_col": "rsid",
+        "a1_col": "effect_allele",
+        "a2_col": "other_allele",
+        "chr_col": "chromosome",
+        "pos_col": "base_pair_location",
+        "beta_col": "beta",
+        "se_col": "standard_error",
+        "p_col": "p_value",
+        "n_value": 1165690,  # 181,522 + 984,168
     },
     "RA": {
-        "url": "https://g-fce312.fd635.8443.data.globus.org/sumstats_downsized/EUR/Phe_714.EUR.gwama.sumstats.txt.gz",
-        "filename": "Phe_714.EUR.gwama.sumstats.txt.gz",
-        "description": "PLAtlas Phe_714 — ICD-9 714 rheumatoid arthritis (MVP+UKB+FinnGen, N≈820k)",
-        "snp_col": "#ID",
-        "a1_col": "ALT",
-        "a2_col": "REF",
-        "beta_col": "BETA",
-        "se_col": "SE",
-        "p_col": "P",
-        "n_col": "N",
-        "n_value": 820742,
+        # GWAS Catalog GCST90132222 — Sakaue et al. 2021 (PMID 36333501)
+        # Seropositive RA, 35,871 cases / 240,149 controls (multi-cohort)
+        # Replaces PLAtlas Phe_714 (ICD-9 EHR-derived, case dilution → τ depletion)
+        "url": "https://ftp.ebi.ac.uk/pub/databases/gwas/summary_statistics/GCST90132001-GCST90133000/GCST90132222/harmonised/GCST90132222.h.tsv.gz",
+        "filename": "GCST90132222.h.tsv.gz",
+        "description": "GCST90132222 — Sakaue 2021 seropositive RA (35,871 cases / 240,149 controls, multi-cohort)",
+        "snp_col": "rsid",
+        "a1_col": "effect_allele",
+        "a2_col": "other_allele",
+        "chr_col": "chromosome",
+        "pos_col": "base_pair_location_grch38",
+        "beta_col": "beta",
+        "se_col": "standard_error",
+        "p_col": "p_value",
+        "n_value": 276020,  # 35,871 cases + 240,149 controls
     },
 }
 
@@ -264,14 +273,13 @@ def download_polyfun_ld_scores(force: bool = False) -> Path:
         with tarfile.open(tmp_path, "r:gz") as tf:
             tf.extractall(_POLYFUN_LDSCORE_DIR, filter="data")
         log.info("PolyFun LD scores extracted successfully")
+        log.info("PolyFun LD scores downloaded to %s", _POLYFUN_LDSCORE_DIR)
     except Exception as exc:
         log.warning("PolyFun tarball download failed: %s", exc)
         log.warning("Download manually: aws s3 cp --no-sign-request "
                     "s3://broad-alkesgroup-ukbb-ld/UKBB_LD/baselineLF_v2.2.UKB.tar.gz %s", tmp_path)
     finally:
         tmp_path.unlink(missing_ok=True)
-    else:
-        log.info("PolyFun LD scores downloaded to %s", _POLYFUN_LDSCORE_DIR)
 
     return _POLYFUN_LDSCORE_DIR
 

@@ -68,13 +68,14 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
     Returns:
         dict with GPS reversal hits + normalized putative targets (HGNC).
     """
+    import os
     targets = target_prioritization_result.get("targets", [])
     warnings: list[str] = []
     # Keep output keys stable for downstream code, but chemistry enrichment is empty by design.
     target_chemistry: dict[str, dict] = {}
     repurposing_candidates: list[dict] = []
 
-    if not targets:
+    if not targets or os.environ.get("SKIP_GPS"):
         return {
             "target_chemistry": {},
             "repurposing_candidates": [],
@@ -88,11 +89,12 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
             "warnings": warnings,
         }
 
-    # Step 6 — GPS KO emulation for top-3 Tier 2 genetic anchors.
-    # Gated on dominant_tier.startswith("Tier2") and ota_gamma > 0.1 — only
-    # high-confidence causal genes with Perturb-seq KO signature coverage are screened.
-    # Answers: "does any compound pharmacologically mimic loss-of-function of this target?"
+    # Step 6 — GPS KO emulation for top-ranked Tier 2 anchors + any benchmark genes.
+    # Sorted by rank (ascending) within Tier2 + perturb_x_program; top-3 selected.
+    # Additionally, any gene in gps_force_genes is always attempted regardless of tier
+    # (e.g. benchmark KD targets like CCM2 that are provisional but have Perturb-seq data).
     gps_emulation_candidates: list[dict] = []
+    gps_force_genes: set[str] = set(disease_query.get("gps_force_genes") or [])
     try:
         from pipelines.gps_screen import _docker_available, screen_target_for_emulators
         if _docker_available():
@@ -102,10 +104,18 @@ def run(target_prioritization_result: dict, disease_query: dict) -> dict:
                     t for t in targets
                     if (t.get("dominant_tier") or "").startswith("Tier2")
                     and abs(t.get("ota_gamma") or 0.0) > 0.1
+                    and t.get("causal_gamma_source") == "perturb_x_program"
                 ],
-                key=lambda t: abs(t.get("ota_gamma") or 0.0),
-                reverse=True,
+                key=lambda t: t.get("rank") or 9999,
             )[:3]
+            # Add force-genes (e.g. benchmark KD targets) not already in the Tier2 list
+            tier2_genes = {t.get("target_gene") for t in tier2_anchors}
+            extra = [
+                t for t in targets
+                if t.get("target_gene") in gps_force_genes
+                and t.get("target_gene") not in tier2_genes
+            ]
+            tier2_anchors = tier2_anchors + extra
 
             def _emulate(tgt):
                 gene = tgt.get("target_gene", "")

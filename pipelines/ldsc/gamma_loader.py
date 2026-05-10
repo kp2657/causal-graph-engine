@@ -1,15 +1,12 @@
 """
-pipelines/ldsc/gamma_loader.py — Load pre-computed S-LDSC τ coefficients as γ values.
+pipelines/ldsc/gamma_loader.py — Load pre-computed S-LDSC γ values.
 
-Reads from data/ldsc/results/{disease_key}_program_taus.json (produced by runner.py).
-Converts τ (per-SNP heritability enrichment) to a normalized γ ∈ [0, 1].
+γ(P→trait) = τ* (signed S-LDSC enrichment coefficient).
+Positive τ*: program chromatin is enriched for GWAS heritability → included in OTA sum.
+Negative τ*: program chromatin is depleted of heritability → excluded (not a signal carrier).
 
-Normalization:
-    γ_ldsc = τ_prog / (Σ|τ| across all programs + ε)   if τ > 0
-    γ_ldsc = 0                                           if τ ≤ 0 (no enrichment)
-
-This gives programs proportional γ based on their relative heritability contribution.
-A program with 3× more heritability enrichment gets 3× higher γ_ldsc.
+Programs with τ* ≤ 0 are filtered out before returning; only heritability-enriched programs
+contribute to OTA γ = Σ_P β(gene→P) × τ*(P→trait).
 
 Evidence tier: "Tier2_Convergent" when τ_p < 0.05, else "Tier3_Provisional".
 """
@@ -17,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -30,6 +26,62 @@ _FROZEN_DIR  = _ROOT / "frozen"  # shipped frozen τ files take precedence
 
 # Minimum tau p-value to treat as Tier2 (genome-wide significant heritability enrichment)
 _TAU_P_TIER2 = 0.05
+
+# ---------------------------------------------------------------------------
+# Tier 3: Cell-type specificity filter
+# ---------------------------------------------------------------------------
+
+# Cell-type marker gene sets for program specificity filtering.
+# Programs with few cell-type-specific top genes get γ discounted.
+_CELL_TYPE_MARKERS: dict[str, frozenset[str]] = {
+    # CD4+ T cell markers and T cell immune genes (RA / SLE datasets)
+    "czi_2025_cd4t_perturb": frozenset({
+        # Core T cell surface markers
+        "CD3D", "CD3E", "CD3G", "CD4", "CD8A", "CD8B",
+        # Costimulatory / checkpoint
+        "CD28", "ICOS", "CTLA4", "PDCD1", "LAG3", "HAVCR2", "TIGIT", "CD226",
+        # TCR signaling
+        "ZAP70", "LCK", "LAT", "VAV1", "PLCG1", "LCP2", "CD247",
+        # Transcription factors
+        "FOXP3", "GATA3", "TBX21", "RORC", "BCL6", "TOX", "NR4A1", "IRF4",
+        # Cytokines / receptors
+        "IL2", "IL2RA", "IL2RB", "IL7R", "IL4", "IL13", "IL17A", "IL21",
+        "IFNG", "TNF", "IL10", "TGFB1", "TNFSF11",
+        # Memory / homing
+        "CCR7", "SELL", "CXCR5", "CXCR3", "CXCR4",
+        # T cell activation / effector
+        "PTPRC", "CD44", "CD27", "TNFRSF4", "TNFRSF9", "ENTPD1",
+        # RA-specific immune
+        "TYK2", "JAK1", "JAK2", "JAK3", "STAT1", "STAT3", "STAT4",
+        "IL6R", "IL12RB2", "IL23R", "TRAF3IP2", "TRAF1", "PTPN22",
+        "REL", "NFKB1", "IRF5", "PADI4", "MS4A1",
+    }),
+    # Cardiac endothelial cell markers (CAD dataset — Schnitzler 2023 vascular ECs)
+    "schnitzler_cad_vascular": frozenset({
+        # Core EC surface markers
+        "CDH5", "PECAM1", "VWF", "KDR", "TEK", "TIE1", "ROBO4", "ENG", "THBD",
+        # EC function / tone
+        "NOS3", "THBS1", "VCAM1", "ICAM1", "SELE", "SELP", "PLVAP",
+        # Transcription factors
+        "KLF2", "KLF4", "NOTCH1", "HEY1", "HES1", "ETS1", "ERG",
+        # Vascular signaling
+        "VEGFA", "ANGPT1", "DLL4", "JAG1", "CXCR4",
+        # CCM complex / EC integrity
+        "CCM2", "KRIT1", "PDCD10", "STK25",
+        # EC metabolism / lipid
+        "PLPP3", "APOA1", "APOE",
+        # Gap junctions
+        "GJA5", "GJA4",
+        # CAD-specific
+        "HMGCR", "LDLR", "PCSK9", "APOB",
+    }),
+}
+
+_DATASET_FOR_DISEASE: dict[str, str] = {
+    "RA":  "czi_2025_cd4t_perturb",
+    "SLE": "czi_2025_cd4t_perturb",
+    "CAD": "schnitzler_cad_vascular",
+}
 
 
 @lru_cache(maxsize=8)
@@ -61,100 +113,217 @@ def _load_tau_file(disease_key: str) -> dict[str, Any] | None:
         return None
 
 
-def get_program_gamma_ldsc(
-    program: str,
-    disease_key: str,
-    trait: str | None = None,
-) -> dict | None:
+
+
+def _cell_type_specificity_weight(disease_key: str, top_genes: list[str]) -> float:
     """
-    Return S-LDSC-derived γ for (program, disease) as a gamma estimate dict.
+    Fraction of top_genes in the cell-type marker set, mapped to a [0.15, 1.0] weight.
+    Programs with ≥15% cell-type-specific top genes get full weight.
+    Programs with 0% get 0.15× (not zeroed — keeps tail signal for novel programs).
 
-    Returns None when:
-    - No pre-computed τ file exists (S-LDSC hasn't been run yet)
-    - τ ≤ 0 for this program (no heritability enrichment)
-
-    When available, returns a dict compatible with OTA γ estimation schema.
+    Used as Tier 3 discount: programs whose top-loading genes are not cell-type-specific
+    (e.g. metabolic/housekeeping programs in C20/C27 for RA) are down-weighted to
+    prevent bystander enrichment from flipping the direction of known drug targets.
     """
-    data = _load_tau_file(disease_key.upper())
-    if not data:
-        return None
-
-    program_taus: dict[str, float] = data.get("program_taus", {})
-    if not program_taus:
-        return None
-
-    tau = program_taus.get(program)
-    if tau is None or tau <= 0:
-        return None
-
-    # Normalize τ to [0,1] γ using proportion of positive enrichment
-    pos_taus = [v for v in program_taus.values() if v > 0]
-    total_pos = sum(pos_taus) if pos_taus else 1.0
-    if total_pos <= 0:
-        return None
-
-    gamma_value = max(tau, 0.0) / (total_pos + 1e-8)
-    gamma_value = min(gamma_value, 1.0)
-    gamma_value = round(gamma_value, 5)
-
-    # Find τ_p and τ_SE for this program from raw_annotations
-    tau_p = 1.0
-    tau_se: float | None = None
-    for annot in data.get("raw_annotations", []):
-        prog_slug = program.replace(" ", "_").replace("-", "_")
-        if prog_slug in annot.get("name", ""):
-            tau_p = annot.get("tau_p", 1.0)
-            tau_se = annot.get("tau_se")
-            break
-
-    # Delta method: SE_γ = SE_τ / (total_positive_τ + ε)
-    if tau_se is not None:
-        gamma_se = round(float(tau_se) / (total_pos + 1e-8), 5)
-    else:
-        gamma_se = round(gamma_value * 0.30, 5)
-
-    evidence_tier = "Tier2_Convergent" if tau_p < _TAU_P_TIER2 else "Tier3_Provisional"
-    h2 = data.get("h2")
-
-    return {
-        "gamma":         gamma_value,
-        "gamma_se":      gamma_se,
-        "evidence_tier": evidence_tier,
-        "data_source":   f"S-LDSC_PLAtlas_{disease_key}_tau={tau:.4f}",
-        "program":       program,
-        "trait":         trait or disease_key,
-        "tau":           tau,
-        "tau_p":         tau_p,
-        "h2_total":      h2,
-        "note": (
-            f"S-LDSC heritability enrichment τ={tau:.4f} for {program} in {disease_key}. "
-            f"PLAtlas MVP+UKB+FinnGen meta-analysis N≈820k. "
-            f"τ_p={tau_p:.3g}."
-        ),
-    }
+    dk = disease_key.upper()
+    dataset = _DATASET_FOR_DISEASE.get(dk)
+    if dataset is None or not top_genes:
+        return 1.0
+    markers = _CELL_TYPE_MARKERS.get(dataset, frozenset())
+    if not markers:
+        return 1.0
+    n_specific = sum(1 for g in top_genes if g in markers)
+    fraction = n_specific / len(top_genes)
+    # Linear ramp: 0% → 0.15, 15%+ → 1.0
+    weight = min(1.0, max(0.15, fraction / 0.15))
+    return round(weight, 4)
 
 
-def get_all_program_gammas_ldsc(disease_key: str) -> dict[str, dict]:
+def _gnmf_spec_weights(disease_key: str, condition: str, prog_names: list[str]) -> dict[str, float]:
     """
-    Return all program γ estimates from S-LDSC for a disease.
-    Dict[program_name -> gamma_estimate_dict].
+    Compute cell-type specificity weight for each GeneticNMF program.
+
+    Loads genetic_nmf_loadings{_condition}.npz, takes top-50 genes per component,
+    and scores against the disease cell-type marker set.
+    Returns dict[prog_name → weight ∈ [0.15, 1.0]]. Empty dict on any failure.
     """
-    data = _load_tau_file(disease_key.upper())
-    if not data:
+    dk = disease_key.upper()
+    dataset = _DATASET_FOR_DISEASE.get(dk)
+    if not dataset:
         return {}
 
-    program_taus = data.get("program_taus", {})
-    results = {}
-    for prog, tau in program_taus.items():
-        est = get_program_gamma_ldsc(prog, disease_key)
-        if est is not None:
-            results[prog] = est
+    _cond_sfx = f"_{condition.lower()}" if condition.strip() else ""
+    npz_candidates = [
+        _ROOT / "data" / "perturbseq" / dataset / f"genetic_nmf_loadings{_cond_sfx}.npz",
+        _ROOT / "data" / "perturbseq" / dataset / "genetic_nmf_loadings.npz",
+    ]
+    npz_path = next((p for p in npz_candidates if p.exists()), None)
+    if npz_path is None:
+        return {}
+
+    try:
+        import numpy as _np
+        d = _np.load(str(npz_path), allow_pickle=True)
+        Vt = d["Vt"]          # (k × n_genes)
+        gene_names = [str(g) for g in d.get("pert_names", d.get("gene_names", []))]
+    except Exception as exc:
+        log.debug("gnmf_spec_weights: failed to load %s: %s", npz_path.name, exc)
+        return {}
+
+    result: dict[str, float] = {}
+    for prog in prog_names:
+        # Parse component index from name suffix (e.g. "RA_GeneticNMF_Stim48hr_C03" → 2)
+        try:
+            suffix = prog.split("_")[-1]  # "C03"
+            comp_idx = int(suffix[1:]) - 1
+        except (ValueError, IndexError):
+            continue
+        if comp_idx < 0 or comp_idx >= Vt.shape[0]:
+            continue
+        row = Vt[comp_idx]
+        top_idx = _np.argsort(_np.abs(row))[::-1][:50]
+        top_genes = [gene_names[i] for i in top_idx if i < len(gene_names)]
+        result[prog] = _cell_type_specificity_weight(dk, top_genes)
+
+    return result
+
+
+def get_genetic_nmf_program_gammas(
+    disease_key: str,
+    condition: str = "",
+    prefer_raw_taus: bool = False,
+) -> dict[str, dict]:
+    """
+    Return γ estimates for all GeneticNMF programs.
+
+    γ = τ* (signed), max-normalised by largest positive τ*.
+    Programs with τ* ≤ 0 (heritability-depleted) are excluded — they do not carry GWAS signal.
+    Each entry also carries `spec_weight` (cell-type specificity, [0.15, 1.0])
+    for the bystander-filtered parallel track.
+
+    condition: "" (shared baseline), "REST", or "Stim48hr".
+    prefer_raw_taus: if True, use raw τ* (program_taus key) for γ magnitude.
+        Use for diseases where eQTL direction correction is unreliable (e.g. RA — weak
+        CD4+ T eQTL concordance flips valid programs negative). For CAD, eQTL direction
+        correction is validated (CCM2/PLPP3 sign confirmed) so prefer_raw_taus=False.
+    """
+    _cond_sfx = f"_{condition.strip()}" if condition.strip() else ""
+    live = _RESULTS_DIR / f"{disease_key.upper()}_GeneticNMF{_cond_sfx}_program_taus.json"
+    if not live.exists():
+        return {}
+    try:
+        with open(live) as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        log.warning("Failed to load GeneticNMF taus for %s: %s", disease_key, exc)
+        return {}
+
+    if prefer_raw_taus:
+        # Raw τ* — direction from β signs; avoids excluding programs flipped negative by
+        # unreliable eQTL direction correction (RA C01/C12/C04 pattern).
+        program_gammas: dict[str, float] = (
+            data.get("program_taus") or data.get("program_gammas") or {}
+        )
+    else:
+        # eQTL-direction-corrected γ — validated for CAD (CCM2/PLPP3 sign correct).
+        program_gammas = (
+            data.get("program_gammas") or data.get("program_taus") or {}
+        )
+    gamma_annots: list[dict] = data.get("gamma_annotations", [])
+    annot_by_prog = {a["name"]: a for a in gamma_annots}
+
+    if not program_gammas:
+        return {}
+
+    # Max-normalise by largest positive τ*; skip heritability-depleted programs (τ*≤0).
+    _max_pos = max((v for v in program_gammas.values() if v > 0), default=None)
+    if _max_pos is None:
+        log.warning(
+            "GeneticNMF γ for %s %s: all τ* ≤ 0 — no heritability-enriched programs",
+            disease_key.upper(), condition or "combined",
+        )
+        return {}
+    results: dict[str, dict] = {}
+    for prog, gamma_raw in program_gammas.items():
+        if gamma_raw <= 0:
+            continue  # heritability-depleted — skip
+        gamma_value = round(gamma_raw / _max_pos, 5)
+        annot = annot_by_prog.get(prog, {})
+        tau   = annot.get("tau") or data.get("program_taus", {}).get(prog, 0.0)
+        results[prog] = {
+            "gamma":       gamma_value,
+            "tau":         tau,
+            "data_source": f"GeneticNMF_chisq_{disease_key}_tau={tau:.4f}",
+            "spec_weight": 1.0,  # filled in below
+        }
+
+    # Compute per-program cell-type specificity weights (bystander track).
+    spec_weights = _gnmf_spec_weights(disease_key, condition, list(results.keys()))
+    for prog, sw in spec_weights.items():
+        if prog in results:
+            results[prog]["spec_weight"] = sw
+
+    n_specific = sum(1 for v in results.values() if v["spec_weight"] >= 0.5)
+    log.info(
+        "GeneticNMF γ loaded for %s %s: %d programs with τ*>0 (depleted excluded), %d cell-type-specific (spec≥0.5)",
+        disease_key.upper(), condition or "combined", len(results), n_specific,
+    )
     return results
 
 
-def ldsc_available(disease_key: str) -> bool:
-    """Return True if pre-computed S-LDSC results exist for this disease."""
-    return (_RESULTS_DIR / f"{disease_key.upper()}_program_taus.json").exists()
+def get_cnmf_program_gammas(disease_key: str) -> dict[str, dict]:
+    """
+    Return γ estimates for Schnitzler cNMF programs (k=60 endothelial).
+
+    γ = τ* (signed), max-normalised by the largest positive τ*.
+    Programs with τ* ≤ 0 (heritability-depleted) are excluded from the OTA sum.
+    """
+    live = _RESULTS_DIR / f"{disease_key.upper()}_cNMF_program_taus.json"
+    if not live.exists():
+        return {}
+    try:
+        with open(live) as fh:
+            data = json.load(fh)
+    except Exception as exc:
+        log.warning("Failed to load cNMF taus for %s: %s", disease_key, exc)
+        return {}
+
+    program_gammas: dict[str, float] = data.get("program_gammas", {})
+    gamma_annots: list[dict] = data.get("gamma_annotations", [])
+    annot_by_prog = {a["program"]: a for a in gamma_annots}
+
+    if not program_gammas:
+        return {}
+
+    # Only programs with positive τ* carry GWAS heritability; normalise by largest positive τ*.
+    _max_pos = max((v for v in program_gammas.values() if v > 0), default=None)
+    if _max_pos is None:
+        log.warning("cNMF γ for %s: all τ* ≤ 0 — no heritability-enriched programs", disease_key.upper())
+        return {}
+    prefix = f"{disease_key.upper()}_cNMF_"
+    results: dict[str, dict] = {}
+    for prog, gamma_raw in program_gammas.items():
+        if gamma_raw <= 0:
+            continue  # heritability-depleted program — skip
+        gamma_value = round(gamma_raw / _max_pos, 5)
+        annot = annot_by_prog.get(prog, {})
+        tau   = annot.get("tau") or data.get("program_taus", {}).get(prog, 0.0)
+        full_prog = prog if prog.startswith(prefix) else prefix + prog
+        results[full_prog] = {
+            "gamma":       gamma_value,
+            "tau":         tau,
+            "data_source": f"cNMF_k60_chisq_{disease_key}_tau={tau:.4f}",
+        }
+
+    log.info(
+        "cNMF γ loaded for %s: %d programs with τ*>0 (signed, depleted programs excluded)",
+        disease_key.upper(), len(results),
+    )
+    return results
+
+
+
+
 
 
 def load_loo_discounts(

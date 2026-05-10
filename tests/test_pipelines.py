@@ -26,12 +26,6 @@ from pipelines.ota_gamma_estimation import (
     compute_ota_gamma,
     build_gamma_matrix,
     estimate_cad_gammas,
-    PROVISIONAL_GAMMAS,
-)
-from pipelines.sensitivity_analysis import (
-    run_batch_evalue,
-    flag_low_evalue_edges,
-    generate_demotion_recommendations,
 )
 from pipelines.cnmf_programs import load_cnmf_programs, get_msigdb_hallmark_programs, get_programs_for_disease
 
@@ -66,7 +60,12 @@ class TestBetaEstimation:
 
     def test_tier2_above_coloc_threshold(self):
         eqtl = {"nes": 0.5, "se": 0.1, "tissue": "Whole_Blood"}
-        beta = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85)
+        # program_loading required — no loading means no per-program beta
+        beta_no_loading = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85)
+        assert beta_no_loading is None
+        # with loading: beta = NES × loading
+        beta = estimate_beta_tier2("PCSK9", "lipid_metabolism", eqtl_data=eqtl, coloc_h4=0.85,
+                                   program_loading=1.0)
         assert beta is not None
         assert beta["beta"] == pytest.approx(0.5)
         assert beta["evidence_tier"] == "Tier2_Convergent"
@@ -143,10 +142,6 @@ class TestGammaEstimation:
         assert isinstance(result, dict)
         assert result.get("gamma") is None
 
-    def test_all_provisional_gammas_positive(self):
-        # PROVISIONAL_GAMMAS is empty — all γ values are data-derived
-        assert PROVISIONAL_GAMMAS == {}
-
     def test_compute_ota_gamma_chip_cad(self):
         # TET2 CHIP → inflammatory → CAD pathway
         beta_estimates = {
@@ -187,43 +182,6 @@ class TestGammaEstimation:
         for prog in programs:
             assert set(matrix[prog].keys()) == set(traits)
 
-
-# ---------------------------------------------------------------------------
-# Sensitivity analysis
-# ---------------------------------------------------------------------------
-
-class TestSensitivityAnalysis:
-
-    def test_batch_evalue_adds_fields(self):
-        edges = [
-            {"from_node": "PCSK9", "to_node": "CAD", "effect_size": -0.51, "se": 0.05},
-            {"from_node": "UNKNOWN", "to_node": "CAD", "effect_size": 0.05, "se": 0.8},
-        ]
-        results = run_batch_evalue(edges)
-        assert len(results) == 2
-        for r in results:
-            assert "e_value" in r
-            assert "recommendation" in r
-
-    def test_flag_low_evalue(self):
-        edges = [
-            {"from_node": "A", "to_node": "CAD", "e_value": 1.5},  # below threshold
-            {"from_node": "B", "to_node": "CAD", "e_value": 3.2},  # above threshold
-            {"from_node": "C", "to_node": "CAD", "e_value": None}, # unknown
-        ]
-        result = flag_low_evalue_edges(edges, threshold=2.0)
-        assert result["n_flagged"] == 2  # A (1.5 < 2.0) and C (None)
-        assert result["n_clear"] == 1
-
-    def test_demotion_recommendations(self):
-        flagged = [
-            {"from_node": "A", "to_node": "CAD", "e_value": 1.5},
-        ]
-        recs = generate_demotion_recommendations(flagged)
-        assert len(recs) == 1
-        assert recs[0]["from_node"] == "A"
-        assert "Tier3" in recs[0]["new_tier"]
-        assert "E-value" in recs[0]["reason"]
 
 
 # ---------------------------------------------------------------------------

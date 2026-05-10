@@ -89,28 +89,28 @@ def _make_synthetic_h5ad(tmp_path: Path) -> tuple[Path, dict]:
 # ---------------------------------------------------------------------------
 
 class TestIsControl:
-    from pipelines.replogle_parser import _is_control
+    from pipelines.perturbseq_beta_loader import _is_control
 
     def test_non_targeting(self):
-        from pipelines.replogle_parser import _is_control
+        from pipelines.perturbseq_beta_loader import _is_control
         assert _is_control("non-targeting")
 
     def test_aavs1(self):
-        from pipelines.replogle_parser import _is_control
+        from pipelines.perturbseq_beta_loader import _is_control
         assert _is_control("AAVS1")
 
     def test_safeharbor(self):
-        from pipelines.replogle_parser import _is_control
+        from pipelines.perturbseq_beta_loader import _is_control
         assert _is_control("safe_harbor")
 
     def test_real_gene_not_control(self):
-        from pipelines.replogle_parser import _is_control
+        from pipelines.perturbseq_beta_loader import _is_control
         assert not _is_control("PCSK9")
         assert not _is_control("TET2")
         assert not _is_control("NOD2")
 
     def test_non_targeting_suffix(self):
-        from pipelines.replogle_parser import _is_control
+        from pipelines.perturbseq_beta_loader import _is_control
         # "non-targeting_ctrl_1" — split on _ gives "non-targeting" as base? No, split on _ is wrong.
         # Actually split on "_" gives ["non-targeting"] if we split the hypen form
         assert _is_control("non-targeting")
@@ -122,7 +122,7 @@ class TestIsControl:
 
 class TestComputeLog2FC:
     def _run(self, tmp_path):
-        from pipelines.replogle_parser import _load_h5ad_matrix, _compute_log2fc
+        from pipelines.perturbseq_beta_loader import _load_h5ad_matrix, _compute_log2fc
         h5ad_path, gt = _make_synthetic_h5ad(tmp_path)
         X, obs_names, var_names, obs_meta = _load_h5ad_matrix(h5ad_path)
         log2fc, se_matrix, pert_genes, ctrl_mean = _compute_log2fc(X, obs_names, obs_meta)
@@ -164,7 +164,7 @@ class TestComputeLog2FC:
 
 class TestProjectOntoPrograms:
     def test_beta_sign_matches_log2fc(self, tmp_path):
-        from pipelines.replogle_parser import (
+        from pipelines.perturbseq_beta_loader import (
             _load_h5ad_matrix, _compute_log2fc, _project_onto_programs
         )
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
@@ -180,7 +180,7 @@ class TestProjectOntoPrograms:
         assert beta_a > 0.2, f"Expected positive β for GENE_A→Program_A, got {beta_a}"
 
     def test_se_propagation(self, tmp_path):
-        from pipelines.replogle_parser import (
+        from pipelines.perturbseq_beta_loader import (
             _load_h5ad_matrix, _compute_log2fc, _project_onto_programs
         )
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
@@ -196,7 +196,7 @@ class TestProjectOntoPrograms:
         assert se_b > 0, "SE must be positive"
 
     def test_ci_contains_beta(self, tmp_path):
-        from pipelines.replogle_parser import (
+        from pipelines.perturbseq_beta_loader import (
             _load_h5ad_matrix, _compute_log2fc, _project_onto_programs
         )
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
@@ -213,7 +213,7 @@ class TestProjectOntoPrograms:
             )
 
     def test_missing_program_genes_handled(self, tmp_path):
-        from pipelines.replogle_parser import (
+        from pipelines.perturbseq_beta_loader import (
             _load_h5ad_matrix, _compute_log2fc, _project_onto_programs
         )
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
@@ -231,17 +231,17 @@ class TestProjectOntoPrograms:
 
 
 # ---------------------------------------------------------------------------
-# Unit tests — load_replogle_betas() orchestration
+# Unit tests — load_perturbseq_betas() orchestration
 # ---------------------------------------------------------------------------
 
 class TestLoadReplogleBetas:
     def test_returns_correct_schema(self, tmp_path):
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
         cache_path = tmp_path / "cache.json"
 
         programs = {"ProgramA": ["GeneX1", "GeneX2"], "ProgramB": ["GeneX5"]}
-        result = load_replogle_betas(
+        result = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=h5ad_path,
             cache_path=cache_path,
@@ -257,13 +257,13 @@ class TestLoadReplogleBetas:
                 assert "ci_upper" in pdata
 
     def test_cache_written_and_reused(self, tmp_path):
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
         cache_path = tmp_path / "cache.json"
 
         programs = {"P": ["GeneX1"]}
         # First call: compute and cache
-        result1 = load_replogle_betas(
+        result1 = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=h5ad_path,
             cache_path=cache_path,
@@ -271,7 +271,7 @@ class TestLoadReplogleBetas:
         assert cache_path.exists(), "Cache file should be written after first call"
 
         # Second call: load from cache (h5ad not needed)
-        result2 = load_replogle_betas(
+        result2 = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=Path("/nonexistent.h5ad"),  # would fail if h5ad were read
             cache_path=cache_path,
@@ -279,14 +279,14 @@ class TestLoadReplogleBetas:
         assert result1 == result2, "Cache should return identical results"
 
     def test_force_recompute_ignores_cache(self, tmp_path):
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
         cache_path = tmp_path / "cache.json"
         # Write a stale cache
         cache_path.write_text('{"stale": "data"}')
 
         programs = {"P": ["GeneX1"]}
-        result = load_replogle_betas(
+        result = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=h5ad_path,
             cache_path=cache_path,
@@ -296,9 +296,9 @@ class TestLoadReplogleBetas:
         assert result != {"stale": "data"}
 
     def test_file_not_found_raises(self, tmp_path):
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         with pytest.raises(FileNotFoundError, match="Replogle 2022 h5ad not found"):
-            load_replogle_betas(
+            load_perturbseq_betas(
                 program_gene_sets={"P": ["GeneX1"]},
                 h5ad_path=tmp_path / "nonexistent.h5ad",
                 cache_path=tmp_path / "cache.json",
@@ -306,13 +306,13 @@ class TestLoadReplogleBetas:
 
     def test_compatible_with_estimate_beta_tier1(self, tmp_path):
         """Output format should plug directly into estimate_beta_tier1."""
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         from pipelines.ota_beta_estimation import estimate_beta_tier1
 
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
         cache_path = tmp_path / "cache.json"
         programs = {"ProgramA": ["GeneX1", "GeneX2"]}
-        perturbseq_data = load_replogle_betas(
+        perturbseq_data = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=h5ad_path,
             cache_path=cache_path,
@@ -335,13 +335,13 @@ class TestLoadReplogleBetas:
 
     def test_unknown_gene_returns_none_from_tier1(self, tmp_path):
         """estimate_beta_tier1 should return None for genes not in perturbseq_data."""
-        from pipelines.replogle_parser import load_replogle_betas
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas
         from pipelines.ota_beta_estimation import estimate_beta_tier1
 
         h5ad_path, _ = _make_synthetic_h5ad(tmp_path)
         cache_path = tmp_path / "cache.json"
         programs = {"P": ["GeneX1"]}
-        perturbseq_data = load_replogle_betas(
+        perturbseq_data = load_perturbseq_betas(
             program_gene_sets=programs,
             h5ad_path=h5ad_path,
             cache_path=cache_path,
@@ -364,7 +364,7 @@ class TestReplogleIntegration:
     """Requires data/replogle_2022_k562_essential.h5ad to be present."""
 
     def test_real_file_loads(self):
-        from pipelines.replogle_parser import load_replogle_betas, _H5AD_PATH
+        from pipelines.perturbseq_beta_loader import load_perturbseq_betas, _H5AD_PATH
         if not _H5AD_PATH.exists():
             pytest.skip("Real h5ad not downloaded yet")
 
@@ -374,7 +374,7 @@ class TestReplogleIntegration:
             "inflammatory_NF-kB": ["TNF", "NFKB1", "RELA", "IL6", "IL1B"],
         }
         cache_path = _H5AD_PATH.parent / "replogle_integration_test_cache.json"
-        result = load_replogle_betas(
+        result = load_perturbseq_betas(
             program_gene_sets=programs,
             cache_path=cache_path,
             force_recompute=True,

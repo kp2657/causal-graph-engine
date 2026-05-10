@@ -91,6 +91,64 @@ DISEASE_PROGRAMS: dict[str, frozenset] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# High-confidence GWAS anchor genes per disease.
+# Source: PAV-supported gene-disease associations (protein-altering variants)
+# with L2G ≥ 0.5 from Tsepilov et al. 2026 (Human Pleiotropic Map) ST7.
+# These are used as hard-coded seeds for OT L2G anchor bypass when the
+# pipeline has no Perturb-seq β for a GWAS-anchored gene.
+# ---------------------------------------------------------------------------
+DISEASE_GWAS_ANCHORS: dict[str, frozenset] = {
+    "CAD": frozenset({
+        "PCSK9", "LDLR", "APOB", "HMGCR", "LPA", "CETP", "SORT1",
+        "TRIB1", "PPARG", "NOS3",
+    }),
+    "RA": frozenset({
+        # PAV-supported, L2G ≥ 0.5, from ST7 (Tsepilov 2026) filtered to EFO_0000685
+        "IFNGR2",   # L2G 0.951, eQTL+pQTL coloc, GCST90132222
+        "AHNAK2",   # L2G 0.941, GCST90013534
+        "DNASE1L3", # L2G 0.944, GCST007278
+        "FCRL3",    # L2G 0.923, eQTL+pQTL coloc, GCST90013534
+        "FCGR2A",   # L2G 0.910, eQTL+pQTL coloc, GCST90132222
+        "DCLRE1B",  # L2G 0.914, eQTL coloc, GCST90302863
+        "WDFY4",    # L2G 0.904, GCST90013534
+        "NCF2",     # L2G 0.949, GCST007278
+        "AIRE",     # L2G 0.861, GCST90132222
+        "SIRPG",    # L2G 0.811, eQTL+pQTL coloc, GCST90302863
+        "SWAP70",   # L2G 0.856, eQTL+pQTL coloc, GCST011389
+        "PADI4",    # L2G 0.691, eQTL coloc, RA-classic citrullination
+        "IRAK1",    # L2G 0.646, eQTL coloc, IL-1/TLR signaling
+        "PLD4",     # L2G 0.710, eQTL coloc, GCST011389
+        # Clinically validated targets (ST5, L2G ≥ 0.5, Phase ≥ 3)
+        "TYK2",     # L2G 0.934, Phase 4 (deucravacitinib)
+        "IL6R",     # L2G 0.940, Phase 4 (tocilizumab/sarilumab)
+        "TRAF3IP2", # L2G 0.969, Phase 3
+        "CD40",     # L2G 0.948, Phase 1
+        "IL12B",    # L2G 0.875, Phase 2
+    }),
+}
+
+
+# ---------------------------------------------------------------------------
+# GPS force-emulate genes — always attempted for GPS emulation regardless of
+# dominant_tier; GPS skips gracefully if no signature is available.
+# Two categories:
+# (1) GWAS-validated benchmark KD targets (Schnitzler 2024 Fig. 2a GSE210681)
+# (2) Novel pipeline-nominated genes: no GWAS signal; selected by τ*-weighted
+#     cluster co-membership (Criterion A) or heritable program cosine similarity
+#     (Criterion B) with GWAS-validated benchmarks.
+# ---------------------------------------------------------------------------
+GPS_FORCE_GENES: dict[str, list[str]] = {
+    "CAD": ["CCM2", "PLPP3",
+            "ROCK1",    # COL4A1 cluster; Rho kinase downstream of LOX/TGF-β ECM stiffening; γ=−0.447
+            "PLEKHA1",  # COL4A1 cluster; endothelial phosphoinositide signaling; γ=−0.869
+            "GIT1",     # COL4A2/FN1 cluster; focal adhesion ECM integrator; γ=−0.623
+            "NPR2",     # COL4A2/FN1 cluster; natriuretic peptide receptor, anti-fibrotic; γ=−0.569
+            "ELOVL2"],  # LOX cluster; fatty acid elongase, lipid-ECM crosstalk; γ=−0.587
+    "RA":  ["NUGGC", "CRTAM", "MACC1"],         # novel: cosine sim to IL12RB2/CD226/TRAF1
+}
+
+
 def resolve(name_or_key: str) -> dict | None:
     """Resolve any disease name or key to a full info dict."""
     key = get_disease_key(name_or_key) or DISEASE_EFO.get(name_or_key.upper().strip()) and name_or_key.upper().strip()

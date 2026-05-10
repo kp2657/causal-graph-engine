@@ -1,0 +1,618 @@
+{
+  "program_taus": {
+    "RA_GeneticNMF_Stim48hr_C01": 0.197473,
+    "RA_GeneticNMF_Stim48hr_C02": 0.00405,
+    "RA_GeneticNMF_Stim48hr_C03": -0.052117,
+    "RA_GeneticNMF_Stim48hr_C04": 0.037812,
+    "RA_GeneticNMF_Stim48hr_C05": -0.188953,
+    "RA_GeneticNMF_Stim48hr_C06": -0.008015,
+    "RA_GeneticNMF_Stim48hr_C07": -0.143922,
+    "RA_GeneticNMF_Stim48hr_C08": -0.108296,
+    "RA_GeneticNMF_Stim48hr_C09": -0.174587,
+    "RA_GeneticNMF_Stim48hr_C10": -0.203265,
+    "RA_GeneticNMF_Stim48hr_C11": -0.005232,
+    "RA_GeneticNMF_Stim48hr_C12": 0.070969,
+    "RA_GeneticNMF_Stim48hr_C13": -0.174302,
+    "RA_GeneticNMF_Stim48hr_C14": -0.104351,
+    "RA_GeneticNMF_Stim48hr_C15": -0.203778,
+    "RA_GeneticNMF_Stim48hr_C16": -0.214611,
+    "RA_GeneticNMF_Stim48hr_C17": 0.013575,
+    "RA_GeneticNMF_Stim48hr_C18": -0.210091,
+    "RA_GeneticNMF_Stim48hr_C19": -0.052543,
+    "RA_GeneticNMF_Stim48hr_C20": -0.098616,
+    "RA_GeneticNMF_Stim48hr_C21": -0.088679,
+    "RA_GeneticNMF_Stim48hr_C22": -0.216729,
+    "RA_GeneticNMF_Stim48hr_C23": -0.228377,
+    "RA_GeneticNMF_Stim48hr_C24": 0.028024,
+    "RA_GeneticNMF_Stim48hr_C25": 0.363696,
+    "RA_GeneticNMF_Stim48hr_C26": -0.156582,
+    "RA_GeneticNMF_Stim48hr_C27": -0.002576,
+    "RA_GeneticNMF_Stim48hr_C28": 0.001665,
+    "RA_GeneticNMF_Stim48hr_C29": -0.21361,
+    "RA_GeneticNMF_Stim48hr_C30": -0.222557
+  },
+  "h2": null,
+  "mean_chisq_genome": 1.5163,
+  "n_snps_genome": 20571708,
+  "raw_annotations": [
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C01",
+      "tau": 0.197473,
+      "tau_se": 0.328301,
+      "tau_p": 0.547507,
+      "n_snps": 327,
+      "mean_chisq": 1.8158
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C02",
+      "tau": 0.00405,
+      "tau_se": 0.142564,
+      "tau_p": 0.977338,
+      "n_snps": 255,
+      "mean_chisq": 1.5225
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C03",
+      "tau": -0.052117,
+      "tau_se": 0.100538,
+      "tau_p": 0.604195,
+      "n_snps": 232,
+      "mean_chisq": 1.4373
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C04",
+      "tau": 0.037812,
+      "tau_se": 0.128077,
+      "tau_p": 0.767817,
+      "n_snps": 217,
+      "mean_chisq": 1.5737
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C05",
+      "tau": -0.188953,
+      "tau_se": 0.087986,
+      "tau_p": 0.03175,
+      "n_snps": 307,
+      "mean_chisq": 1.2298
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C06",
+      "tau": -0.008015,
+      "tau_se": 0.142872,
+      "tau_p": 0.955263,
+      "n_snps": 267,
+      "mean_chisq": 1.5042
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C07",
+      "tau": -0.143922,
+      "tau_se": 0.099243,
+      "tau_p": 0.147001,
+      "n_snps": 245,
+      "mean_chisq": 1.2981
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C08",
+      "tau": -0.108296,
+      "tau_se": 0.077434,
+      "tau_p": 0.161943,
+      "n_snps": 255,
+      "mean_chisq": 1.3521
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C09",
+      "tau": -0.174587,
+      "tau_se": 0.078629,
+      "tau_p": 0.026392,
+      "n_snps": 289,
+      "mean_chisq": 1.2516
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C10",
+      "tau": -0.203265,
+      "tau_se": 0.081332,
+      "tau_p": 0.012447,
+      "n_snps": 270,
+      "mean_chisq": 1.2081
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C11",
+      "tau": -0.005232,
+      "tau_se": 0.134848,
+      "tau_p": 0.969052,
+      "n_snps": 300,
+      "mean_chisq": 1.5084
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C12",
+      "tau": 0.070969,
+      "tau_se": 0.154348,
+      "tau_p": 0.645661,
+      "n_snps": 280,
+      "mean_chisq": 1.624
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C13",
+      "tau": -0.174302,
+      "tau_se": 0.098518,
+      "tau_p": 0.076854,
+      "n_snps": 303,
+      "mean_chisq": 1.252
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C14",
+      "tau": -0.104351,
+      "tau_se": 0.089037,
+      "tau_p": 0.241199,
+      "n_snps": 301,
+      "mean_chisq": 1.3581
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C15",
+      "tau": -0.203778,
+      "tau_se": 0.063497,
+      "tau_p": 0.001331,
+      "n_snps": 268,
+      "mean_chisq": 1.2073
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C16",
+      "tau": -0.214611,
+      "tau_se": 0.068913,
+      "tau_p": 0.001844,
+      "n_snps": 270,
+      "mean_chisq": 1.1909
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C17",
+      "tau": 0.013575,
+      "tau_se": 0.136308,
+      "tau_p": 0.92067,
+      "n_snps": 289,
+      "mean_chisq": 1.5369
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C18",
+      "tau": -0.210091,
+      "tau_se": 0.07911,
+      "tau_p": 0.007915,
+      "n_snps": 319,
+      "mean_chisq": 1.1978
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C19",
+      "tau": -0.052543,
+      "tau_se": 0.0869,
+      "tau_p": 0.545417,
+      "n_snps": 298,
+      "mean_chisq": 1.4367
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C20",
+      "tau": -0.098616,
+      "tau_se": 0.093849,
+      "tau_p": 0.293353,
+      "n_snps": 249,
+      "mean_chisq": 1.3668
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C21",
+      "tau": -0.088679,
+      "tau_se": 0.086542,
+      "tau_p": 0.305504,
+      "n_snps": 308,
+      "mean_chisq": 1.3819
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C22",
+      "tau": -0.216729,
+      "tau_se": 0.07001,
+      "tau_p": 0.001964,
+      "n_snps": 257,
+      "mean_chisq": 1.1877
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C23",
+      "tau": -0.228377,
+      "tau_se": 0.070464,
+      "tau_p": 0.001191,
+      "n_snps": 277,
+      "mean_chisq": 1.17
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C24",
+      "tau": 0.028024,
+      "tau_se": 0.135538,
+      "tau_p": 0.836196,
+      "n_snps": 302,
+      "mean_chisq": 1.5588
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C25",
+      "tau": 0.363696,
+      "tau_se": 0.377265,
+      "tau_p": 0.33503,
+      "n_snps": 289,
+      "mean_chisq": 2.0678
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C26",
+      "tau": -0.156582,
+      "tau_se": 0.085103,
+      "tau_p": 0.065782,
+      "n_snps": 306,
+      "mean_chisq": 1.2789
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C27",
+      "tau": -0.002576,
+      "tau_se": 0.114197,
+      "tau_p": 0.982002,
+      "n_snps": 242,
+      "mean_chisq": 1.5124
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C28",
+      "tau": 0.001665,
+      "tau_se": 0.143987,
+      "tau_p": 0.990771,
+      "n_snps": 284,
+      "mean_chisq": 1.5189
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C29",
+      "tau": -0.21361,
+      "tau_se": 0.0731,
+      "tau_p": 0.003476,
+      "n_snps": 280,
+      "mean_chisq": 1.1924
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C30",
+      "tau": -0.222557,
+      "tau_se": 0.074595,
+      "tau_p": 0.002849,
+      "n_snps": 307,
+      "mean_chisq": 1.1789
+    }
+  ],
+  "method": "gwas_chisq_enrichment_hg38",
+  "disease_key": "RA",
+  "lambda_gc": 1.0756,
+  "snp_positions_file": "/Users/kennethpham/Desktop/agentic_AI_casual_graphs_therapeutic_abundance/causal-graph-engine/data/ldsc/results/RA_program_snp_positions.json",
+  "program_gammas": {
+    "RA_GeneticNMF_Stim48hr_C01": -0.197473,
+    "RA_GeneticNMF_Stim48hr_C02": 0.00405,
+    "RA_GeneticNMF_Stim48hr_C03": 0.0,
+    "RA_GeneticNMF_Stim48hr_C04": -0.037812,
+    "RA_GeneticNMF_Stim48hr_C05": 0.0,
+    "RA_GeneticNMF_Stim48hr_C06": 0.0,
+    "RA_GeneticNMF_Stim48hr_C07": 0.0,
+    "RA_GeneticNMF_Stim48hr_C08": 0.0,
+    "RA_GeneticNMF_Stim48hr_C09": 0.0,
+    "RA_GeneticNMF_Stim48hr_C10": 0.0,
+    "RA_GeneticNMF_Stim48hr_C11": 0.0,
+    "RA_GeneticNMF_Stim48hr_C12": -0.070969,
+    "RA_GeneticNMF_Stim48hr_C13": 0.0,
+    "RA_GeneticNMF_Stim48hr_C14": 0.0,
+    "RA_GeneticNMF_Stim48hr_C15": 0.0,
+    "RA_GeneticNMF_Stim48hr_C16": 0.0,
+    "RA_GeneticNMF_Stim48hr_C17": 0.013575,
+    "RA_GeneticNMF_Stim48hr_C18": 0.0,
+    "RA_GeneticNMF_Stim48hr_C19": 0.0,
+    "RA_GeneticNMF_Stim48hr_C20": 0.0,
+    "RA_GeneticNMF_Stim48hr_C21": 0.0,
+    "RA_GeneticNMF_Stim48hr_C22": 0.0,
+    "RA_GeneticNMF_Stim48hr_C23": 0.0,
+    "RA_GeneticNMF_Stim48hr_C24": 0.028024,
+    "RA_GeneticNMF_Stim48hr_C25": 0.363696,
+    "RA_GeneticNMF_Stim48hr_C26": 0.0,
+    "RA_GeneticNMF_Stim48hr_C27": 0.0,
+    "RA_GeneticNMF_Stim48hr_C28": 0.001665,
+    "RA_GeneticNMF_Stim48hr_C29": 0.0,
+    "RA_GeneticNMF_Stim48hr_C30": 0.0
+  },
+  "gamma_annotations": [
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C01",
+      "tau": 0.197473,
+      "tau_sign": 1,
+      "gamma": -0.197473,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.165985,
+      "sum_abs_loading": 26.885104,
+      "n_eqtl_genes": 7
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C02",
+      "tau": 0.00405,
+      "tau_sign": 1,
+      "gamma": 0.00405,
+      "direction_source": "eqtl_x_gwas",
+      "direction_score": 0.82209,
+      "sum_abs_loading": 3.530634,
+      "n_eqtl_genes": 6
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C03",
+      "tau": -0.052117,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -1.0,
+      "sum_abs_loading": 4.372237,
+      "n_eqtl_genes": 1
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C04",
+      "tau": 0.037812,
+      "tau_sign": 1,
+      "gamma": -0.037812,
+      "direction_source": "eqtl_only",
+      "direction_score": -0.885431,
+      "sum_abs_loading": 57.024536,
+      "n_eqtl_genes": 12
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C05",
+      "tau": -0.188953,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.031833,
+      "sum_abs_loading": 4.790566,
+      "n_eqtl_genes": 4
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C06",
+      "tau": -0.008015,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.187336,
+      "sum_abs_loading": 41.236668,
+      "n_eqtl_genes": 7
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C07",
+      "tau": -0.143922,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.089062,
+      "sum_abs_loading": 85.697535,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C08",
+      "tau": -0.108296,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.103844,
+      "sum_abs_loading": 61.218443,
+      "n_eqtl_genes": 11
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C09",
+      "tau": -0.174587,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.321272,
+      "sum_abs_loading": 175.915139,
+      "n_eqtl_genes": 11
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C10",
+      "tau": -0.203265,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.656162,
+      "sum_abs_loading": 27.179637,
+      "n_eqtl_genes": 4
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C11",
+      "tau": -0.005232,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.020055,
+      "sum_abs_loading": 40.53028,
+      "n_eqtl_genes": 10
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C12",
+      "tau": 0.070969,
+      "tau_sign": 1,
+      "gamma": -0.070969,
+      "direction_source": "eqtl_only",
+      "direction_score": -1.0,
+      "sum_abs_loading": 20.970286,
+      "n_eqtl_genes": 3
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C13",
+      "tau": -0.174302,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.693224,
+      "sum_abs_loading": 94.978634,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C14",
+      "tau": -0.104351,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.275337,
+      "sum_abs_loading": 32.723689,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C15",
+      "tau": -0.203778,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.106068,
+      "sum_abs_loading": 14.90748,
+      "n_eqtl_genes": 6
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C16",
+      "tau": -0.214611,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.066669,
+      "sum_abs_loading": 19.350429,
+      "n_eqtl_genes": 11
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C17",
+      "tau": 0.013575,
+      "tau_sign": 1,
+      "gamma": 0.013575,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.895154,
+      "sum_abs_loading": 58.543375,
+      "n_eqtl_genes": 11
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C18",
+      "tau": -0.210091,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.197979,
+      "sum_abs_loading": 57.346497,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C19",
+      "tau": -0.052543,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.040225,
+      "sum_abs_loading": 117.425369,
+      "n_eqtl_genes": 12
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C20",
+      "tau": -0.098616,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.164531,
+      "sum_abs_loading": 67.356542,
+      "n_eqtl_genes": 7
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C21",
+      "tau": -0.088679,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.189307,
+      "sum_abs_loading": 36.821273,
+      "n_eqtl_genes": 8
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C22",
+      "tau": -0.216729,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.060734,
+      "sum_abs_loading": 9.934527,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C23",
+      "tau": -0.228377,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.124167,
+      "sum_abs_loading": 16.173387,
+      "n_eqtl_genes": 9
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C24",
+      "tau": 0.028024,
+      "tau_sign": 1,
+      "gamma": 0.028024,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.735385,
+      "sum_abs_loading": 24.852965,
+      "n_eqtl_genes": 7
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C25",
+      "tau": 0.363696,
+      "tau_sign": 1,
+      "gamma": 0.363696,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.09069,
+      "sum_abs_loading": 33.119906,
+      "n_eqtl_genes": 4
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C26",
+      "tau": -0.156582,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.110154,
+      "sum_abs_loading": 35.387769,
+      "n_eqtl_genes": 8
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C27",
+      "tau": -0.002576,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.199316,
+      "sum_abs_loading": 25.16722,
+      "n_eqtl_genes": 10
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C28",
+      "tau": 0.001665,
+      "tau_sign": 1,
+      "gamma": 0.001665,
+      "direction_source": "eqtl_only",
+      "direction_score": 0.248934,
+      "sum_abs_loading": 29.102935,
+      "n_eqtl_genes": 8
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C29",
+      "tau": -0.21361,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": -0.069883,
+      "sum_abs_loading": 17.850592,
+      "n_eqtl_genes": 11
+    },
+    {
+      "name": "RA_GeneticNMF_Stim48hr_C30",
+      "tau": -0.222557,
+      "tau_sign": -1,
+      "gamma": 0.0,
+      "direction_source": "depleted",
+      "direction_score": 0.225463,
+      "sum_abs_loading": 107.342024,
+      "n_eqtl_genes": 13
+    }
+  ],
+  "all_tau_negative": false
+}

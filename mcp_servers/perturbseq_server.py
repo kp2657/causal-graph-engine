@@ -61,6 +61,12 @@ log = logging.getLogger(__name__)
 _CACHE_DIR = Path(__file__).parent.parent / "data" / "perturbseq"
 _CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+# Some datasets use a different directory name than their registry key.
+# Maps canonical dataset_id → actual storage subdirectory under _CACHE_DIR.
+_DATASET_DIR_ALIAS: dict[str, str] = {
+    "Schnitzler_GSE210681": "schnitzler_cad_vascular",
+}
+
 # ---------------------------------------------------------------------------
 # Dataset registry
 # ---------------------------------------------------------------------------
@@ -215,7 +221,14 @@ _SIG_CACHE: dict[str, dict[str, dict[str, float]]] = {}
 def _sig_path(dataset_id: str, variant: str = "") -> Path:
     """Return path to signatures file. variant="" → signatures.json.gz; else signatures_{variant}.json.gz."""
     suffix = f"_{variant}" if variant else ""
-    return _CACHE_DIR / dataset_id / f"signatures{suffix}.json.gz"
+    storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+    return _CACHE_DIR / storage_dir / f"signatures{suffix}.json.gz"
+
+
+def _npz_path(dataset_id: str) -> Path:
+    """Return path to svd_loadings.npz, respecting directory aliases."""
+    storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+    return _CACHE_DIR / storage_dir / "svd_loadings.npz"
 
 
 def _cache_key(dataset_id: str, variant: str = "") -> str:
@@ -248,6 +261,110 @@ def _save_signatures(
         json.dump(signatures, f)
     _SIG_CACHE[_cache_key(dataset_id, variant)] = signatures
     log.info("Saved %d gene signatures for %s (variant=%r) → %s", len(signatures), dataset_id, variant, p)
+
+
+def enrich_gps_signatures_for_genes(
+    gene_list: list[str],
+    dataset_id: str = "czi_2025_cd4t_perturb",
+    condition: str = "Stim48hr",
+    top_k: int = 1000,
+    gps_gene_file: str | None = None,
+) -> dict[str, int]:
+    """
+    Re-extract signatures for specific genes from the full h5ad DE stats, prioritizing
+    GPS landmark genes so GPS emulation screens have ≥50 genes.
+
+    For each gene: includes ALL GPS landmark genes in the h5ad, then pads with
+    top genes by |log2FC| up to top_k.  Updates signatures.json.gz in-place.
+
+    Returns {gene: n_gps_genes_in_enriched_signature}.
+    """
+    import numpy as np
+    import anndata
+
+    ds_meta = _DATASET_REGISTRY.get(dataset_id, {})
+    h5ad_local = ds_meta.get("access", {}).get("local_path", "")
+    h5ad_path = Path(__file__).parent.parent / h5ad_local if h5ad_local else None
+    if h5ad_path is None or not h5ad_path.exists():
+        storage_dir = _DATASET_DIR_ALIAS.get(dataset_id, dataset_id)
+        h5ad_path = _CACHE_DIR / storage_dir / "GWCD4i.DE_stats.h5ad"
+    if not h5ad_path.exists():
+        log.warning("enrich_gps_signatures: h5ad not found at %s", h5ad_path)
+        return {}
+
+    # Load GPS landmark gene set
+    gps_genes: set[str] = set()
+    candidates = []
+    if gps_gene_file:
+        candidates = [Path(gps_gene_file)]
+    candidates += [
+        Path(__file__).parent.parent / "data" / "annotations" / "gps_selected_genes_2198.txt",
+        Path(__file__).parent.parent / "data" / "gps_selected_genes_2198.txt",
+    ]
+    for p in candidates:
+        if p.exists():
+            gps_genes = {l.strip() for l in p.read_text().splitlines() if l.strip()}
+            break
+    if not gps_genes:
+        log.warning("enrich_gps_signatures: GPS gene file not found; using top-%d only", top_k)
+
+    log.info("Loading h5ad for GPS signature enrichment: %s", h5ad_path)
+    adata = anndata.read_h5ad(str(h5ad_path))
+
+    # Build Ensembl → symbol map from var
+    ensembl_to_sym: dict[str, str] = dict(zip(adata.var.index, adata.var.get("gene_name", adata.var.index)))
+    # Build GPS gene set mask in var order (symbols)
+    var_syms = np.array([ensembl_to_sym.get(e, e) for e in adata.var.index])
+    gps_mask = np.array([sym in gps_genes for sym in var_syms], dtype=bool)
+
+    # Load existing signatures to update in-place
+    existing = _load_cached_signatures(dataset_id) or {}
+
+    obs = adata.obs
+    log_fc_layer = adata.layers["log_fc"]
+    results: dict[str, int] = {}
+
+    for gene in gene_list:
+        gene_up = gene.upper()
+        row_mask = (obs["target_contrast_gene_name"] == gene_up) & (obs["culture_condition"] == condition)
+        if not row_mask.any():
+            # Try without condition filter
+            row_mask = obs["target_contrast_gene_name"] == gene_up
+            if not row_mask.any():
+                log.debug("enrich_gps_signatures: %s not found in h5ad obs (%s)", gene, condition)
+                results[gene] = 0
+                continue
+
+        row_idx = adata.obs.index.get_loc(obs[row_mask].index[0])
+        lfc_row = log_fc_layer[row_idx]
+        if hasattr(lfc_row, "toarray"):
+            lfc_row = lfc_row.toarray()
+        lfc_arr = np.array(lfc_row).flatten()
+
+        # Sort genes by |log2FC| descending
+        order = np.argsort(np.abs(lfc_arr))[::-1]
+
+        # Include: all GPS landmark genes present in h5ad, then top by |lfc| up to top_k
+        selected: dict[str, float] = {}
+        # Pass 1: GPS landmark genes
+        for i in order:
+            if gps_mask[i]:
+                selected[var_syms[i]] = float(lfc_arr[i])
+        n_gps = len(selected)
+        # Pass 2: pad with top non-GPS genes until top_k
+        for i in order:
+            if len(selected) >= top_k:
+                break
+            sym = var_syms[i]
+            if sym not in selected:
+                selected[sym] = float(lfc_arr[i])
+
+        existing[gene_up] = selected
+        results[gene_up] = n_gps
+        log.info("enrich_gps_signatures: %s → %d GPS genes, %d total", gene_up, n_gps, len(selected))
+
+    _save_signatures(dataset_id, existing)
+    return results
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +465,7 @@ def preprocess_h5ad(
     }
 
 
-def preprocess_replogle_bulk(
+def preprocess_perturbseq_bulk(
     dataset_id: str,
     h5ad_path: str | Path,
     top_k: int = 200,
@@ -920,6 +1037,997 @@ def compute_cad_disease_regression(
     }
 
 
+# ---------------------------------------------------------------------------
+# RNA fingerprinting — SVD denoising + probabilistic disease matching
+# ---------------------------------------------------------------------------
+
+def preprocess_rna_fingerprints(
+    dataset_id: str,
+    source_variant: str = "",
+    top_k: int = 200,
+) -> dict:
+    """
+    Denoise Perturb-seq signatures via truncated SVD (RNA fingerprinting).
+
+    Implements the denoising stage of Elorbany et al. (2025, PMC12458102):
+    builds a gene × perturbation log2FC matrix, centers per-gene, applies
+    rank-k truncated SVD, and reconstructs denoised per-perturbation vectors.
+
+    Reads:  signatures{_source_variant}.json.gz
+    Writes: signatures_fingerprint{_source_variant if source_variant else ''}.json.gz
+
+    Args:
+        dataset_id:     Dataset to denoise (e.g. "schnitzler_cad_vascular")
+        source_variant: Variant of source signatures ("" = primary, "delta", "Stim48hr")
+        top_k:          Top genes by |denoised value| to retain per perturbation
+    """
+    try:
+        import numpy as _np
+        from sklearn.utils.extmath import randomized_svd
+    except ImportError as e:
+        return {"error": f"Missing dependency: {e}. Run: pip install scikit-learn numpy"}
+
+    from config.scoring_thresholds import FINGERPRINT_SVD_RANK
+
+    sigs = _load_cached_signatures(dataset_id, source_variant)
+    if not sigs:
+        return {"error": f"No signatures for {dataset_id!r} variant={source_variant!r}. Run preprocess first."}
+
+    # Build gene × perturbation matrix
+    all_genes = sorted({g for fc in sigs.values() for g in fc})
+    all_perts = sorted(sigs.keys())
+    n_genes, n_perts = len(all_genes), len(all_perts)
+    gene_idx = {g: i for i, g in enumerate(all_genes)}
+
+    M = _np.zeros((n_genes, n_perts), dtype=_np.float32)
+    for j, pert in enumerate(all_perts):
+        for g, v in sigs[pert].items():
+            if g in gene_idx:
+                M[gene_idx[g], j] = float(v)
+
+    # Center: subtract per-gene mean across perturbations to remove shared baseline
+    M -= M.mean(axis=1, keepdims=True)
+
+    # Truncated SVD: rank-k approximation captures perturbation-specific signal
+    k = min(FINGERPRINT_SVD_RANK, n_genes - 1, n_perts - 1)
+    U, S, Vt = randomized_svd(M, n_components=k, random_state=42)
+    M_denoised = (U * S) @ Vt  # (n_genes × n_perts)
+
+    # Magnitude rescaling: restore each column to its original L2 norm.
+    # SVD reconstruction shrinks values toward zero (low-rank approximation),
+    # which would compress β downstream. Rescaling keeps the denoised *direction*
+    # (noise removed) while preserving the original *scale* (log2FC magnitude).
+    raw_norms = _np.linalg.norm(M, axis=0)           # original column norms
+    den_norms = _np.linalg.norm(M_denoised, axis=0)  # denoised column norms
+    scale = _np.where(den_norms > 1e-8, raw_norms / den_norms, 1.0)
+    M_denoised *= scale[_np.newaxis, :]
+
+    # Extract denoised fingerprints — top_k genes by absolute denoised value
+    denoised: dict[str, dict[str, float]] = {}
+    for j, pert in enumerate(all_perts):
+        col = M_denoised[:, j]
+        top_idx = _np.argsort(_np.abs(col))[-top_k:]
+        denoised[pert] = {
+            all_genes[i]: round(float(col[i]), 6)
+            for i in top_idx
+            if abs(col[i]) > 1e-6
+        }
+
+    fp_variant = f"fingerprint{'_' + source_variant if source_variant else ''}"
+    _save_signatures(dataset_id, denoised, fp_variant)
+
+    # Save SVD perturbation loadings (Vt) for downstream nomination scoring.
+    # Vt shape: (k × n_perts); each column = a perturbed gene's latent coordinates.
+    # Only saved for the primary variant (source_variant="") — delta/Stim48hr share
+    # the same nomination space as the primary.
+    if not source_variant:
+        npz_path = _npz_path(dataset_id)
+        # U_scaled = U @ diag(S): gene expression loadings (n_genes × k).
+        # Each column c encodes which genes define SVD component c.
+        # U_scaled[:,c] is used for: (1) SVD program gene sets (top-|loading| genes),
+        # (2) program_loading for eQTL Tier2 β estimates of non-perturbed GWAS genes.
+        U_scaled = U * S  # (n_genes × k)
+        _np.savez_compressed(
+            str(npz_path),
+            Vt=Vt,
+            pert_names=_np.array(all_perts),
+            U_scaled=U_scaled,
+            gene_names=_np.array(all_genes),
+            singular_values=S,
+        )
+        log.info("SVD loadings saved: %s (rank=%d, %d perts, %d genes)", npz_path, k, n_perts, n_genes)
+
+    log.info(
+        "RNA fingerprints saved: %s variant=%r — %d perts, %d genes, SVD rank=%d",
+        dataset_id, fp_variant, n_perts, n_genes, k,
+    )
+    return {
+        "dataset_id":       dataset_id,
+        "source_variant":   source_variant,
+        "fingerprint_variant": fp_variant,
+        "n_perturbations":  n_perts,
+        "n_genes":          n_genes,
+        "svd_rank":         k,
+        "sig_path":         str(_sig_path(dataset_id, fp_variant)),
+        "svd_loadings_path": str(_npz_path(dataset_id)) if not source_variant else None,
+    }
+
+
+def compute_svd_nomination_scores(
+    dataset_id: str,
+    gwas_genes: list[str] | set[str],
+    top_k: int | None = None,
+    min_cosine: float | None = None,
+) -> list[dict]:
+    """
+    Rank non-GWAS perturbed genes by cosine similarity to GWAS genes in SVD space.
+
+    After fingerprint preprocessing, each perturbed gene has a k-dimensional loading
+    vector in Vt (the right singular vectors of the centered gene × perturbation matrix).
+    Genes that co-vary with GWAS-anchored genes across perturbations occupy similar
+    positions in this latent space — they are mechanistically co-regulated and are
+    stronger disease-biology nominees than raw log2FC magnitude alone would suggest.
+
+    Args:
+        dataset_id:  Dataset to use (must have svd_loadings.npz from preprocess_rna_fingerprints)
+        gwas_genes:  Set of GWAS-anchored gene symbols (defines the reference centroid)
+        top_k:       Max nominees to return (default: FINGERPRINT_MAX_NONGWAS_NOMINEES)
+        min_cosine:  Minimum cosine score (default: FINGERPRINT_SVD_COSINE_MIN)
+
+    Returns:
+        List of {gene, cosine_score} sorted descending by score (non-GWAS only).
+        Empty list if SVD loadings not yet computed.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return []
+
+    from config.scoring_thresholds import FINGERPRINT_SVD_COSINE_MIN
+
+    npz_path = _npz_path(dataset_id)
+    if not npz_path.exists():
+        log.warning("SVD loadings not found for %s — run preprocess_rna_fingerprints first", dataset_id)
+        return []
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    Vt        = data["Vt"]           # (k × n_perts)
+    pert_names = list(data["pert_names"])  # perturbed gene symbols
+
+    gwas_upper  = {g.upper() for g in gwas_genes}
+    pert_upper  = [p.upper() for p in pert_names]
+
+    # (n_perts × k): each row = one gene's latent coordinates
+    V = Vt.T
+
+    # Mean loading vector of all GWAS genes present in the perturbation set
+    gwas_idx = [i for i, p in enumerate(pert_upper) if p in gwas_upper]
+    if not gwas_idx:
+        log.warning("No GWAS genes found in %s SVD loadings — cannot compute nomination scores", dataset_id)
+        return []
+
+    centroid     = V[gwas_idx].mean(axis=0)
+    centroid_norm = _np.linalg.norm(centroid)
+    if centroid_norm < 1e-8:
+        return []
+    centroid_hat = centroid / centroid_norm
+
+    _min_cos = min_cosine if min_cosine is not None else FINGERPRINT_SVD_COSINE_MIN
+    # top_k retained as an optional override for tests; default None = no cap
+    # (the cosine threshold is the principled gate — a count cap is size-dependent)
+
+    results: list[dict] = []
+    for i, (pname, pupper) in enumerate(zip(pert_names, pert_upper)):
+        if pupper in gwas_upper:
+            continue  # skip GWAS genes — they're already in the candidate list
+        v    = V[i]
+        norm = _np.linalg.norm(v)
+        if norm < 1e-8:
+            continue
+        cosine = float(_np.dot(centroid_hat, v / norm))
+        if cosine >= _min_cos:
+            results.append({"gene": pname, "cosine_score": round(cosine, 6)})
+
+    results.sort(key=lambda x: x["cosine_score"], reverse=True)
+    log.info(
+        "SVD nomination: %d non-GWAS candidates (cosine≥%.2f) for %s",
+        len(results), _min_cos, dataset_id,
+    )
+    return results[:top_k] if top_k is not None else results
+
+
+def _get_locus_programs(
+    dataset_id: str,
+    disease_key: str,
+    gwas_genes: list[str] | set[str],
+    de_vector: dict[str, float] | None,
+    top_n_genes: int = 100,
+) -> list[dict]:
+    """
+    Build program dicts from GWAS-anchored locus signatures (gwas_anchored_programs.npz).
+
+    β_{gene→locus} = dot(gene_Vt_column, locus_signature).
+    gwas_t_stat    = mean locus loading of locus-defining genes / SEM background.
+    de_pearson     = Pearson(locus_signature, de_vector) when de_vector provided.
+
+    Returns same format as get_gwas_aligned_svd_programs so downstream is unchanged.
+    Returns [] on failure so caller falls back to SVD.
+    """
+    try:
+        import numpy as _np, json as _json
+    except ImportError:
+        return []
+
+    locus_npz = _npz_path(dataset_id).parent / "gwas_anchored_programs.npz"
+    svd_npz   = _npz_path(dataset_id)
+    if not locus_npz.exists() or not svd_npz.exists():
+        return []
+
+    try:
+        ld = _np.load(str(locus_npz), allow_pickle=False)
+        sd = _np.load(str(svd_npz),   allow_pickle=True)
+    except Exception as exc:
+        log.warning("Failed to load locus/SVD npz for %s: %s", dataset_id, exc)
+        return []
+
+    Vt_locus    = ld["Vt"]           # (n_loci × n_perts) — projection loadings
+    locus_names = list(ld["locus_names"])
+    pert_names  = list(ld["pert_names"])
+    locus_genes = _json.loads(str(ld["locus_genes_json"]))
+    locus_perts = _json.loads(str(ld["locus_perts_json"]))
+
+    # U_scaled from SVD for gene-side weights (response genes × k); used for top_genes
+    gene_names_svd = list(sd["gene_names"]) if "gene_names" in sd else []
+    U_scaled_svd   = sd["U_scaled"] if "U_scaled" in sd else None
+
+    pert_idx = {g: i for i, g in enumerate(pert_names)}
+
+    # DE alignment vector
+    de_arr: "_np.ndarray | None" = None
+    if de_vector and gene_names_svd:
+        de_arr = _np.array([de_vector.get(g, 0.0) for g in gene_names_svd], dtype=_np.float32)
+
+    # Background mean/std for gwas_t_stat normalisation (all gene loadings per locus)
+    # Shape: (n_loci,) — row means already normalised during build; use std of all cols
+    bg_std = Vt_locus.std(axis=1)          # (n_loci,)
+    bg_std[bg_std < 1e-12] = 1.0
+
+    programs: list[dict] = []
+    for li, locus_id in enumerate(locus_names):
+        row = Vt_locus[li]                 # (n_perts,) — all gene loadings on this locus
+
+        # gwas_t_stat: mean loading of locus-defining genes vs. SEM of background
+        defining = locus_perts.get(locus_id, [])
+        def_idx  = [pert_idx[g] for g in defining if g in pert_idx]
+        if def_idx:
+            gwas_align  = float(row[def_idx].mean())
+            sem         = float(bg_std[li] / max(1, len(def_idx)) ** 0.5)
+            gwas_t_stat = gwas_align / sem if sem > 1e-12 else 0.0
+        else:
+            gwas_align  = 0.0
+            gwas_t_stat = 0.0
+
+        # de_pearson: correlation of locus SVD signature with disease DEG
+        de_pearson = 0.0
+        if de_arr is not None and U_scaled_svd is not None:
+            # Reconstruct locus gene-side signature by weighting SVD U_scaled by Vt_locus row
+            # locus_gene_sig = U_scaled @ Vt_locus[li]  but Vt_locus[li] is in pert-space;
+            # approximate: dot of locus row with mean of SVD Vt rows (gene-space projection)
+            # Simpler: use the raw de_vector dot with locus_genes DE values
+            locus_de = _np.array(
+                [de_vector.get(g, 0.0) for g in locus_perts.get(locus_id, [])]
+                if de_vector else [],
+                dtype=_np.float32,
+            )
+            if len(locus_de) >= 2 and locus_de.std() > 1e-8:
+                # Compare to full de_arr using only response genes in locus
+                all_de = _np.array(
+                    [de_vector.get(g, 0.0) for g in locus_perts.get(locus_id, [])],
+                    dtype=_np.float32,
+                )
+                # Use full background correlation instead: locus loadings vs. DE across all perts
+                r_num   = float((row * _np.array(
+                    [de_vector.get(g, 0.0) for g in pert_names], dtype=_np.float32
+                )).sum())
+                r_denom = (float(_np.linalg.norm(row)) *
+                           float(_np.linalg.norm(_np.array(
+                               [de_vector.get(g, 0.0) for g in pert_names], dtype=_np.float32
+                           ))))
+                de_pearson = r_num / r_denom if r_denom > 1e-12 else 0.0
+
+        combined_score = gwas_t_stat * de_pearson if de_arr is not None else gwas_t_stat
+
+        # Top response genes: use magnitude of locus loading on each perturbed gene
+        top_idx  = _np.argsort(_np.abs(row))[::-1][:top_n_genes]
+        top_genes = [
+            {"gene": pert_names[i], "weight": round(float(row[i]), 6)}
+            for i in top_idx
+            if abs(row[i]) > 1e-8
+        ]
+
+        programs.append({
+            "program_id":       locus_id,
+            "name":             locus_id,
+            "gene_set":         [g["gene"] for g in top_genes],
+            "top_genes":        top_genes,
+            "source":           "gwas_locus_anchored",
+            "gwas_alignment":   round(gwas_align, 6),
+            "gwas_t_stat":      round(gwas_t_stat, 4),
+            "de_pearson":       round(de_pearson, 4),
+            "combined_score":   round(combined_score, 4),
+            "n_gwas_perturbed": len(def_idx),
+            "locus_genes":      sorted(locus_genes.get(locus_id, [])),
+        })
+
+    sort_key = "combined_score" if de_arr is not None else "gwas_t_stat"
+    programs.sort(key=lambda p: abs(p[sort_key]), reverse=True)
+
+    top3 = [(p["program_id"], p.get("combined_score", p["gwas_t_stat"])) for p in programs[:3]]
+    log.info("Top GWAS+DE-aligned SVD components for %s: %s", disease_key, top3)
+
+    # Persist ranking for island plot
+    import json as _json2
+    _rank_path = _npz_path(dataset_id).parent / "gwas_aligned_programs.json"
+    try:
+        _rank_path.write_text(_json2.dumps([
+            {
+                "program_id":     p["program_id"],
+                "gwas_t_stat":    p["gwas_t_stat"],
+                "de_pearson":     p["de_pearson"],
+                "combined_score": p["combined_score"],
+            }
+            for p in programs
+        ], indent=2))
+    except Exception as _e:
+        log.warning("Could not save GWAS-aligned locus ranking: %s", _e)
+
+    log.info(
+        "Using %d GWAS-anchored locus programs for %s (source=gwas_locus_anchored_%s)",
+        len(programs), disease_key, dataset_id,
+    )
+    return programs
+
+
+def get_gwas_aligned_svd_programs(
+    dataset_id: str,
+    disease_key: str,
+    gwas_genes: list[str] | set[str],
+    de_vector: dict[str, float] | None = None,
+    top_n_genes: int = 100,
+) -> list[dict]:
+    """
+    Score and rank SVD components by joint GWAS + disease-DE alignment.
+
+    Two orthogonal scores per component c:
+
+      gwas_t[c] = mean(Vt[c, gwas_pert_idx]) / SEM_background
+        Measures whether GWAS-perturbed genes systematically load on component c.
+        Large |t| = component captures disease-relevant perturbational biology.
+
+      de_pearson[c] = Pearson(U_scaled[:,c], de_vector)
+        Measures whether the component's gene expression pattern matches the
+        disease-vs-healthy DE signature from scRNA-seq.
+        Large |r| = component is transcriptionally dysregulated in disease cells.
+
+    Combined score (when de_vector provided):
+      combined[c] = gwas_t[c] * de_pearson[c]
+      Positive = both sources agree (GWAS genes activate a program that is
+        upregulated in disease, or suppress one that is downregulated).
+      Ranked by |combined| so programs with dual evidence come first.
+
+    Without de_vector: ranked by |gwas_t| alone (GWAS-only mode).
+
+    Args:
+        dataset_id:   Perturb-seq dataset (must have svd_loadings.npz)
+        disease_key:  Short disease key ("CAD", "RA")
+        gwas_genes:   GWAS-anchored gene symbols
+        de_vector:    {gene_symbol: log2FC(disease vs healthy)} from scRNA-seq h5ad
+        top_n_genes:  Top-|U_scaled[:,c]| genes stored per program for γ estimation
+
+    Returns:
+        List of program dicts sorted by |combined_score| (or |gwas_t| if no de_vector).
+        Extra fields per program: gwas_alignment, gwas_t_stat, de_pearson,
+        combined_score, n_gwas_perturbed.
+        Returns [] if npz missing or no GWAS genes perturbed.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return []
+
+    # --- GWAS-anchored locus programs (genetics-first) ---
+    # Note: gwas_anchored_programs.npz provides locus-level gammas (injected at Tier 3
+    # via ota_gamma_calculator.py), not the beta matrix.  Tier 2 always uses SVD Vt
+    # for β — locus Vt has unscaled betas (~0.007 avg vs SVD ~2-5) that collapse OTA γ.
+    npz_path = _npz_path(dataset_id)
+    if not npz_path.exists():
+        log.warning("SVD loadings not found for %s", dataset_id)
+        return []
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    if "U_scaled" not in data or "gene_names" not in data:
+        log.warning("U_scaled missing from %s — re-run preprocess_rna_fingerprints", npz_path)
+        return []
+
+    Vt         = data["Vt"]          # (k × n_perts)
+    pert_names = list(data["pert_names"])
+    U_scaled   = data["U_scaled"]    # (n_genes × k)
+    gene_names = list(data["gene_names"])
+    k          = Vt.shape[0]
+
+    gwas_upper = {g.upper() for g in gwas_genes}
+    gwas_pert_idx = [i for i, p in enumerate(pert_names) if p.upper() in gwas_upper]
+    n_gwas_perturbed = len(gwas_pert_idx)
+
+    if n_gwas_perturbed == 0:
+        log.warning("No GWAS genes found in %s perturbation set — cannot align SVD components", dataset_id)
+        return []
+
+    log.info(
+        "GWAS-SVD alignment: %d/%d GWAS genes perturbed in %s",
+        n_gwas_perturbed, len(gwas_upper), dataset_id,
+    )
+
+    gwas_vt = Vt[:, gwas_pert_idx]  # (k × n_gwas_perturbed)
+
+    # Pre-build DE alignment vector aligned to gene_names order (once, outside loop)
+    de_arr: "_np.ndarray | None" = None
+    de_nonzero_mask: "_np.ndarray | None" = None
+    if de_vector:
+        de_arr = _np.array([de_vector.get(g, 0.0) for g in gene_names], dtype=_np.float32)
+        de_nonzero_mask = _np.abs(de_arr) > 1e-8
+        if int(de_nonzero_mask.sum()) < 20:
+            log.warning("DE vector has fewer than 20 non-zero genes overlapping gene_names — DE alignment skipped")
+            de_arr = None
+            de_nonzero_mask = None
+        else:
+            log.info(
+                "DE alignment: %d genes with |log2FC|>0 overlapping %s gene universe",
+                int(de_nonzero_mask.sum()), dataset_id,
+            )
+
+    def _pearson(x: "_np.ndarray", y: "_np.ndarray") -> float:
+        """Pearson r without scipy dependency."""
+        xc = x - x.mean()
+        yc = y - y.mean()
+        denom = _np.sqrt((xc ** 2).sum() * (yc ** 2).sum())
+        return float(_np.dot(xc, yc) / denom) if denom > 1e-12 else 0.0
+
+    programs: list[dict] = []
+    for c in range(k):
+        prog_id = f"{disease_key}_SVD_C{c + 1:02d}"
+
+        # GWAS alignment: mean loading of GWAS-perturbed genes on this component
+        component_gwas = gwas_vt[c]
+        gwas_alignment = float(_np.mean(component_gwas))
+        background_std = float(_np.std(Vt[c]))
+        sem            = background_std / _np.sqrt(n_gwas_perturbed) if n_gwas_perturbed > 1 else background_std
+        gwas_t_stat    = gwas_alignment / sem if sem > 1e-12 else 0.0
+
+        # Disease DE alignment: Pearson(U_scaled[:,c], de_vector) over shared genes
+        de_pearson = 0.0
+        if de_arr is not None and de_nonzero_mask is not None:
+            u_col = U_scaled[de_nonzero_mask, c]
+            d_col = de_arr[de_nonzero_mask]
+            de_pearson = _pearson(u_col, d_col)
+
+        # Combined score: product of both signals.
+        # Same sign = both sources agree on disease direction.
+        # |combined| large = strong dual evidence (GWAS + transcriptional).
+        combined_score = gwas_t_stat * de_pearson if de_arr is not None else gwas_t_stat
+
+        # Gene side: top-|U_scaled[:,c]| genes for γ estimation
+        col     = U_scaled[:, c]
+        top_idx = _np.argsort(_np.abs(col))[::-1][:top_n_genes]
+        top_genes = [
+            {"gene": gene_names[i], "weight": round(float(col[i]), 6)}
+            for i in top_idx
+            if abs(col[i]) > 1e-8
+        ]
+
+        programs.append({
+            "program_id":       prog_id,
+            "name":             prog_id,
+            "gene_set":         [g["gene"] for g in top_genes],
+            "top_genes":        top_genes,
+            "source":           "svd_gwas_de_aligned" if de_arr is not None else "svd_gwas_aligned",
+            "gwas_alignment":   round(gwas_alignment, 6),
+            "gwas_t_stat":      round(gwas_t_stat, 4),
+            "de_pearson":       round(de_pearson, 4),
+            "combined_score":   round(combined_score, 4),
+            "n_gwas_perturbed": n_gwas_perturbed,
+        })
+
+    # Sort by |combined_score| when DE available, else |gwas_t_stat|
+    sort_key = "combined_score" if de_arr is not None else "gwas_t_stat"
+    programs.sort(key=lambda p: abs(p[sort_key]), reverse=True)
+
+    top3 = [(p["program_id"], p.get("combined_score", p["gwas_t_stat"])) for p in programs[:3]]
+    log.info("Top GWAS+DE-aligned SVD components for %s: %s", disease_key, top3)
+
+    # Persist ranking so the island plot can use gwas_t_stat ordering without
+    # needing the full GWAS gene list at plot time.
+    import json as _json
+    _rank_path = _npz_path(dataset_id).parent / "gwas_aligned_programs.json"
+    try:
+        _rank_path.write_text(_json.dumps([
+            {
+                "program_id":     p["program_id"],
+                "gwas_t_stat":    p["gwas_t_stat"],
+                "de_pearson":     p["de_pearson"],
+                "combined_score": p["combined_score"],
+            }
+            for p in programs
+        ], indent=2))
+        log.info("Saved GWAS-aligned program ranking → %s", _rank_path)
+    except Exception as _e:
+        log.warning("Could not save GWAS-aligned ranking: %s", _e)
+
+    return programs
+
+
+def get_svd_program_gene_sets(
+    dataset_id: str,
+    disease_key: str,
+    top_n: int = 100,
+) -> dict[str, list[dict]]:
+    """
+    Return SVD components as program definitions — gene side (U_scaled).
+
+    Each SVD component c becomes program "{disease_key}_SVD_C{c+1:02d}".
+    The gene set = top-|U_scaled[:,c]| genes (expression space).
+    These gene sets are used for γ(program→disease) GWAS enrichment and for
+    the NES computation in load_replogle_betas (so β and island axes converge).
+
+    Args:
+        dataset_id:  Perturb-seq dataset (must have svd_loadings.npz with U_scaled)
+        disease_key: Short disease key (e.g. "CAD", "RA") for program naming
+        top_n:       Number of top genes per component (by |U_scaled[:,c]|)
+
+    Returns:
+        {program_id: [{"gene": str, "weight": float}, ...]} sorted by |weight| desc
+        Empty dict if npz not found or U_scaled not saved yet.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return {}
+
+    npz_path = _npz_path(dataset_id)
+    if not npz_path.exists():
+        return {}
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    if "U_scaled" not in data or "gene_names" not in data:
+        log.warning(
+            "U_scaled not in %s — re-run preprocess_rna_fingerprints to regenerate", npz_path
+        )
+        return {}
+
+    U_scaled   = data["U_scaled"]   # (n_genes × k)
+    gene_names = list(data["gene_names"])
+    k          = U_scaled.shape[1]
+
+    result: dict[str, list[dict]] = {}
+    for c in range(k):
+        prog_id  = f"{disease_key}_SVD_C{c + 1:02d}"
+        col      = U_scaled[:, c]
+        top_idx  = _np.argsort(_np.abs(col))[::-1][:top_n]
+        top_genes = [
+            {"gene": gene_names[i], "weight": round(float(col[i]), 6)}
+            for i in top_idx
+            if abs(col[i]) > 1e-8
+        ]
+        result[prog_id] = top_genes
+
+    return result
+
+
+def load_svd_program_betas(
+    dataset_id: str,
+    disease_key: str,
+) -> dict[str, dict[str, float]]:
+    """
+    Return direct Vt-based β(gene→program) for perturbed genes.
+
+    β(gene→SVD_Cc) = Vt[c, pert_idx] — the perturbation's loading on SVD
+    component c.  Positive = perturbation activates the component; negative =
+    perturbation suppresses it.  This is the most direct mechanistic estimate:
+    it uses the actual transcriptional response observed in the experiment
+    rather than an NES against a gene set.
+
+    Args:
+        dataset_id:  Perturb-seq dataset (must have svd_loadings.npz)
+        disease_key: Short disease key for program naming (e.g. "CAD", "RA")
+
+    Returns:
+        {gene_symbol: {prog_id: beta_float}} for all perturbed genes.
+        Empty dict if npz not found.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return {}
+
+    npz_path = _npz_path(dataset_id)
+    if not npz_path.exists():
+        return {}
+
+    data = _np.load(str(npz_path), allow_pickle=True)
+    Vt         = data["Vt"]           # (k × n_perts)
+    pert_names = list(data["pert_names"])
+    k          = Vt.shape[0]
+
+    result: dict[str, dict[str, float]] = {}
+    for j, gene in enumerate(pert_names):
+        prog_betas: dict[str, float] = {}
+        for c in range(k):
+            prog_id = f"{disease_key}_SVD_C{c + 1:02d}"
+            prog_betas[prog_id] = round(float(Vt[c, j]), 6)
+        result[gene] = prog_betas
+
+    return result
+
+
+# ---------------------------------------------------------------------------
+# cNMF program functions (Schnitzler k=60 endothelial programs for CAD)
+# ---------------------------------------------------------------------------
+
+_CNMF_NPZ_NAME = "cnmf_beta_programs.npz"
+_CNMF_GENE_SETS_NAME = "cnmf_program_gene_sets.json"
+
+
+def _cnmf_npz_path(dataset_id: str) -> "Path":
+    base = _CACHE_DIR / dataset_id
+    return base / _CNMF_NPZ_NAME
+
+
+def get_cnmf_program_gene_sets(
+    dataset_id: str,
+    top_n: int = 100,
+) -> dict[str, list[str]]:
+    """
+    Return cNMF program gene sets from cnmf_program_gene_sets.json.
+
+    Programs are defined from the Schnitzler endothelial cNMF (k=60),
+    exactly as in Ota et al.: gene sets are the top-N genes by cNMF
+    spectra score per program.
+
+    Returns:
+        {program_id: [gene_symbol, ...]} — top_n genes per program.
+        Empty dict if file not found.
+    """
+    import json as _json
+    gs_path = _CACHE_DIR / dataset_id / _CNMF_GENE_SETS_NAME
+    if not gs_path.exists():
+        log.warning("cnmf_program_gene_sets.json not found for %s", dataset_id)
+        return {}
+    with open(gs_path) as fh:
+        gene_sets = _json.load(fh)
+    # Trim to top_n if needed
+    return {pid: genes[:top_n] for pid, genes in gene_sets.items()}
+
+
+def get_genetic_nmf_program_gene_sets(
+    dataset_id: str,
+    disease_key: str = "RA",
+    top_n: int = 100,
+) -> dict[str, list[str]]:
+    """
+    Return GeneticNMF program gene sets from genetic_nmf_loadings.npz.
+
+    Gene sets are the top-N expression genes by U_scaled loading per program.
+    U_scaled is (n_expression_genes × n_programs); gene_names are the row labels.
+    Used for computing per-program activation biases via load_program_activation_biases.
+
+    Returns:
+        {f"{disease_key}_GeneticNMF_C{c+1:02d}": [gene_symbol, ...]} for all programs.
+        Empty dict if npz not found.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return {}
+
+    npz_path = _CACHE_DIR / dataset_id / "genetic_nmf_loadings.npz"
+    if not npz_path.exists():
+        log.warning("genetic_nmf_loadings.npz not found for %s", dataset_id)
+        return {}
+
+    d = _np.load(str(npz_path), allow_pickle=True)
+    U_scaled   = d["U_scaled"]    # (n_genes × n_programs)
+    gene_names = list(d["gene_names"])
+    n_progs    = U_scaled.shape[1]
+
+    gene_sets: dict[str, list[str]] = {}
+    for c in range(n_progs):
+        prog_id  = f"{disease_key}_GeneticNMF_C{c + 1:02d}"
+        loadings = _np.abs(U_scaled[:, c])
+        top_idx  = _np.argsort(loadings)[::-1][:top_n]
+        gene_sets[prog_id] = [gene_names[i] for i in top_idx]
+
+    return gene_sets
+
+
+def load_cnmf_program_betas(
+    dataset_id: str,
+    disease_key: str,
+    condition: str = "Stim48hr",
+) -> dict[str, dict[str, float]]:
+    """
+    Return β(gene→program) from MAST differential usage (preferred) or cosine projection fallback.
+
+    MAST source (cnmf_mast_betas.npz): paper's actual β — MAST coefficient for each
+    KO perturbation's effect on cNMF program usage.
+    GeneticNMF source: condition-specific files projected onto shared GeneticNMF Vt:
+        condition="Stim48hr" → genetic_nmf_de_betas.npz
+        condition="Rest"     → genetic_nmf_de_betas_rest.npz
+    Cosine fallback (cnmf_beta_programs.npz): projection of KO log2FC onto program spectra.
+
+    Args:
+        condition: "Stim48hr" (default) or "Rest". Only used for GeneticNMF sources.
+
+    Returns:
+        {gene_symbol: {prog_id: beta_float}} for all perturbed genes.
+        Empty dict if neither file found.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return {}
+
+    base = _CACHE_DIR / dataset_id
+    mast_path = base / "cnmf_mast_betas.npz"
+    npz_path = _cnmf_npz_path(dataset_id)
+
+    # Condition-specific GeneticNMF loadings (preferred for RA — condition-specific programs)
+    _cond_lower = condition.lower()
+    _cond_upper = "REST" if _cond_lower == "rest" else condition  # normalise Rest→REST
+    gnmf_loadings_path = base / f"genetic_nmf_loadings_{_cond_lower}.npz"
+
+    if mast_path.exists():
+        log.info("load_cnmf_program_betas: using MAST differential usage betas (%s)", dataset_id)
+        data     = _np.load(str(mast_path), allow_pickle=True)
+        prefix   = f"{disease_key.upper()}_cNMF_"
+        beta     = data["beta"]
+        ko_genes = list(data["ko_genes"])
+        prog_ids = list(data["program_ids"])
+        result: dict[str, dict[str, float]] = {}
+        for j, gene in enumerate(ko_genes):
+            result[str(gene)] = {
+                prefix + str(pid): round(float(beta[j, c]), 6)
+                for c, pid in enumerate(prog_ids)
+            }
+        # Also merge bare GeneticNMF loadings (no condition suffix) if present — adds
+        # CAD_GeneticNMF_C* keys so those programs appear in top_programs for GPS selection.
+        _bare_gnmf = base / "genetic_nmf_loadings.npz"
+        if _bare_gnmf.exists() and not gnmf_loadings_path.exists():
+            try:
+                _gd   = _np.load(str(_bare_gnmf), allow_pickle=True)
+                _Vt   = _gd["Vt"]
+                _bmat = _Vt.T
+                _k    = _bmat.shape[1]
+                _gpfx = f"{disease_key.upper()}_GeneticNMF_"
+                _pids = [f"C{c+1:02d}" for c in range(_k)]
+                for _j, _g in enumerate([str(x) for x in _gd["pert_names"]]):
+                    if _g in result:
+                        result[_g].update({
+                            _gpfx + _pid: round(float(_bmat[_j, _c]), 6)
+                            for _c, _pid in enumerate(_pids)
+                        })
+                log.info(
+                    "load_cnmf_program_betas: merged GeneticNMF loadings into MAST result (%s, k=%d)",
+                    dataset_id, _k,
+                )
+            except Exception as _exc:
+                log.warning("GeneticNMF merge failed for %s: %s", dataset_id, _exc)
+        return result
+
+    if gnmf_loadings_path.exists():
+        # Condition-specific GeneticNMF: Vt.T = (n_perts × k), pert_names = ko genes
+        log.info(
+            "load_cnmf_program_betas: using GeneticNMF loadings condition=%s (%s)",
+            _cond_upper, dataset_id,
+        )
+        data  = _np.load(str(gnmf_loadings_path), allow_pickle=True)
+        _Vt   = data["Vt"]           # (k × n_perts)
+        beta  = _Vt.T                # (n_perts × k)
+        k     = beta.shape[1]
+        # Match key prefix to program gammas: RA_GeneticNMF_Stim48hr_C01, RA_GeneticNMF_REST_C01
+        prefix    = f"{disease_key.upper()}_GeneticNMF_{_cond_upper}_"
+        ko_genes  = [str(g) for g in data["pert_names"]]
+        prog_ids  = [f"C{c+1:02d}" for c in range(k)]
+        result = {}
+        for j, gene in enumerate(ko_genes):
+            result[str(gene)] = {
+                prefix + pid: round(float(beta[j, c]), 6)
+                for c, pid in enumerate(prog_ids)
+            }
+        return result
+
+    # Legacy GeneticNMF DE betas (old shared-program files — kept as fallback)
+    gnmf_path = (
+        base / "genetic_nmf_de_betas_rest.npz"
+        if _cond_lower == "rest"
+        else base / "genetic_nmf_de_betas.npz"
+    )
+    if gnmf_path.exists():
+        log.info(
+            "load_cnmf_program_betas: falling back to legacy GeneticNMF DE betas condition=%s (%s)",
+            condition, dataset_id,
+        )
+        data     = _np.load(str(gnmf_path), allow_pickle=True)
+        prefix   = f"{disease_key.upper()}_GeneticNMF_"
+        beta     = data["beta"]
+        ko_genes = list(data["ko_genes"])
+        prog_ids = list(data["program_ids"])
+        result = {}
+        for j, gene in enumerate(ko_genes):
+            result[str(gene)] = {
+                prefix + str(pid): round(float(beta[j, c]), 6)
+                for c, pid in enumerate(prog_ids)
+            }
+        return result
+
+    if npz_path.exists():
+        log.info("load_cnmf_program_betas: falling back to cosine projection (%s)", dataset_id)
+        data     = _np.load(str(npz_path), allow_pickle=True)
+        prefix   = f"{disease_key.upper()}_cNMF_"
+        beta     = data["beta"]
+        ko_genes = list(data["ko_genes"])
+        prog_ids = list(data["program_ids"])
+        result = {}
+        for j, gene in enumerate(ko_genes):
+            result[str(gene)] = {
+                prefix + str(pid): round(float(beta[j, c]), 6)
+                for c, pid in enumerate(prog_ids)
+            }
+        return result
+
+    log.warning("no beta npz found for %s", dataset_id)
+    return {}
+
+
+def load_svd_vt_betas_zscored(
+    dataset_id: str,
+    disease_key: str,
+) -> dict[str, dict]:
+    """
+    Return z-scored Vt-based β(gene→program) structured for estimate_beta_tier1.
+
+    For each SVD component c, z-score Vt[c,:] across all perturbations so that
+    β = (Vt[c,g] - mean_c) / std_c.  This puts the β values on a ±1-2 scale
+    consistent with NES, while preserving the specificity of each perturbation's
+    loading pattern (no saturation to the NES cap).
+
+    Returns:
+        {gene: {"programs": {prog_id: {"beta": z_score, "se": None, ...}}}}
+        for all perturbed genes.  Empty dict if npz not found.
+    """
+    try:
+        import numpy as _np
+    except ImportError:
+        return {}
+
+    npz_path = _npz_path(dataset_id)
+    if not npz_path.exists():
+        return {}
+
+    data       = _np.load(str(npz_path), allow_pickle=True)
+    Vt         = data["Vt"]           # (k × n_perts)
+    pert_names = list(data["pert_names"])
+    k          = Vt.shape[0]
+
+    # Z-score each component row independently
+    row_mean = Vt.mean(axis=1, keepdims=True)   # (k, 1)
+    row_std  = Vt.std(axis=1, keepdims=True)    # (k, 1)
+    Vt_z     = (Vt - row_mean) / (_np.maximum(row_std, 1e-8))  # (k × n_perts)
+
+    result: dict[str, dict] = {}
+    for j, gene in enumerate(pert_names):
+        programs: dict[str, dict] = {}
+        for c in range(k):
+            prog_id = f"{disease_key}_SVD_C{c + 1:02d}"
+            z = round(float(Vt_z[c, j]), 6)
+            programs[prog_id] = {"beta": z, "se": None}
+        result[gene] = {"programs": programs}
+
+    return result
+
+
+def map_disease_to_fingerprints(
+    disease_de_dict: dict[str, float],
+    dataset_id: str,
+    n_bootstrap: int | None = None,
+    source_variant: str = "",
+    min_gene_overlap: int | None = None,
+) -> dict:
+    """
+    Match a disease DE vector to Perturb-seq fingerprints via Pearson correlation.
+
+    Replaces CAD ridge regression (R²=1.0 overfitting) with a principled
+    probabilistic approach: correlation + bootstrap SE per perturbation.
+
+    Positive r  → KO mimics disease state (disease-promoting gene)
+    Negative r  → KO reverses disease state (therapeutic target candidate)
+
+    Args:
+        disease_de_dict: {gene_symbol: log2FC} for the disease vs healthy DE
+        dataset_id:      Perturb-seq dataset to match against
+        n_bootstrap:     Bootstrap iterations (default: FINGERPRINT_N_BOOTSTRAP)
+        source_variant:  Source variant of fingerprints ("" = primary)
+
+    Returns dict with top therapeutic KOs (most negative r) and top disease-mimics.
+    Saves full results to data/perturbseq/{dataset_id}/disease_fingerprint_match.json.
+    """
+    try:
+        import numpy as _np
+    except ImportError as e:
+        return {"error": f"Missing dependency: {e}"}
+
+    from config.scoring_thresholds import FINGERPRINT_MIN_GENE_OVERLAP, FINGERPRINT_N_BOOTSTRAP
+
+    fp_variant = f"fingerprint{'_' + source_variant if source_variant else ''}"
+    fingerprints = _load_cached_signatures(dataset_id, fp_variant)
+    if not fingerprints:
+        return {"error": f"No fingerprints for {dataset_id!r}. Run preprocess_rna_fingerprints first."}
+
+    n_boot = n_bootstrap if n_bootstrap is not None else FINGERPRINT_N_BOOTSTRAP
+    _min_overlap = min_gene_overlap if min_gene_overlap is not None else FINGERPRINT_MIN_GENE_OVERLAP
+    disease_genes = list(disease_de_dict.keys())
+
+    results: list[dict] = []
+    for pert, fp_dict in fingerprints.items():
+        shared = [g for g in disease_genes if g in fp_dict]
+        if len(shared) < _min_overlap:
+            continue
+        d = _np.array([disease_de_dict[g] for g in shared], dtype=_np.float64)
+        f = _np.array([fp_dict[g] for g in shared], dtype=_np.float64)
+        if _np.std(d) < 1e-8 or _np.std(f) < 1e-8:
+            continue
+        r = float(_np.corrcoef(d, f)[0, 1])
+
+        # Bootstrap SE — resample 80% of shared genes
+        rng = _np.random.default_rng(42)
+        n_shared = len(shared)
+        n_sample = max(int(n_shared * 0.8), 2)
+        boot_rs: list[float] = []
+        for _ in range(n_boot):
+            idx = rng.choice(n_shared, size=n_sample, replace=False)
+            if _np.std(d[idx]) < 1e-8 or _np.std(f[idx]) < 1e-8:
+                continue
+            boot_rs.append(float(_np.corrcoef(d[idx], f[idx])[0, 1]))
+        r_se = float(_np.std(boot_rs)) if boot_rs else float("nan")
+        z = r / r_se if r_se > 0 and _np.isfinite(r_se) else None
+
+        results.append({
+            "gene_ko":      pert,
+            "r":            round(r, 6),
+            "r_se":         round(r_se, 6) if _np.isfinite(r_se) else None,
+            "n_shared":     n_shared,
+            "z":            round(z, 4) if z is not None else None,
+        })
+
+    results.sort(key=lambda x: x["r"], reverse=True)
+
+    out_path = _CACHE_DIR / dataset_id / "disease_fingerprint_match.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w") as fh:
+        json.dump({"dataset_id": dataset_id, "n_matched": len(results), "results": results}, fh)
+
+    log.info(
+        "Disease fingerprint match: %d KOs matched for %s → %s",
+        len(results), dataset_id, out_path,
+    )
+    return {
+        "dataset_id":            dataset_id,
+        "n_perturbations_matched": len(results),
+        "top_therapeutic_kos":   sorted(results, key=lambda x: x["r"])[:10],
+        "top_disease_mimics":    results[:10],
+        "output_path":           str(out_path),
+    }
+
+
 def download_h5ad(dataset_id: str, dest_dir: str | Path | None = None) -> dict:
     """
     Download the h5ad for a dataset to dest_dir (default: data/perturbseq/{dataset_id}/).
@@ -1023,7 +2131,7 @@ def activate_dataset(
     if h5ad_fmt == "czi_de_stats":
         result = preprocess_czi_de_stats(dataset_id, h5ad_path)
     elif h5ad_fmt == "replogle_bulk":
-        result = preprocess_replogle_bulk(dataset_id, h5ad_path, top_k, min_abs_log2fc)
+        result = preprocess_perturbseq_bulk(dataset_id, h5ad_path, top_k, min_abs_log2fc)
     else:
         result = preprocess_h5ad(dataset_id, h5ad_path, top_k, min_abs_log2fc)
 

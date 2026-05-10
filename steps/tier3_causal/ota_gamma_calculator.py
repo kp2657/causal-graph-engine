@@ -22,7 +22,6 @@ from steps.tier3_causal.causal_filters import (
     _mechanistic_necessity_filter,
     _extract_beta_for_program,
     _extract_gamma_for_trait,
-    _build_fallback_top_programs,
     _pareto_cutoff,
     _wes_concordance_check,
     _HOUSEKEEPING_PREFIXES,
@@ -51,7 +50,7 @@ def run(
     """
     from pipelines.ota_gamma_estimation import compute_ota_gamma, compute_ota_gamma_with_uncertainty
     _OTA_SKIP_PROGRAMS: frozenset[str] = frozenset({"__protein_channel__"})
-    from pipelines.scone_sensitivity import polybic_selection
+    from pipelines.polybic_filter import polybic_selection
     from mcp_servers.graph_db_server import (
         write_causal_edges,
         run_evalue_check,
@@ -66,15 +65,162 @@ def run(
     beta_matrix  = beta_matrix_result.get("beta_matrix", {})
     tier_per_gene = beta_matrix_result.get("evidence_tier_per_gene", {})
     programs     = beta_matrix_result.get("programs", [])
+    coloc_h4_per_gene: dict[str, float] = beta_matrix_result.get("coloc_h4_per_gene", {})
+    _perturb_nominated: set[str] = disease_query.get("perturb_nominated_genes") or set()
+    _cache_first_tiers: dict[str, str] = disease_query.get("cache_first_nominee_tiers") or {}
+    _TIER_RANK = {
+        "Tier1_Interventional": 1, "Tier2_Convergent": 2,
+        "Tier2_PerturbNominated": 3, "Tier3_Provisional": 4,
+        "provisional_virtual": 5, "no_perturb_data": 6,
+    }
+    # Cache-first path: apply tier labels computed from effective_score ranking
+    for _g, _nom_tier in _cache_first_tiers.items():
+        existing = tier_per_gene.get(_g, "no_perturb_data")
+        if _TIER_RANK.get(_nom_tier, 5) < _TIER_RANK.get(existing, 6):
+            tier_per_gene[_g] = _nom_tier
+    # Legacy path: high-OTA Perturb-seq nominees without cache-first tiers
+    for _g in _perturb_nominated:
+        if _g not in _cache_first_tiers:
+            if _g not in tier_per_gene or tier_per_gene[_g] in ("provisional_virtual", "no_perturb_data"):
+                tier_per_gene[_g] = "Tier2_PerturbNominated"
     program_activation_biases: dict[str, float] | None = beta_matrix_result.get("program_activation_biases")
-    # Program membership from Tier 2 eqtl_coloc_mapper (may be empty).
-    # Used by `_build_fallback_top_programs` when the OT-genetic fallback fires
-    # and `n_programs_contributing == 0` — see line ~225.
     gene_program_overlap: dict[str, list[str]] = disease_query.get("gene_program_overlap") or {}
     warnings: list[str] = []
 
     from graph.schema import _DISEASE_SHORT_NAMES_FOR_ANCHORS  # local helper
     short = _DISEASE_SHORT_NAMES_FOR_ANCHORS.get(disease_name.lower(), "CAD")
+
+    # -------------------------------------------------------------------------
+    # Load gwas_t statistics for GWAS-aligned programs (used for program
+    # filtering and LOCUS beta loading; not for gamma computation).
+    # -------------------------------------------------------------------------
+    _DISEASE_DATASET_MAP: dict[str, str] = {
+        "CAD": "schnitzler_cad_vascular",
+        "RA":  "czi_2025_cd4t_perturb",
+    }
+    _program_gwas_t: dict[str, float] | None = None
+    _gwas_t_dataset = _DISEASE_DATASET_MAP.get(short)
+    if _gwas_t_dataset:
+        import json as _json_gwas
+        from pathlib import Path as _Path
+        _gwas_t_path = (
+            _Path(__file__).parent.parent.parent
+            / "data" / "perturbseq" / _gwas_t_dataset
+            / "gwas_aligned_programs.json"
+        )
+        if _gwas_t_path.exists():
+            try:
+                _raw = _json_gwas.loads(_gwas_t_path.read_text())
+                if isinstance(_raw, list):
+                    _program_gwas_t = {
+                        r["program_id"]: float(r["gwas_t_stat"])
+                        for r in _raw
+                        if "program_id" in r and "gwas_t_stat" in r
+                    }
+            except Exception as _gt_exc:
+                warnings.append(f"gwas_t load failed ({_gwas_t_dataset}): {_gt_exc}")
+
+    # -------------------------------------------------------------------------
+    # Load program gammas from S-LDSC.
+    #
+    # Both diseases: GeneticNMF programs (τ*>0 filter applied in loader).
+    # CAD also adds cNMF k=60 (Schnitzler endothelial).
+    # RA uses GeneticNMF Stim48hr (8/30 programs τ*>0; dense β coverage
+    # enables discovery of genes with no prior GWAS locus of their own).
+    # -------------------------------------------------------------------------
+    _program_gammas: dict[str, dict] = {}
+    _gnmf_rest_gammas: dict[str, dict] = {}
+    try:
+        from pipelines.ldsc.gamma_loader import (
+            get_cnmf_program_gammas        as _get_cnmf_gammas,
+            get_genetic_nmf_program_gammas as _get_gnmf_gammas,
+        )
+        # CAD: cNMF k=60 only — direction-corrected via SVD projection (CCM2/PLPP3 validated).
+        #   GeneticNMF excluded: all-positive τ* overwhelms cNMF negative signal for
+        #   atheroprotective genes (PLPP3 flips from -0.317 to +0.58 with GeneticNMF).
+        # RA: GeneticNMF Stim48hr — raw τ* (program_taus); eQTL direction correction
+        #   unreliable for CD4+ T programs; direction from β signs.
+        if short == "CAD":
+            _program_gammas = _get_cnmf_gammas(short)
+            _gnmf_rest_gammas = {}
+        else:
+            _gnmf_stim = (
+                _get_gnmf_gammas(short, condition="Stim48hr", prefer_raw_taus=True)
+                or _get_gnmf_gammas(short, prefer_raw_taus=True)
+            )
+            _program_gammas = _gnmf_stim
+            _gnmf_rest_gammas = _get_gnmf_gammas(short, condition="REST", prefer_raw_taus=True)
+        warnings.append(
+            f"{short} OTA: {'cNMF k=60' if short == 'CAD' else 'GeneticNMF'}"
+            f" ({len(_program_gammas)} programs with τ*>0)"
+        )
+
+        # Purge stale SVD / LOCUS entries from old checkpoints.
+        _svd_pfx   = f"{short}_SVD_"
+        gamma_estimates = {
+            k: v for k, v in gamma_estimates.items()
+            if not k.startswith(_svd_pfx) and not k.startswith("LOCUS_")
+        }
+    except Exception as _prog_exc:
+        warnings.append(f"Program γ load failed (non-fatal): {_prog_exc}")
+
+    # -------------------------------------------------------------------------
+    # Load cNMF betas once (gene → {CAD_cNMF_P*: cosine_proj}) for augmenting
+    # gene_beta inside the per-gene loop below. No-op when no cNMF dataset exists.
+    # -------------------------------------------------------------------------
+    _cnmf_betas: dict[str, dict[str, float]] = {}       # Stim48hr (primary OTA)
+    _cnmf_betas_rest: dict[str, dict[str, float]] = {}  # REST condition (parallel OTA)
+    try:
+        from pipelines.ldsc.runner import _DISEASE_CNMF_DATASET
+        _cnmf_ds = _DISEASE_CNMF_DATASET.get(short.upper())
+        if _cnmf_ds:
+            from mcp_servers.perturbseq_server import load_cnmf_program_betas as _load_cnmf_b
+            _cnmf_betas = _load_cnmf_b(_cnmf_ds, short.upper(), condition="Stim48hr")
+            warnings.append(f"cNMF betas loaded (Stim48hr): {len(_cnmf_betas)} genes ({_cnmf_ds})")
+            _cnmf_betas_rest = _load_cnmf_b(_cnmf_ds, short.upper(), condition="Rest")
+            if _cnmf_betas_rest:
+                warnings.append(f"cNMF betas loaded (Rest): {len(_cnmf_betas_rest)} genes")
+    except Exception as _cnmf_exc:
+        warnings.append(f"cNMF β load failed (non-fatal): {_cnmf_exc}")
+
+    # Two separate OTA sums: Stim48hr (ota_gamma) and REST (ota_gamma_rest).
+    # Gammas are program-level properties independent of condition; only betas differ.
+
+    _gwas_anchor_genes: frozenset[str] = frozenset(disease_query.get("gwas_genes") or [])
+
+    def _build_gamma_estimates_from(
+        source: dict[str, dict], base: dict, trait_name: str
+    ) -> dict:
+        """Merge S-LDSC program gammas into a gamma_estimates-compatible dict."""
+        out = dict(base)
+        for _prog, _prog_est in source.items():
+            _gamma_val = _prog_est.get("gamma")
+            if _gamma_val is None:
+                continue
+            _entry = {
+                trait_key: {
+                    "gamma":         _gamma_val,
+                    "gamma_se":      _prog_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _prog_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _prog_est.get("data_source", "S-LDSC_chisq"),
+                }
+                for trait_key in (list(out.get(_prog, {}).keys()) or [trait_name])
+            }
+            if not _entry:
+                _entry = {trait_name: {
+                    "gamma":         _gamma_val,
+                    "gamma_se":      _prog_est.get("gamma_se", abs(_gamma_val) * 0.30),
+                    "evidence_tier": _prog_est.get("evidence_tier", "Tier3_Provisional"),
+                    "data_source":   _prog_est.get("data_source", "S-LDSC_chisq"),
+                }}
+            out[_prog] = _entry
+        return out
+
+    if _program_gammas:
+        gamma_estimates = _build_gamma_estimates_from(
+            _program_gammas, gamma_estimates, disease_name
+        )
+        warnings.append(f"program_gamma_override: {len(_program_gammas)} programs got |τ*| γ from S-LDSC")
 
     # -------------------------------------------------------------------------
     # Load program precedence discounts (if available) and apply to gamma_estimates
@@ -127,21 +273,42 @@ def run(
     _disease_key_loo = disease_query.get("disease_key") or ""
     if _disease_key_loo:
         try:
+            import json as _json_loo
+            from pathlib import Path as _Path_loo
             from pipelines.ldsc.gamma_loader import load_loo_discounts as _load_loo_discounts
             from pipelines.ldsc.runner import _fetch_gene_coords_hg38 as _fetch_gene_coords
-            # Build anchor positions from gene coordinate cache
-            _all_genes_for_loo = beta_matrix_result.get("genes", [])
-            _gene_coords_raw = _fetch_gene_coords(_all_genes_for_loo)
-            _anchor_positions: dict[str, tuple[int, int]] = {}
-            for _g, _coords in _gene_coords_raw.items():
-                try:
-                    _chrom_str = str(_coords[0]).lstrip("chr")
-                    _chrom_int = int(_chrom_str)
-                    _pos_mid = (int(_coords[1]) + int(_coords[2])) // 2
-                    _anchor_positions[_g] = (_chrom_int, _pos_mid)
-                except (ValueError, IndexError):
-                    pass
-            _loo_discounts = _load_loo_discounts(_disease_key_loo, _anchor_positions)
+            # Cache LOO discounts to disk: O(n_anchors × n_programs × n_snps) is expensive
+            # (~2B ops for 447 anchors × 30 programs × 160k SNPs) — skip recompute if cached.
+            _loo_cache_path = (
+                _Path_loo(__file__).parent.parent.parent
+                / "data" / "ldsc" / "results"
+                / f"{_disease_key_loo.upper()}_loo_discounts.json"
+            )
+            if _loo_cache_path.exists():
+                _loo_discounts = _json_loo.loads(_loo_cache_path.read_text())
+            else:
+                # LOO runs on GWAS anchor genes only (disease_query["gwas_genes"]):
+                # Tier1_Interventional in evidence_tier_per_gene is applied to ALL beta
+                # matrix genes (all 2188), not just the 447 GWAS anchors.
+                _gwas_anchors_loo: set[str] = set(disease_query.get("gwas_genes") or [])
+                _all_genes_for_loo = [
+                    g for g in beta_matrix_result.get("genes", [])
+                    if g in _gwas_anchors_loo
+                ]
+                _gene_coords_raw = _fetch_gene_coords(_all_genes_for_loo)
+                _anchor_positions: dict[str, tuple[int, int]] = {}
+                for _g, _coords in _gene_coords_raw.items():
+                    try:
+                        _chrom_str = str(_coords[0]).lstrip("chr")
+                        _chrom_int = int(_chrom_str)
+                        _pos_mid = (int(_coords[1]) + int(_coords[2])) // 2
+                        _anchor_positions[_g] = (_chrom_int, _pos_mid)
+                    except (ValueError, IndexError):
+                        pass
+                _loo_discounts = _load_loo_discounts(_disease_key_loo, _anchor_positions)
+                if _loo_discounts:
+                    _loo_cache_path.parent.mkdir(parents=True, exist_ok=True)
+                    _loo_cache_path.write_text(_json_loo.dumps(_loo_discounts))
             if _loo_discounts:
                 _n_unstable = sum(1 for v in _loo_discounts.values() if v < 1.0)
                 warnings.append(
@@ -179,13 +346,16 @@ def run(
     # Fetched once per gene (API-cached), applied inside the trait loop below.
     _tissue_weights: dict[str, float] = {}
     try:
-        from mcp_servers.single_cell_server import query_gtex_tissue_weight
+        from mcp_servers.single_cell_server import query_gtex_tissue_weight, prefetch_gtex_expression
         from graph.schema import DISEASE_CELL_TYPE_MAP
         _schema_ctx = DISEASE_CELL_TYPE_MAP.get(short, {})
         _primary_tissue = _schema_ctx.get("gtex_tissue", "")
         _secondary_tissues = _schema_ctx.get("gtex_tissues_secondary", [])
         _relevant_tissues = [_primary_tissue] + _secondary_tissues if _primary_tissue else _secondary_tissues
         if _relevant_tissues:
+            # Batch pre-warm cache for all genes at once, fetching only disease-relevant
+            # tissues instead of all 54. Eliminates per-gene API overhead for new genes.
+            prefetch_gtex_expression(list(gene_list), tissue_ids=_relevant_tissues)
             for gene in gene_list:
                 try:
                     _tissue_weights[gene] = query_gtex_tissue_weight(gene, _relevant_tissues)
@@ -205,6 +375,19 @@ def run(
             continue
 
         gene_beta = beta_matrix.get(gene, {})
+        if gene in _cnmf_betas:
+            _cnmf_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
+                          for p, v in _cnmf_betas[gene].items()}
+            gene_beta = {**gene_beta, **_cnmf_gene}
+        # REST condition gene_beta: only GeneticNMF betas differ from Stim48hr.
+        gene_beta_rest: dict = {}
+        if _cnmf_betas_rest:
+            gene_beta_rest = dict(beta_matrix.get(gene, {}))
+            if gene in _cnmf_betas_rest:
+                _rest_gene = {p: {"beta": v, "evidence_tier": "Tier2_Convergent"}
+                              for p, v in _cnmf_betas_rest[gene].items()}
+                gene_beta_rest = {**gene_beta_rest, **_rest_gene}
+
         gb_result = _gb_priors.get(gene)
 
         for trait in traits:
@@ -217,7 +400,7 @@ def run(
                     else:
                         g_val = 0.0
                     if g_val is None:
-                        trait_gammas[prog] = {"gamma": None, "evidence_tier": "provisional_virtual"}
+                        trait_gammas[prog] = {"gamma": None, "evidence_tier": "no_evidence"}
                     elif isinstance(g_val, (int, float)):
                         trait_gammas[prog] = {"gamma": float(g_val), "evidence_tier": "Tier3_Provisional"}
                     elif isinstance(g_val, dict):
@@ -232,6 +415,7 @@ def run(
                     genebayes_result=gb_result,
                     skip_programs=_OTA_SKIP_PROGRAMS,
                     program_activation_biases=program_activation_biases,
+                    program_gwas_t=_program_gwas_t,
                 )
                 ota_gamma_raw = ota_result.get("ota_gamma")
                 ota_gamma = float('nan') if ota_gamma_raw is None else float(ota_gamma_raw)
@@ -239,6 +423,36 @@ def run(
                 top_programs = ota_result.get("top_programs", [])
                 # True only when β×γ terms actually summed through cNMF programs.
                 _n_programs_contributing = int(ota_result.get("n_programs_contributing", 0))
+
+                # REST-condition OTA: REST-specific program gammas + REST betas.
+                ota_gamma_rest: float = float('nan')
+                if gene_beta_rest:
+                    try:
+                        # Build REST-specific gamma view: REST GeneticNMF gammas
+                        # override shared gammas so REST programs get correct γ values.
+                        _rest_trait_gammas: dict[str, dict] = dict(trait_gammas)
+                        for _rprog, _rpg in _gnmf_rest_gammas.items():
+                            _rg_val = _rpg.get(trait, _rpg.get("gamma", 0.0))
+                            if _rg_val is None:
+                                _rest_trait_gammas[_rprog] = {"gamma": None, "evidence_tier": "no_evidence"}
+                            elif isinstance(_rg_val, (int, float)):
+                                _rest_trait_gammas[_rprog] = {"gamma": float(_rg_val), "evidence_tier": "Tier3_Provisional"}
+                            else:
+                                _rest_trait_gammas[_rprog] = _rg_val
+                        _rest_result = compute_ota_gamma_with_uncertainty(
+                            gene=gene,
+                            trait=trait,
+                            beta_estimates=gene_beta_rest,
+                            gamma_estimates=_rest_trait_gammas,
+                            genebayes_result=gb_result,
+                            skip_programs=_OTA_SKIP_PROGRAMS,
+                            program_activation_biases=program_activation_biases,
+                            program_gwas_t=_program_gwas_t,
+                        )
+                        _rest_raw = _rest_result.get("ota_gamma")
+                        ota_gamma_rest = float('nan') if _rest_raw is None else float(_rest_raw)
+                    except Exception:
+                        pass
 
                 import math as _math
                 # Stress flag: essential-gene KO artefact signal (Mediator, ESCRT, etc.)
@@ -253,23 +467,17 @@ def run(
                 _loo_discount = _loo_discounts.get(gene, 1.0)
                 _loo_stable = _loo_discount >= 1.0
 
-                # WES directional concordance — reward-only gate.
-                # Concordant + significant (p < WES_CONCORDANCE_P_THRESHOLD): wes_gamma_weight > 1.0 (boost).
-                # Discordant or sub-threshold: wes_gamma_weight = 1.0 (no change).
-                # Weight is always ≥ 1.0, so unconditional multiply is safe.
-                _wes = _wes_concordance_check(ota_gamma, gb_result)
-                _wes_weight = _wes["wes_gamma_weight"]
-                if _wes_weight != 1.0:
-                    ota_gamma = ota_gamma * _wes_weight
-                    warnings.append(
-                        f"{gene} → {trait}: {_wes['wes_note']}"
-                    )
+                # WES directional concordance — annotation only, ota_gamma unchanged.
+                # Concordance/discordance documented in wes_concordant + wes_note.
+                _wes = _wes_concordance_check(ota_gamma, gb_result, gene=gene)
+
 
                 key = f"{gene}__{trait}"
                 r: dict = {
                     "gene":               gene,
                     "trait":              trait,
                     "ota_gamma":          ota_gamma,
+                    "ota_gamma_rest":     ota_gamma_rest,
                     "ota_gamma_raw":      ota_result.get("ota_gamma_raw"),
                     "dominant_tier":      dominant_tier,
                     "top_programs":       top_programs,
@@ -277,19 +485,23 @@ def run(
                     "ota_gamma_sigma":    ota_result.get("ota_gamma_sigma", 0.0),
                     "ota_gamma_ci_lower": ota_result.get("ota_gamma_ci_lower"),
                     "ota_gamma_ci_upper": ota_result.get("ota_gamma_ci_upper"),
-                    "genebayes_grounded":      ota_result.get("genebayes_grounded", False),
+                    "genebayes_grounded":       ota_result.get("genebayes_grounded", False),
                     "stress_flag":              _stress_flagged,
                     "tissue_weight":            round(_tissue_mult, 4),
                     "n_programs_contributing":  _n_programs_contributing,
                     "loo_stable":               _loo_stable,
-                    "wes_checked":              _wes["wes_checked"],
-                    "wes_concordant":           _wes["wes_concordant"],
-                    "wes_burden_p":             _wes["wes_burden_p"],
-                    "wes_burden_beta":          _wes["wes_burden_beta"],
-                    "wes_gamma_weight":         _wes["wes_gamma_weight"],
+                    "wes_checked":    _wes["wes_checked"],
+                    "wes_concordant": _wes["wes_concordant"],
+                    "wes_burden_p":   _wes["wes_burden_p"],
+                    "wes_burden_beta": _wes["wes_burden_beta"],
+                    "wes_gamma_weight": _wes["wes_gamma_weight"],
                 }
                 if _wes["wes_checked"]:
                     r["wes_note"] = _wes["wes_note"]
+                if _wes.get("mechanism_divergence_note"):
+                    r["mechanism_divergence_note"] = _wes["mechanism_divergence_note"]
+                if gene in coloc_h4_per_gene:
+                    r["coloc_h4"] = coloc_h4_per_gene[gene]
                 if not _loo_stable:
                     r["loo_discount"] = _loo_discount
                 gene_gamma[key] = r
@@ -331,10 +543,10 @@ def run(
             edges_rejected.append(rec)
             continue
 
-        # Do not write pure virtual edges — genes without Perturb-seq β
-        # score low and are filtered here; this is the accepted limitation
-        # of the Ota et al. β×γ framework.
-        if dominant_tier == "provisional_virtual":
+        # Genes with no Perturb-seq β have no causal mechanism in the OTA framework.
+        # Catches both "no_perturb_data" (tiers_used empty) and "provisional_virtual"
+        # (β estimated without h5ad perturbation data).
+        if dominant_tier in ("no_perturb_data", "provisional_virtual"):
             edges_rejected.append(rec)
             continue
 
@@ -356,8 +568,9 @@ def run(
     # Convert Ota γ recs to CausalEdge-compatible dicts before writing
     causal_edge_dicts: list[dict] = []
     _VALID_TIERS = frozenset({
-        "Tier1_Interventional", "Tier2_Convergent",
-        "Tier3_Provisional", "moderate_transferred", "moderate_grn", "provisional_virtual",
+        "Tier1_Interventional", "Tier2_Convergent", "Tier2_PerturbNominated",
+        "Tier2_eQTL_direction",
+        "Tier3_Provisional", "moderate_transferred", "moderate_grn",
     })
     for rec in edges_to_write:
         tier = rec.get("tier") or rec.get("dominant_tier") or "Tier3_Provisional"
@@ -682,12 +895,13 @@ def run(
             {
                 "gene":               r["gene"],
                 "ota_gamma":          r["ota_gamma"],
+                "ota_gamma_rest":     r.get("ota_gamma_rest"),
                 "ota_gamma_raw":      r.get("ota_gamma_raw", r["ota_gamma"]),
                 "ota_gamma_sigma":    r.get("ota_gamma_sigma", 0.0),
                 "ota_gamma_ci_lower": r.get("ota_gamma_ci_lower"),
                 "ota_gamma_ci_upper": r.get("ota_gamma_ci_upper"),
                 "tier":               r["tier"],
-                "dominant_tier":      r.get("dominant_tier", r.get("tier", "provisional_virtual")),
+                "dominant_tier":      r.get("dominant_tier", r.get("tier", "no_perturb_data")),
                 "programs":           r.get("top_programs", []),
                 "therapeutic_redirection_result": (
                     tr_results[r["gene"]].get("therapeutic_redirection_result")
@@ -714,13 +928,13 @@ def run(
                     tr_results[r["gene"]].get("tau_specificity_class")
                     if r["gene"] in tr_results else None
                 ),
-                # WES rare-variant burden concordance (boost already applied to ota_gamma above)
-                "wes_checked":      r.get("wes_checked", False),
-                "wes_concordant":   r.get("wes_concordant"),
-                "wes_burden_p":     r.get("wes_burden_p"),
-                "wes_burden_beta":  r.get("wes_burden_beta"),
+                # WES rare-variant burden concordance (boost/flip already applied to ota_gamma above)
+                "wes_checked":    r.get("wes_checked", False),
+                "wes_concordant": r.get("wes_concordant"),
+                "wes_burden_p":   r.get("wes_burden_p"),
+                "wes_burden_beta": r.get("wes_burden_beta"),
                 "wes_gamma_weight": r.get("wes_gamma_weight", 1.0),
-                "wes_note":         r.get("wes_note"),
+                "wes_note":       r.get("wes_note"),
                 # Phase U: pleiotropy diagnostic — fraction of β-mass in disease-specific programs
                 "beta_program_concentration": r.get("beta_program_concentration"),
                 # True when at least one β×γ product contributed to ota_gamma
@@ -742,8 +956,8 @@ def run(
             {
                 "gene":      r["gene"],
                 "ot_l2g":    float(_ot_scores_for_gwas.get(r["gene"], 0.0)),
-                "tier":      r.get("tier", "provisional_virtual"),
-                "dominant_tier": r.get("dominant_tier", "provisional_virtual"),
+                "tier":      r.get("tier", "no_perturb_data"),
+                "dominant_tier": r.get("dominant_tier", "no_perturb_data"),
             }
             for r in _gwas_anchored[:50]
         ],

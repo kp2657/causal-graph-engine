@@ -136,9 +136,14 @@ class TestEstimateBetaTier2pQtl(unittest.TestCase):
         r = self.fn("CFH", "complement_activation", pqtl_data=pqtl, program_loading=0.7)
         self.assertLess(r["beta"], 0)
 
-    def test_no_loading_defaults_to_one(self):
+    def test_no_loading_returns_none(self):
         pqtl = self._make_pqtl(0.4, pvalue=1e-8)
         r = self.fn("GENE", "prog", pqtl_data=pqtl, program_loading=None)
+        self.assertIsNone(r)
+
+    def test_loading_one_gives_raw_beta(self):
+        pqtl = self._make_pqtl(0.4, pvalue=1e-8)
+        r = self.fn("GENE", "prog", pqtl_data=pqtl, program_loading=1.0)
         self.assertAlmostEqual(r["beta"], 0.4, places=5)
 
     def test_rejects_non_finite_beta(self):
@@ -368,6 +373,116 @@ class TestUkbWesServerHelpers(unittest.TestCase):
         cad = DISEASE_CELL_TYPE_MAP.get("CAD", {})
         self.assertIn("pqtl_key_genes", cad)
         self.assertIn("LPA", cad["pqtl_key_genes"])  # LPA is the key pQTL-only CAD target
+
+
+class TestProgramEqtlDirectionScoring(unittest.TestCase):
+    """
+    Unit tests for the Z-score-weighted normalized direction score in
+    compute_program_eqtl_direction (the scoring loop only — no I/O or external data).
+
+    Score formula:
+        score_P = Σ_G  sign(loading) × sign(GWAS_β × eQTL_β) × |loading| × |eQTL_Z|
+                  ─────────────────────────────────────────────────────────────────────
+                                   Σ_G  |loading| × |eQTL_Z|
+    """
+
+    def _score(self, gene_loading_pairs, gene_eqtl, gwas_betas):
+        """Run the scoring loop extracted from compute_program_eqtl_direction."""
+        numerator = denominator = 0.0
+        n_eqtl = n_gwas_hit = 0
+        for gene, loading in gene_loading_pairs:
+            eqtl = gene_eqtl.get(gene)
+            if eqtl is None:
+                continue
+            eqtl_beta = eqtl.get("beta")
+            eqtl_se   = eqtl.get("se")
+            if eqtl_beta is None:
+                continue
+            eqtl_beta = float(eqtl_beta)
+            eqtl_se   = float(eqtl_se) if eqtl_se is not None else None
+            eqtl_z    = abs(eqtl_beta / eqtl_se) if eqtl_se and eqtl_se > 0 else 1.0
+            weight        = abs(loading) * eqtl_z
+            loading_sign  = 1.0 if loading >= 0 else -1.0
+            eqtl_sign     = 1.0 if eqtl_beta >= 0 else -1.0
+            rsid          = eqtl.get("rsid", "")
+            gwas_beta     = gwas_betas.get(rsid)
+            if gwas_beta is not None:
+                gwas_sign    = 1.0 if gwas_beta >= 0 else -1.0
+                contribution = loading_sign * eqtl_sign * gwas_sign
+                n_gwas_hit  += 1
+            else:
+                contribution = loading_sign * eqtl_sign
+            numerator   += contribution * weight
+            denominator += weight
+            n_eqtl      += 1
+        score = numerator / denominator if denominator > 0 else 0.0
+        return score, n_eqtl, n_gwas_hit
+
+    def test_perfect_atherogenic_score_is_one(self):
+        """All genes: positive loading, positive eQTL, positive GWAS → score = +1."""
+        pairs = [("A", 0.8), ("B", 0.6), ("C", 0.4)]
+        eqtl  = {g: {"beta": 0.3, "se": 0.1, "rsid": f"rs{i}"} for i, g in enumerate("ABC")}
+        gwas  = {f"rs{i}": 0.1 for i in range(3)}
+        score, n, _ = self._score(pairs, eqtl, gwas)
+        self.assertAlmostEqual(score, 1.0, places=5)
+        self.assertEqual(n, 3)
+
+    def test_perfect_protective_score_is_minus_one(self):
+        """All genes: positive loading, negative eQTL, positive GWAS → score = −1."""
+        pairs = [("A", 0.8), ("B", 0.6)]
+        eqtl  = {g: {"beta": -0.3, "se": 0.1, "rsid": f"rs{i}"} for i, g in enumerate("AB")}
+        gwas  = {f"rs{i}": 0.1 for i in range(2)}
+        score, _, _ = self._score(pairs, eqtl, gwas)
+        self.assertAlmostEqual(score, -1.0, places=5)
+
+    def test_mixed_averages_toward_zero(self):
+        """Half atherogenic, half protective with equal weight → score ≈ 0."""
+        pairs = [("A", 1.0), ("B", -1.0), ("C", 1.0), ("D", -1.0)]
+        eqtl  = {g: {"beta": 0.3, "se": 0.1, "rsid": f"rs{i}"} for i, g in enumerate("ABCD")}
+        gwas  = {f"rs{i}": 0.1 for i in range(4)}
+        score, _, _ = self._score(pairs, eqtl, gwas)
+        self.assertAlmostEqual(score, 0.0, places=5)
+
+    def test_strong_eqtl_gene_dominates_weak(self):
+        """Gene with 10× stronger eQTL should dominate; score closer to that gene's direction."""
+        # Gene A: atherogenic, |eQTL_Z| = 10; Gene B: protective, |eQTL_Z| = 1
+        # Expected: score > 0 (A dominates)
+        pairs = [("A", 1.0), ("B", 1.0)]
+        eqtl  = {
+            "A": {"beta": 0.5,  "se": 0.05, "rsid": "rs1"},   # Z = 10
+            "B": {"beta": -0.5, "se": 0.5,  "rsid": "rs2"},   # Z = 1
+        }
+        gwas  = {"rs1": 0.1, "rs2": 0.1}
+        score, _, _ = self._score(pairs, eqtl, gwas)
+        self.assertGreater(score, 0.0)
+
+    def test_score_bounded_in_unit_interval(self):
+        """Score must lie in [-1, 1] for arbitrary inputs."""
+        import random
+        rng = random.Random(42)
+        pairs = [(f"G{i}", rng.uniform(-2, 2)) for i in range(20)]
+        eqtl  = {f"G{i}": {"beta": rng.uniform(-1, 1), "se": 0.1, "rsid": f"rs{i}"}
+                 for i in range(20)}
+        gwas  = {f"rs{i}": rng.uniform(-0.5, 0.5) for i in range(20)}
+        score, _, _ = self._score(pairs, eqtl, gwas)
+        self.assertGreaterEqual(score, -1.0 - 1e-9)
+        self.assertLessEqual(score, 1.0 + 1e-9)
+
+    def test_no_eqtl_coverage_returns_zero(self):
+        """No eQTL data for any gene → score = 0, n_eqtl = 0."""
+        pairs = [("A", 1.0), ("B", 0.5)]
+        score, n, _ = self._score(pairs, {}, {})
+        self.assertEqual(score, 0.0)
+        self.assertEqual(n, 0)
+
+    def test_missing_se_falls_back_to_z_one(self):
+        """Gene with missing SE should not crash; eQTL_Z defaults to 1."""
+        pairs = [("A", 1.0)]
+        eqtl  = {"A": {"beta": 0.5, "se": None, "rsid": "rs1"}}
+        gwas  = {"rs1": 0.1}
+        score, n, _ = self._score(pairs, eqtl, gwas)
+        self.assertEqual(n, 1)
+        self.assertAlmostEqual(score, 1.0, places=5)
 
 
 if __name__ == "__main__":

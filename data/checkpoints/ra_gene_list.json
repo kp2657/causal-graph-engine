@@ -1,0 +1,6030 @@
+{
+  "genes": [
+    "PTPN22",
+    "IL6R",
+    "MS4A1",
+    "TYK2",
+    "IL12B",
+    "TRAF3IP2",
+    "JAK2",
+    "JAK1",
+    "PADI4",
+    "IRF5",
+    "FCRL3",
+    "STAT4",
+    "PDE4A",
+    "CD40",
+    "IL2RA",
+    "UBASH3A",
+    "CTLA4",
+    "TNFAIP3",
+    "IL23R",
+    "NFKBIE",
+    "RASGRP1",
+    "SH2B3",
+    "BLK",
+    "CCR6",
+    "ERAP1",
+    "GATA3",
+    "CCL21",
+    "LBH",
+    "IL10",
+    "SUOX",
+    "IFNGR2",
+    "PTGER3",
+    "PTPN2",
+    "RUNX1",
+    "CD83",
+    "TRAF1",
+    "AFF3",
+    "TAGAP",
+    "BACH2",
+    "TNIP1",
+    "MACIR",
+    "REL",
+    "EOMES",
+    "ARID5B",
+    "PADI2",
+    "IRF4",
+    "ANKRD55",
+    "ETV7",
+    "FCGR2A",
+    "CD2",
+    "IL12RB2",
+    "RTKN2",
+    "BCL2L11",
+    "SYNGR1",
+    "SPRED2",
+    "PHTF1",
+    "MLN",
+    "TNFSF4",
+    "CD226",
+    "PLCL2",
+    "AIRE",
+    "ETS1",
+    "CLNK",
+    "NOS2",
+    "TNFRSF1A",
+    "FLT3",
+    "WDFY4",
+    "IFNAR2",
+    "ZNF438",
+    "NKX2-3",
+    "IFIH1",
+    "NCF2",
+    "IL13",
+    "RUNX3",
+    "TMEM151B",
+    "RNASET2",
+    "TNRC18",
+    "TXNDC11",
+    "B3GNT2",
+    "TET3",
+    "NFKBIA",
+    "GPR35",
+    "PACSIN1",
+    "COG6",
+    "CCN4",
+    "FAM8A1",
+    "NOD2",
+    "TNFSF15",
+    "TNFRSF14",
+    "INAVA",
+    "CIITA",
+    "DRC5",
+    "RAD51B",
+    "NFKBIL1",
+    "CXCL13",
+    "TCF7",
+    "SWAP70",
+    "TLR1",
+    "C1orf141",
+    "AARS2",
+    "SLC22A4",
+    "ATG5",
+    "GNG4",
+    "MMEL1",
+    "DAP",
+    "CSF2",
+    "PRKCQ",
+    "ITPR3",
+    "ELMO1",
+    "TNFSF11",
+    "ATG16L1",
+    "TEC",
+    "NAB1",
+    "KCNK2",
+    "JAZF1",
+    "IL19",
+    "PLD4",
+    "PRDM1",
+    "MAGI3",
+    "ACOXL",
+    "ENO4",
+    "IKZF1",
+    "TNFSF18",
+    "SYT1",
+    "GPR65",
+    "ZNF774",
+    "UQCC2",
+    "TLR4",
+    "LEF1",
+    "PPARD",
+    "OLIG3",
+    "CBFA2T3",
+    "PSTPIP1",
+    "FLRT2",
+    "TPD52",
+    "PLCL1",
+    "ERBB3",
+    "FAS",
+    "NFATC1",
+    "ARAP1",
+    "IL21R",
+    "TTC34",
+    "CCDC91",
+    "PRKCB",
+    "TREH",
+    "CD6",
+    "CARMIL1",
+    "DCLRE1B",
+    "GRHL2",
+    "MST1",
+    "IL4R",
+    "GPR174",
+    "TEAD3",
+    "PARK7",
+    "SMAD3",
+    "GUCY1A2",
+    "STAG1",
+    "BAK1",
+    "TESPA1",
+    "CARD9",
+    "FDX2",
+    "MYC",
+    "DNASE1L3",
+    "NFKB1",
+    "SYTL2",
+    "ANXA11",
+    "TPH2",
+    "PDE2A",
+    "SIRPG",
+    "RBPJ",
+    "ANKS1A",
+    "BANK1",
+    "HIPK1",
+    "MAPK14",
+    "FSCN1",
+    "USP8",
+    "ADGRL2",
+    "CSMD1",
+    "CSF2RB",
+    "LONRF2",
+    "ERAP2",
+    "IFNLR1",
+    "RPS10",
+    "HDGFL1",
+    "XCR1",
+    "POSTN",
+    "CHRNG",
+    "SSPN",
+    "ANXA3",
+    "FOS",
+    "PFKFB3",
+    "OPCML",
+    "ADAMTS2",
+    "CAMTA1",
+    "IL18R1",
+    "NPAS2",
+    "FOSL2",
+    "ZC3H12C",
+    "LHFPL6",
+    "SHTN1",
+    "ABTB3",
+    "THOC2",
+    "DPP4",
+    "GLIS3",
+    "PTPRC",
+    "NRSN1",
+    "NDFIP1",
+    "LMO4",
+    "RIPOR2",
+    "DLGAP1",
+    "TASL",
+    "ALDH1A1",
+    "VWC2",
+    "CTH",
+    "UNC5A",
+    "CCL20",
+    "OTUD3",
+    "SLC26A8",
+    "SLC9A8",
+    "GAL",
+    "TP63",
+    "IGSF9B",
+    "CEP57",
+    "ZNF385D",
+    "C1orf21",
+    "ATXN2",
+    "PSD4",
+    "SP140",
+    "SLIT1",
+    "ZNF366",
+    "FAM167A",
+    "DCAF4L1",
+    "ZBED6",
+    "RPLP1",
+    "PTGER4",
+    "KIF21B",
+    "CEMIP2",
+    "SLC22A25",
+    "CDKN2B",
+    "PCDH20",
+    "RSRP1",
+    "HDAC7",
+    "CCL2",
+    "OSMR",
+    "NOS1",
+    "REV3L",
+    "LHX2",
+    "ZNF704",
+    "FTO",
+    "CFAP20DC",
+    "RNF186",
+    "FRG2C",
+    "NR5A2",
+    "NXPE1",
+    "ACTA2",
+    "ZC3H11A",
+    "DMRT2",
+    "CYRIB",
+    "NUDT3",
+    "ZFP36L1",
+    "COL15A1",
+    "DENND1B",
+    "WDR72",
+    "SKI",
+    "SKAP2",
+    "HMGA1",
+    "NEURL1B",
+    "CASR",
+    "TCP11",
+    "ZNF831",
+    "POU3F1",
+    "CDC42EP3",
+    "SLC26A3",
+    "GPR55",
+    "RASGRF1",
+    "POMGNT2",
+    "PCYOX1L",
+    "PDGFB",
+    "PHLDB1",
+    "IRGM",
+    "MALT1",
+    "NELFE",
+    "MAF",
+    "SELL",
+    "UBLCP1",
+    "SERPINA5",
+    "C8A",
+    "KLF12",
+    "VGLL2",
+    "USP44",
+    "RAB5B",
+    "PIK3CA",
+    "PRDX6",
+    "DNMT3B",
+    "GRID1",
+    "KCTD1",
+    "GPR146",
+    "EPHB1",
+    "COX7B2",
+    "MAP3K8",
+    "SPIN4",
+    "SLC7A10",
+    "DGKQ",
+    "HBS1L",
+    "DNLZ",
+    "FBXO11",
+    "ICOS",
+    "PRKAG2",
+    "CCR3",
+    "KCNN2",
+    "CDK5RAP2",
+    "P2RY10",
+    "MTOR",
+    "BMP5",
+    "MYO10",
+    "CHRM2",
+    "IL6ST",
+    "ADCY3",
+    "PPP5C",
+    "SPNS3",
+    "IP6K3",
+    "CNOT4",
+    "FBXW8",
+    "TTN",
+    "PPEF2",
+    "SPRY4",
+    "DNAH17",
+    "WWOX",
+    "EPHA4",
+    "FAP",
+    "PNPLA1",
+    "CDKAL1",
+    "ASAP2",
+    "MPHOSPH8",
+    "IL2",
+    "AKT3",
+    "KAZN",
+    "MYL2",
+    "IQGAP1",
+    "SCAF8",
+    "NECAB2",
+    "GABRA2",
+    "ZNRF1",
+    "PLBD1",
+    "MED13",
+    "C7orf33",
+    "CIB4",
+    "SMURF1",
+    "FRMD3",
+    "WDR1",
+    "IRAK1",
+    "ZNF780B",
+    "GPR12",
+    "ROR2",
+    "ZNF804B",
+    "USO1",
+    "MEAK7",
+    "ITGA4",
+    "C1orf52",
+    "SLAMF6",
+    "CHMP4B",
+    "SIRAL2",
+    "PARD3B",
+    "CTNNA3",
+    "MTUS2",
+    "EYS",
+    "HAPLN1",
+    "CXCR2",
+    "PTPRG",
+    "HDAC8",
+    "LACC1",
+    "FGFR2",
+    "TSPAN14",
+    "PUS10",
+    "LOXHD1",
+    "LDLRAD1",
+    "ZFYVE27",
+    "EDEM1",
+    "GCKR",
+    "RASSF4",
+    "ELAPOR2",
+    "SUCLG2",
+    "FRY",
+    "PDE7A",
+    "GRM4",
+    "LRCH1",
+    "GP2",
+    "GNA12",
+    "TPCN2",
+    "PDZD8",
+    "DENND3",
+    "ACTR3",
+    "CCR2",
+    "TSPAN9",
+    "PHF19",
+    "PDZRN3",
+    "KIAA0930",
+    "CCDC88B",
+    "ADNP2",
+    "AHNAK2",
+    "MEIS2",
+    "ARHGAP26",
+    "ERG",
+    "ALK",
+    "SGCZ",
+    "GNG12",
+    "ADAMTS14",
+    "XRCC4",
+    "NYAP2",
+    "KIF16B",
+    "COL25A1",
+    "PDE8A",
+    "IGFBPL1",
+    "TMEM268",
+    "RNF216",
+    "SLC39A11",
+    "ZHX2",
+    "ZNF468",
+    "NCOA5",
+    "DOCK4",
+    "CASP10",
+    "SORCS2",
+    "UBE2L3",
+    "WWC2",
+    "SH3PXD2A",
+    "CEP43",
+    "SCUBE3",
+    "CHSY3",
+    "ZNF697",
+    "ICOSLG",
+    "SOX4",
+    "KCNMA1",
+    "ETV1",
+    "SPAG1",
+    "FER1L6",
+    "CTIF",
+    "CPEB4",
+    "RORC",
+    "LMTK2",
+    "PKNOX2",
+    "CRPPA",
+    "BBS9",
+    "ENSG00000293584",
+    "LRBA",
+    "THYN1",
+    "THSD7B",
+    "CCSER1"
+  ],
+  "ot_scores": {
+    "TYK2": 0.9206,
+    "IL12B": 0.8504,
+    "IL6R": 0.804,
+    "TRAF3IP2": 0.8424,
+    "JAK2": 0.5378,
+    "JAK1": 0.5291,
+    "PADI4": 0.8703,
+    "PTPN22": 0.7886,
+    "IRF5": 0.884,
+    "FCRL3": 0.8529,
+    "STAT4": 0.8439,
+    "PDE4A": 0.127,
+    "CD40": 0.9214,
+    "IL2RA": 0.8862,
+    "UBASH3A": 0.8881,
+    "CTLA4": 0.869,
+    "TNFAIP3": 0.864,
+    "IL23R": 0.8816,
+    "NFKBIE": 0.8917,
+    "RASGRP1": 0.8637,
+    "SH2B3": 0.8751,
+    "BLK": 0.8598,
+    "CCR6": 0.8412,
+    "ERAP1": 0.8438,
+    "GATA3": 0.8692,
+    "CCL21": 0.8514,
+    "LBH": 0.8659,
+    "IL10": 0.6789,
+    "SUOX": 0.8638,
+    "IFNGR2": 0.8616,
+    "PTGER3": 0.3912,
+    "PTPN2": 0.8242,
+    "RUNX1": 0.8178,
+    "CD83": 0.8494,
+    "TRAF1": 0.806,
+    "AFF3": 0.8233,
+    "TAGAP": 0.8311,
+    "BACH2": 0.8221,
+    "TNIP1": 0.8174,
+    "MACIR": 0.8306,
+    "REL": 0.7943,
+    "EOMES": 0.8234,
+    "ARID5B": 0.8171,
+    "PADI2": 0.7789,
+    "IRF4": 0.7743,
+    "ANKRD55": 0.8052,
+    "ETV7": 0.8002,
+    "FCGR2A": 0.7535,
+    "CD2": 0.7614,
+    "IL12RB2": 0.8001,
+    "RTKN2": 0.7919,
+    "BCL2L11": 0.7693,
+    "SYNGR1": 0.7803,
+    "SPRED2": 0.78,
+    "PHTF1": 0.788,
+    "MLN": 0.7727,
+    "TNFSF4": 0.7487,
+    "CD226": 0.7535,
+    "PLCL2": 0.78,
+    "AIRE": 0.7429,
+    "ETS1": 0.7398,
+    "CLNK": 0.7694,
+    "NOS2": 0.71,
+    "TNFRSF1A": 0.7124,
+    "FLT3": 0.6916,
+    "WDFY4": 0.7206,
+    "IFNAR2": 0.7387,
+    "ZNF438": 0.7394,
+    "NKX2-3": 0.7327,
+    "IFIH1": 0.6995,
+    "NCF2": 0.7114,
+    "IL13": 0.6994,
+    "RUNX3": 0.7216,
+    "TMEM151B": 0.7282,
+    "RNASET2": 0.7051,
+    "TNRC18": 0.7254,
+    "TXNDC11": 0.7226,
+    "B3GNT2": 0.7165,
+    "TET3": 0.6883,
+    "NFKBIA": 0.7038,
+    "GPR35": 0.7154,
+    "PACSIN1": 0.7172,
+    "COG6": 0.6978,
+    "CCN4": 0.6827,
+    "FAM8A1": 0.7095,
+    "NOD2": 0.6813,
+    "TNFSF15": 0.6782,
+    "TNFRSF14": 0.6917,
+    "INAVA": 0.7038,
+    "CIITA": 0.6868,
+    "DRC5": 0.7038,
+    "RAD51B": 0.6848,
+    "NFKBIL1": 0.3526,
+    "CXCL13": 0.6509,
+    "TCF7": 0.696,
+    "SWAP70": 0.6918,
+    "TLR1": 0.6839,
+    "C1orf141": 0.6978,
+    "AARS2": 0.6963,
+    "SLC22A4": 0.2551,
+    "ATG5": 0.6837,
+    "GNG4": 0.6702,
+    "MMEL1": 0.6822,
+    "DAP": 0.6803,
+    "CSF2": 0.1973,
+    "PRKCQ": 0.6787,
+    "ITPR3": 0.6732,
+    "ELMO1": 0.641,
+    "TNFSF11": 0.602,
+    "ATG16L1": 0.6507,
+    "TEC": 0.63,
+    "NAB1": 0.6605,
+    "KCNK2": 0.6661,
+    "JAZF1": 0.6591,
+    "IL19": 0.5227,
+    "PLD4": 0.6388,
+    "PRDM1": 0.6295,
+    "MAGI3": 0.6453,
+    "ACOXL": 0.6401,
+    "ENO4": 0.6327,
+    "IKZF1": 0.607,
+    "TNFSF18": 0.6258,
+    "SYT1": 0.6179,
+    "GPR65": 0.6045,
+    "ZNF774": 0.6336,
+    "UQCC2": 0.6321,
+    "TLR4": 0.5756,
+    "LEF1": 0.6066,
+    "PPARD": 0.6225,
+    "OLIG3": 0.615,
+    "CBFA2T3": 0.6249,
+    "PSTPIP1": 0.6172,
+    "FLRT2": 0.6145,
+    "TPD52": 0.6163,
+    "PLCL1": 0.6056,
+    "ERBB3": 0.6044,
+    "FAS": 0.5743,
+    "NFATC1": 0.5819,
+    "ARAP1": 0.6057,
+    "IL21R": 0.5692,
+    "TTC34": 0.6014,
+    "CCDC91": 0.6047,
+    "PRKCB": 0.5851,
+    "TREH": 0.6019,
+    "CD6": 0.5921,
+    "CARMIL1": 0.5994,
+    "DCLRE1B": 0.5917,
+    "GRHL2": 0.5933,
+    "MST1": 0.5532,
+    "IL4R": 0.5719,
+    "GPR174": 0.5904,
+    "TEAD3": 0.5875,
+    "PARK7": 0.5578,
+    "SMAD3": 0.5577,
+    "GUCY1A2": 0.581,
+    "STAG1": 0.5827,
+    "BAK1": 0.5786,
+    "TESPA1": 0.5719,
+    "CARD9": 0.5775,
+    "FDX2": 0.5798,
+    "MYC": 0.554,
+    "DNASE1L3": 0.5655,
+    "NFKB1": 0.5243,
+    "SYTL2": 0.5728,
+    "ANXA11": 0.5716,
+    "TPH2": 0.5715,
+    "PDE2A": 0.5275,
+    "SIRPG": 0.5693,
+    "RBPJ": 0.5342,
+    "ANKS1A": 0.5694,
+    "BANK1": 0.5282,
+    "HIPK1": 0.5664,
+    "MAPK14": 0.5043,
+    "FSCN1": 0.5568,
+    "USP8": 0.5627,
+    "ADGRL2": 0.559,
+    "CSMD1": 0.5607,
+    "CSF2RB": 0.5089,
+    "LONRF2": 0.5595,
+    "ERAP2": 0.5179,
+    "IFNLR1": 0.5375,
+    "RPS10": 0.5555,
+    "HDGFL1": 0.5562,
+    "XCR1": 0.5499,
+    "POSTN": 0.5277,
+    "CHRNG": 0.5471,
+    "SSPN": 0.5477,
+    "ANXA3": 0.5361,
+    "FOS": 0.5096,
+    "PFKFB3": 0.5278,
+    "OPCML": 0.5464,
+    "ADAMTS2": 0.5394,
+    "CAMTA1": 0.546,
+    "IL18R1": 0.5333,
+    "NPAS2": 0.5415,
+    "FOSL2": 0.5417,
+    "ZC3H12C": 0.5423,
+    "LHFPL6": 0.5443,
+    "SHTN1": 0.5435,
+    "ABTB3": 0.5437,
+    "THOC2": 0.542,
+    "DPP4": 0.4917,
+    "GLIS3": 0.5402,
+    "PTPRC": 0.4939,
+    "NRSN1": 0.5368,
+    "NDFIP1": 0.5258,
+    "LMO4": 0.5393,
+    "RIPOR2": 0.5392,
+    "DLGAP1": 0.5377,
+    "TASL": 0.5382,
+    "ALDH1A1": 0.5386,
+    "VWC2": 0.5379,
+    "CTH": 0.5335,
+    "UNC5A": 0.5367,
+    "CCL20": 0.5164,
+    "OTUD3": 0.5364,
+    "SLC26A8": 0.5362,
+    "SLC9A8": 0.5352,
+    "GAL": 0.496,
+    "TP63": 0.5154,
+    "IGSF9B": 0.5342,
+    "CEP57": 0.5342,
+    "ZNF385D": 0.5333,
+    "C1orf21": 0.5332,
+    "ATXN2": 0.5298,
+    "PSD4": 0.5329,
+    "SP140": 0.5277,
+    "SLIT1": 0.532,
+    "ZNF366": 0.5317,
+    "FAM167A": 0.5279,
+    "DCAF4L1": 0.5306,
+    "ZBED6": 0.5303,
+    "RPLP1": 0.5279,
+    "PTGER4": 0.4911,
+    "KIF21B": 0.5192,
+    "CEMIP2": 0.523,
+    "SLC22A25": 0.5097,
+    "CDKN2B": 0.5241,
+    "PCDH20": 0.5249,
+    "RSRP1": 0.5246,
+    "HDAC7": 0.5153,
+    "CCL2": 0.4767,
+    "OSMR": 0.5109,
+    "NOS1": 0.5006,
+    "REV3L": 0.5176,
+    "LHX2": 0.5212,
+    "ZNF704": 0.521,
+    "FTO": 0.4779,
+    "CFAP20DC": 0.5203,
+    "RNF186": 0.52,
+    "FRG2C": 0.518,
+    "NR5A2": 0.5169,
+    "NXPE1": 0.5163,
+    "ACTA2": 0.5143,
+    "ZC3H11A": 0.5155,
+    "DMRT2": 0.5147,
+    "CYRIB": 0.4912,
+    "NUDT3": 0.5137,
+    "ZFP36L1": 0.5113,
+    "COL15A1": 0.5079,
+    "DENND1B": 0.5087,
+    "WDR72": 0.5091,
+    "SKI": 0.509,
+    "SKAP2": 0.5066,
+    "HMGA1": 0.4929,
+    "NEURL1B": 0.5072,
+    "CASR": 0.4848,
+    "TCP11": 0.5069,
+    "ZNF831": 0.5057,
+    "POU3F1": 0.5017,
+    "CDC42EP3": 0.5053,
+    "SLC26A3": 0.5052,
+    "GPR55": 0.4705,
+    "RASGRF1": 0.4654,
+    "POMGNT2": 0.5038,
+    "PCYOX1L": 0.5037,
+    "PDGFB": 0.4955,
+    "PHLDB1": 0.5031,
+    "IRGM": 0.5016,
+    "MALT1": 0.4591,
+    "NELFE": 0.4996,
+    "MAF": 0.494,
+    "SELL": 0.4474,
+    "UBLCP1": 0.4906,
+    "SERPINA5": 0.4963,
+    "C8A": 0.4962,
+    "KLF12": 0.4841,
+    "VGLL2": 0.494,
+    "USP44": 0.4937,
+    "RAB5B": 0.4935,
+    "PIK3CA": 0.4469,
+    "PRDX6": 0.4884,
+    "DNMT3B": 0.4818,
+    "GRID1": 0.4888,
+    "KCTD1": 0.4874,
+    "GPR146": 0.4884,
+    "EPHB1": 0.483,
+    "COX7B2": 0.4875,
+    "MAP3K8": 0.4831,
+    "SPIN4": 0.4869,
+    "SLC7A10": 0.4864,
+    "DGKQ": 0.4778,
+    "HBS1L": 0.4853,
+    "DNLZ": 0.485,
+    "FBXO11": 0.4844,
+    "ICOS": 0.4618,
+    "PRKAG2": 0.484,
+    "CCR3": 0.4508,
+    "KCNN2": 0.4808,
+    "CDK5RAP2": 0.479,
+    "P2RY10": 0.4799,
+    "MTOR": 0.4363,
+    "BMP5": 0.4688,
+    "MYO10": 0.4781,
+    "CHRM2": 0.478,
+    "IL6ST": 0.1327,
+    "ADCY3": 0.4766,
+    "PPP5C": 0.4744,
+    "SPNS3": 0.4746,
+    "IP6K3": 0.4746,
+    "CNOT4": 0.4735,
+    "FBXW8": 0.4734,
+    "TTN": 0.4699,
+    "PPEF2": 0.4702,
+    "SPRY4": 0.4698,
+    "DNAH17": 0.4698,
+    "WWOX": 0.4691,
+    "EPHA4": 0.4688,
+    "FAP": 0.4222,
+    "PNPLA1": 0.4682,
+    "CDKAL1": 0.4611,
+    "ASAP2": 0.4651,
+    "MPHOSPH8": 0.4659,
+    "IL2": 0.4129,
+    "AKT3": 0.4635,
+    "KAZN": 0.4653,
+    "MYL2": 0.4652,
+    "IQGAP1": 0.4611,
+    "SCAF8": 0.4637,
+    "NECAB2": 0.4633,
+    "GABRA2": 0.4612,
+    "ZNRF1": 0.4627,
+    "PLBD1": 0.4597,
+    "MED13": 0.4622,
+    "C7orf33": 0.4621,
+    "CIB4": 0.4617,
+    "SMURF1": 0.4613,
+    "FRMD3": 0.4612,
+    "WDR1": 0.4485,
+    "IRAK1": 0.4376,
+    "ZNF780B": 0.4602,
+    "GPR12": 0.4601,
+    "ROR2": 0.4578,
+    "ZNF804B": 0.4598,
+    "USO1": 0.451,
+    "MEAK7": 0.4597,
+    "ITGA4": 0.4198,
+    "C1orf52": 0.4584,
+    "SLAMF6": 0.4299,
+    "CHMP4B": 0.4576,
+    "SIRAL2": 0.4546,
+    "PARD3B": 0.4571,
+    "CTNNA3": 0.4571,
+    "MTUS2": 0.4571,
+    "EYS": 0.4571,
+    "HAPLN1": 0.4209,
+    "CXCR2": 0.4314,
+    "PTPRG": 0.4545,
+    "HDAC8": 0.4532,
+    "LACC1": 0.4458,
+    "FGFR2": 0.4479,
+    "TSPAN14": 0.4544,
+    "PUS10": 0.4522,
+    "LOXHD1": 0.4533,
+    "LDLRAD1": 0.4532,
+    "ZFYVE27": 0.4531,
+    "EDEM1": 0.4523,
+    "GCKR": 0.4411,
+    "RASSF4": 0.4486,
+    "ELAPOR2": 0.4511,
+    "SUCLG2": 0.4493,
+    "FRY": 0.4463,
+    "PDE7A": 0.4033,
+    "GRM4": 0.4487,
+    "LRCH1": 0.4485,
+    "GP2": 0.4471,
+    "GNA12": 0.4466,
+    "TPCN2": 0.446,
+    "PDZD8": 0.4463,
+    "DENND3": 0.4463,
+    "ACTR3": 0.446,
+    "CCR2": 0.3955,
+    "TSPAN9": 0.4267,
+    "PHF19": 0.4356,
+    "PDZRN3": 0.4439,
+    "KIAA0930": 0.4439,
+    "CCDC88B": 0.4434,
+    "ADNP2": 0.4431,
+    "AHNAK2": 0.4386,
+    "MEIS2": 0.4413,
+    "ARHGAP26": 0.441,
+    "ERG": 0.4336,
+    "ALK": 0.433,
+    "SGCZ": 0.4381,
+    "GNG12": 0.4375,
+    "ADAMTS14": 0.4376,
+    "XRCC4": 0.4296,
+    "NYAP2": 0.436,
+    "KIF16B": 0.436,
+    "COL25A1": 0.436,
+    "PDE8A": 0.3932,
+    "IGFBPL1": 0.433,
+    "TMEM268": 0.4343,
+    "RNF216": 0.4337,
+    "SLC39A11": 0.4296,
+    "ZHX2": 0.4169,
+    "ZNF468": 0.4278,
+    "NCOA5": 0.4263,
+    "DOCK4": 0.4244,
+    "CASP10": 0.4267,
+    "SORCS2": 0.4265,
+    "UBE2L3": 0.423,
+    "WWC2": 0.4258,
+    "SH3PXD2A": 0.4246,
+    "CEP43": 0.4233,
+    "SCUBE3": 0.4238,
+    "CHSY3": 0.4247,
+    "ZNF697": 0.4241,
+    "ICOSLG": 0.3872,
+    "SOX4": 0.3961,
+    "KCNMA1": 0.3994,
+    "ETV1": 0.4217,
+    "SPAG1": 0.4189,
+    "FER1L6": 0.4194,
+    "CTIF": 0.4193,
+    "CPEB4": 0.4182,
+    "RORC": 0.3752,
+    "LMTK2": 0.4135,
+    "PKNOX2": 0.4167,
+    "CRPPA": 0.403,
+    "BBS9": 0.4157,
+    "ENSG00000293584": 0.4155,
+    "LRBA": 0.4144,
+    "THYN1": 0.4147,
+    "THSD7B": 0.4144,
+    "CCSER1": 0.4144
+  },
+  "ot_cache": {
+    "targets": [
+      {
+        "target_id": "ENSG00000105397",
+        "gene_symbol": "TYK2",
+        "overall_score": 0.7518,
+        "genetic_score": 0.9206,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "IZENCITINIB",
+          "FILGOTINIB MALEATE",
+          "ROPSACITINIB",
+          "DEURUXOLITINIB PHOSPHATE",
+          "CERDULATINIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000113302",
+        "gene_symbol": "IL12B",
+        "overall_score": 0.7328,
+        "genetic_score": 0.8504,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "USTEKINUMAB",
+          "RISANKIZUMAB",
+          "BRIAKINUMAB",
+          "MIRIKIZUMAB",
+          "TILDRAKIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000160712",
+        "gene_symbol": "IL6R",
+        "overall_score": 0.7325,
+        "genetic_score": 0.804,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SATRALIZUMAB",
+          "LEVILIMAB",
+          "SARILUMAB",
+          "TOCILIZUMAB",
+          "VOBARILIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000232810",
+        "gene_symbol": "TNF",
+        "overall_score": 0.7166,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "LENERCEPT",
+          "REMTOLUMAB",
+          "ADALIMUMAB",
+          "PEGSUNERCEPT",
+          "ABBV-3373"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000056972",
+        "gene_symbol": "TRAF3IP2",
+        "overall_score": 0.7139,
+        "genetic_score": 0.8424,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "IGURATIMOD"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000240972",
+        "gene_symbol": "MIF",
+        "overall_score": 0.6977,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "IGURATIMOD"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000096968",
+        "gene_symbol": "JAK2",
+        "overall_score": 0.6934,
+        "genetic_score": 0.5378,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "NS-018",
+          "AZD-1480",
+          "NEZULCITINIB",
+          "XL-019",
+          "UPADACITINIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000162434",
+        "gene_symbol": "JAK1",
+        "overall_score": 0.6904,
+        "genetic_score": 0.5291,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ITACITINIB",
+          "NEZULCITINIB",
+          "UPADACITINIB",
+          "SOLCITINIB",
+          "RUXOLITINIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000159339",
+        "gene_symbol": "PADI4",
+        "overall_score": 0.6893,
+        "genetic_score": 0.8703,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000134242",
+        "gene_symbol": "PTPN22",
+        "overall_score": 0.6799,
+        "genetic_score": 0.7886,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000128604",
+        "gene_symbol": "IRF5",
+        "overall_score": 0.6359,
+        "genetic_score": 0.884,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000073756",
+        "gene_symbol": "PTGS2",
+        "overall_score": 0.6337,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "IBUPROFEN SODIUM",
+          "GW-406381",
+          "DICLOFENAC EPOLAMINE",
+          "METAMIZOLE",
+          "OXYPHENBUTAZONE ANHYDROUS"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000110944",
+        "gene_symbol": "IL23A",
+        "overall_score": 0.63,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "USTEKINUMAB",
+          "RISANKIZUMAB",
+          "BRIAKINUMAB",
+          "TILDRAKIZUMAB",
+          "MIRIKIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112115",
+        "gene_symbol": "IL17A",
+        "overall_score": 0.6281,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SECUKINUMAB",
+          "VUNAKIZUMAB",
+          "IZOKIBEP",
+          "REMTOLUMAB",
+          "TIBULIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000113580",
+        "gene_symbol": "NR3C1",
+        "overall_score": 0.6265,
+        "genetic_score": 0.0993,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "FLUTICASONE PROPIONATE",
+          "DEXAMETHASONE ACETATE",
+          "AZD-5423",
+          "ORG-34517",
+          "METHYLPREDNISOLONE SODIUM SUCCINATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000156738",
+        "gene_symbol": "MS4A1",
+        "overall_score": 0.6251,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "FBT-A05",
+          "MOSUNETUZUMAB",
+          "RITUXIMAB",
+          "OCRELIZUMAB",
+          "TOSITUMOMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000196664",
+        "gene_symbol": "TLR7",
+        "overall_score": 0.6245,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ENPATORAN",
+          "TELRATOLIMOD",
+          "RESIQUIMOD",
+          "BAZLITORAN",
+          "AFIMETORAN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000160856",
+        "gene_symbol": "FCRL3",
+        "overall_score": 0.6218,
+        "genetic_score": 0.8529,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000239732",
+        "gene_symbol": "TLR9",
+        "overall_score": 0.6214,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "AGATOLIMOD SODIUM",
+          "TILSOTOLIMOD",
+          "BAZLITORAN",
+          "AGATOLIMOD",
+          "TILSOTOLIMOD SODIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000121594",
+        "gene_symbol": "CD80",
+        "overall_score": 0.6191,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ABATACEPT",
+          "GALIXIMAB",
+          "BELATACEPT"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000105639",
+        "gene_symbol": "JAK3",
+        "overall_score": 0.6183,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "NEZULCITINIB",
+          "UPADACITINIB",
+          "DECERNOTINIB",
+          "RUXOLITINIB",
+          "DEURUXOLITINIB PHOSPHATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000114013",
+        "gene_symbol": "CD86",
+        "overall_score": 0.6162,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ABATACEPT",
+          "BELATACEPT"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000138378",
+        "gene_symbol": "STAT4",
+        "overall_score": 0.6161,
+        "genetic_score": 0.8439,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000228716",
+        "gene_symbol": "DHFR",
+        "overall_score": 0.6158,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PRALATREXATE",
+          "PEMETREXED TROMETHAMINE",
+          "PEMETREXED MONOHYDRATE",
+          "PEMETREXED",
+          "PEMETREXED DISODIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000095303",
+        "gene_symbol": "PTGS1",
+        "overall_score": 0.6148,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "IBUPROFEN SODIUM",
+          "MECLOFENAMIC ACID",
+          "DEXKETOPROFEN",
+          "DICLOFENAC EPOLAMINE",
+          "ACEMETACIN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000102967",
+        "gene_symbol": "DHODH",
+        "overall_score": 0.6042,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "BREQUINAR",
+          "EMVODODSTAT",
+          "LEFLUNOMIDE",
+          "TERIFLUNOMIDE",
+          "VIDOFLUDIMUS"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000065989",
+        "gene_symbol": "PDE4A",
+        "overall_score": 0.603,
+        "genetic_score": 0.127,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "HT-0712",
+          "APREMILAST",
+          "GSK-256066",
+          "IBUDILAST",
+          "ENSIFENTRINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000012779",
+        "gene_symbol": "ALOX5",
+        "overall_score": 0.5986,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ZILEUTON",
+          "MECLOFENAMATE SODIUM",
+          "MECLOFENAMIC ACID",
+          "MESALAMINE",
+          "ATRELEUTON"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000101017",
+        "gene_symbol": "CD40",
+        "overall_score": 0.5963,
+        "genetic_score": 0.9214,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "SOTIGALIMAB",
+          "CDX-1140",
+          "DACETUZUMAB",
+          "BLESELUMAB",
+          "LUCATUMUMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000168811",
+        "gene_symbol": "IL12A",
+        "overall_score": 0.5958,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "EBDAROKIMAB",
+          "BRIAKINUMAB",
+          "USTEKINUMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000128059",
+        "gene_symbol": "PPAT",
+        "overall_score": 0.5883,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MERCAPTOPURINE",
+          "AZATHIOPRINE SODIUM",
+          "AZATHIOPRINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000184588",
+        "gene_symbol": "PDE4B",
+        "overall_score": 0.5859,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "HT-0712",
+          "APREMILAST",
+          "GSK-256066",
+          "IBUDILAST",
+          "ENSIFENTRINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000113448",
+        "gene_symbol": "PDE4D",
+        "overall_score": 0.5847,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "HT-0712",
+          "APREMILAST",
+          "GSK-256066",
+          "IBUDILAST",
+          "ZATOLMILAST"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000115594",
+        "gene_symbol": "IL1R1",
+        "overall_score": 0.5845,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "AMG-108",
+          "MEDI-8968",
+          "ANAKINRA"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000105650",
+        "gene_symbol": "PDE4C",
+        "overall_score": 0.5813,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "HT-0712",
+          "APREMILAST",
+          "GSK-256066",
+          "IBUDILAST",
+          "ENSIFENTRINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000105675",
+        "gene_symbol": "ATP4A",
+        "overall_score": 0.5713,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "VONOPRAZAN FUMARATE",
+          "ESOMEPRAZOLE SODIUM",
+          "DEXLANSOPRAZOLE",
+          "RABEPRAZOLE",
+          "RABEPRAZOLE SODIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000186009",
+        "gene_symbol": "ATP4B",
+        "overall_score": 0.566,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "VONOPRAZAN FUMARATE",
+          "ESOMEPRAZOLE SODIUM",
+          "DEXLANSOPRAZOLE",
+          "ILAPRAZOLE",
+          "RABEPRAZOLE SODIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000134460",
+        "gene_symbol": "IL2RA",
+        "overall_score": 0.565,
+        "genetic_score": 0.8862,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "INOLIMOMAB",
+          "DACLIZUMAB",
+          "ALDESLEUKIN",
+          "CAMIDANLUMAB TESIRINE",
+          "DENILEUKIN DIFTITOX"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000160185",
+        "gene_symbol": "UBASH3A",
+        "overall_score": 0.5621,
+        "genetic_score": 0.8881,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000163599",
+        "gene_symbol": "CTLA4",
+        "overall_score": 0.5612,
+        "genetic_score": 0.869,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "TREMELIMUMAB",
+          "QUAVONLIMAB",
+          "ERFONRILIMAB",
+          "IPILIMUMAB",
+          "CADONILIMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000118503",
+        "gene_symbol": "TNFAIP3",
+        "overall_score": 0.5559,
+        "genetic_score": 0.864,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000162594",
+        "gene_symbol": "IL23R",
+        "overall_score": 0.553,
+        "genetic_score": 0.8816,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000146232",
+        "gene_symbol": "NFKBIE",
+        "overall_score": 0.5512,
+        "genetic_score": 0.8917,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000177663",
+        "gene_symbol": "IL17RA",
+        "overall_score": 0.5509,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "BRODALUMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000172575",
+        "gene_symbol": "RASGRP1",
+        "overall_score": 0.5479,
+        "genetic_score": 0.8637,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000111252",
+        "gene_symbol": "SH2B3",
+        "overall_score": 0.5477,
+        "genetic_score": 0.8751,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000136573",
+        "gene_symbol": "BLK",
+        "overall_score": 0.5457,
+        "genetic_score": 0.8598,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "TG100-801",
+          "ILORASERTIB",
+          "XL-228",
+          "ENMD-981693",
+          "DASATINIB ANHYDROUS"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112486",
+        "gene_symbol": "CCR6",
+        "overall_score": 0.5372,
+        "genetic_score": 0.8412,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000164307",
+        "gene_symbol": "ERAP1",
+        "overall_score": 0.5357,
+        "genetic_score": 0.8438,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "TOSEDOSTAT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000107485",
+        "gene_symbol": "GATA3",
+        "overall_score": 0.5352,
+        "genetic_score": 0.8692,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000137077",
+        "gene_symbol": "CCL21",
+        "overall_score": 0.5348,
+        "genetic_score": 0.8514,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000213626",
+        "gene_symbol": "LBH",
+        "overall_score": 0.5342,
+        "genetic_score": 0.8659,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000136634",
+        "gene_symbol": "IL10",
+        "overall_score": 0.5311,
+        "genetic_score": 0.6789,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000139531",
+        "gene_symbol": "SUOX",
+        "overall_score": 0.5264,
+        "genetic_score": 0.8638,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000159128",
+        "gene_symbol": "IFNGR2",
+        "overall_score": 0.5253,
+        "genetic_score": 0.8616,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "INTERFERON GAMMA-1B"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000050628",
+        "gene_symbol": "PTGER3",
+        "overall_score": 0.5242,
+        "genetic_score": 0.3912,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MISOPROSTOL",
+          "SEPETAPROST",
+          "DINOPROSTONE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000175354",
+        "gene_symbol": "PTPN2",
+        "overall_score": 0.5228,
+        "genetic_score": 0.8242,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000159216",
+        "gene_symbol": "RUNX1",
+        "overall_score": 0.5223,
+        "genetic_score": 0.8178,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112149",
+        "gene_symbol": "CD83",
+        "overall_score": 0.5217,
+        "genetic_score": 0.8494,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000056558",
+        "gene_symbol": "TRAF1",
+        "overall_score": 0.5172,
+        "genetic_score": 0.806,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000136244",
+        "gene_symbol": "IL6",
+        "overall_score": 0.515,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MRA 003 US",
+          "OLOKIZUMAB",
+          "SIRUKUMAB",
+          "CLAZAKIZUMAB",
+          "SILTUXIMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000144218",
+        "gene_symbol": "AFF3",
+        "overall_score": 0.5122,
+        "genetic_score": 0.8233,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164691",
+        "gene_symbol": "TAGAP",
+        "overall_score": 0.512,
+        "genetic_score": 0.8311,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000112182",
+        "gene_symbol": "BACH2",
+        "overall_score": 0.5107,
+        "genetic_score": 0.8221,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000145901",
+        "gene_symbol": "TNIP1",
+        "overall_score": 0.5096,
+        "genetic_score": 0.8174,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000181751",
+        "gene_symbol": "MACIR",
+        "overall_score": 0.5096,
+        "genetic_score": 0.8306,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000162924",
+        "gene_symbol": "REL",
+        "overall_score": 0.5066,
+        "genetic_score": 0.7943,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000163508",
+        "gene_symbol": "EOMES",
+        "overall_score": 0.5036,
+        "genetic_score": 0.8234,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000150347",
+        "gene_symbol": "ARID5B",
+        "overall_score": 0.5027,
+        "genetic_score": 0.8171,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000117115",
+        "gene_symbol": "PADI2",
+        "overall_score": 0.501,
+        "genetic_score": 0.7789,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000137265",
+        "gene_symbol": "IRF4",
+        "overall_score": 0.4971,
+        "genetic_score": 0.7743,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164512",
+        "gene_symbol": "ANKRD55",
+        "overall_score": 0.4963,
+        "genetic_score": 0.8052,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000010030",
+        "gene_symbol": "ETV7",
+        "overall_score": 0.4899,
+        "genetic_score": 0.8002,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000143226",
+        "gene_symbol": "FCGR2A",
+        "overall_score": 0.4895,
+        "genetic_score": 0.7535,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000116824",
+        "gene_symbol": "CD2",
+        "overall_score": 0.4891,
+        "genetic_score": 0.7614,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SIPLIZUMAB",
+          "ALEFACEPT"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000081985",
+        "gene_symbol": "IL12RB2",
+        "overall_score": 0.4878,
+        "genetic_score": 0.8001,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000182010",
+        "gene_symbol": "RTKN2",
+        "overall_score": 0.4859,
+        "genetic_score": 0.7919,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000153094",
+        "gene_symbol": "BCL2L11",
+        "overall_score": 0.4838,
+        "genetic_score": 0.7693,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000100321",
+        "gene_symbol": "SYNGR1",
+        "overall_score": 0.4829,
+        "genetic_score": 0.7803,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000198369",
+        "gene_symbol": "SPRED2",
+        "overall_score": 0.4797,
+        "genetic_score": 0.78,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000116793",
+        "gene_symbol": "PHTF1",
+        "overall_score": 0.4794,
+        "genetic_score": 0.788,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000096395",
+        "gene_symbol": "MLN",
+        "overall_score": 0.4764,
+        "genetic_score": 0.7727,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000117586",
+        "gene_symbol": "TNFSF4",
+        "overall_score": 0.4761,
+        "genetic_score": 0.7487,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "AMLITELIMAB",
+          "OXELUMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000150637",
+        "gene_symbol": "CD226",
+        "overall_score": 0.4758,
+        "genetic_score": 0.7535,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000154822",
+        "gene_symbol": "PLCL2",
+        "overall_score": 0.4754,
+        "genetic_score": 0.78,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000160224",
+        "gene_symbol": "AIRE",
+        "overall_score": 0.4748,
+        "genetic_score": 0.7429,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000134954",
+        "gene_symbol": "ETS1",
+        "overall_score": 0.4705,
+        "genetic_score": 0.7398,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000109684",
+        "gene_symbol": "CLNK",
+        "overall_score": 0.4687,
+        "genetic_score": 0.7694,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000007171",
+        "gene_symbol": "NOS2",
+        "overall_score": 0.4632,
+        "genetic_score": 0.71,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "TILARGININE ACETATE",
+          "TILARGININE",
+          "GW-274150",
+          "KD7040"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000113749",
+        "gene_symbol": "HRH2",
+        "overall_score": 0.4628,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "METHANTHELINE",
+          "LAFUTIDINE",
+          "CIMETIDINE",
+          "NIZATIDINE",
+          "EBROTIDINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000067182",
+        "gene_symbol": "TNFRSF1A",
+        "overall_score": 0.4539,
+        "genetic_score": 0.7124,
+        "max_clinical_phase": 1,
+        "known_drugs": [
+          "GSK-1995057"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000122025",
+        "gene_symbol": "FLT3",
+        "overall_score": 0.4523,
+        "genetic_score": 0.6916,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CDX-301",
+          "AMG553",
+          "AS-602868",
+          "QUIZARTINIB DIHYDROCHLORIDE",
+          "XL-999"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000128815",
+        "gene_symbol": "WDFY4",
+        "overall_score": 0.4523,
+        "genetic_score": 0.7206,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000159110",
+        "gene_symbol": "IFNAR2",
+        "overall_score": 0.4505,
+        "genetic_score": 0.7387,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PEGINTERFERON ALFA-2B",
+          "ALBINTERFERON ALFA-2B",
+          "PEGINTERFERON ALFA-2A",
+          "INTERFERON ALFACON-1",
+          "INTERFERON ALFA-2A"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000183621",
+        "gene_symbol": "ZNF438",
+        "overall_score": 0.4505,
+        "genetic_score": 0.7394,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000119919",
+        "gene_symbol": "NKX2-3",
+        "overall_score": 0.4502,
+        "genetic_score": 0.7327,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000115267",
+        "gene_symbol": "IFIH1",
+        "overall_score": 0.4491,
+        "genetic_score": 0.6995,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000116701",
+        "gene_symbol": "NCF2",
+        "overall_score": 0.4469,
+        "genetic_score": 0.7114,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000169194",
+        "gene_symbol": "IL13",
+        "overall_score": 0.4465,
+        "genetic_score": 0.6994,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ROMILKIMAB",
+          "TRALOKINUMAB",
+          "ANRUKINZUMAB",
+          "LEBRIKIZUMAB",
+          "QAX-576"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000020633",
+        "gene_symbol": "RUNX3",
+        "overall_score": 0.445,
+        "genetic_score": 0.7216,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000178233",
+        "gene_symbol": "TMEM151B",
+        "overall_score": 0.4427,
+        "genetic_score": 0.7282,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000026297",
+        "gene_symbol": "RNASET2",
+        "overall_score": 0.4426,
+        "genetic_score": 0.7051,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000182095",
+        "gene_symbol": "TNRC18",
+        "overall_score": 0.4425,
+        "genetic_score": 0.7254,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000153066",
+        "gene_symbol": "TXNDC11",
+        "overall_score": 0.4393,
+        "genetic_score": 0.7226,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000170340",
+        "gene_symbol": "B3GNT2",
+        "overall_score": 0.4391,
+        "genetic_score": 0.7165,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000187605",
+        "gene_symbol": "TET3",
+        "overall_score": 0.4389,
+        "genetic_score": 0.6883,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000100906",
+        "gene_symbol": "NFKBIA",
+        "overall_score": 0.4389,
+        "genetic_score": 0.7038,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000178623",
+        "gene_symbol": "GPR35",
+        "overall_score": 0.4378,
+        "genetic_score": 0.7154,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000125538",
+        "gene_symbol": "IL1B",
+        "overall_score": 0.4373,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CANAKINUMAB",
+          "LUTIKIZUMAB",
+          "GEVOKIZUMAB",
+          "CDP-484",
+          "RILONACEPT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000124507",
+        "gene_symbol": "PACSIN1",
+        "overall_score": 0.436,
+        "genetic_score": 0.7172,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000133103",
+        "gene_symbol": "COG6",
+        "overall_score": 0.4342,
+        "genetic_score": 0.6978,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000104415",
+        "gene_symbol": "CCN4",
+        "overall_score": 0.4329,
+        "genetic_score": 0.6827,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000137414",
+        "gene_symbol": "FAM8A1",
+        "overall_score": 0.4314,
+        "genetic_score": 0.7095,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000167207",
+        "gene_symbol": "NOD2",
+        "overall_score": 0.4308,
+        "genetic_score": 0.6813,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MIFAMURTIDE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000181634",
+        "gene_symbol": "TNFSF15",
+        "overall_score": 0.4307,
+        "genetic_score": 0.6782,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000157873",
+        "gene_symbol": "TNFRSF14",
+        "overall_score": 0.4303,
+        "genetic_score": 0.6917,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000163362",
+        "gene_symbol": "INAVA",
+        "overall_score": 0.4291,
+        "genetic_score": 0.7038,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000179583",
+        "gene_symbol": "CIITA",
+        "overall_score": 0.4283,
+        "genetic_score": 0.6868,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000146221",
+        "gene_symbol": "DRC5",
+        "overall_score": 0.4278,
+        "genetic_score": 0.7038,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000182185",
+        "gene_symbol": "RAD51B",
+        "overall_score": 0.4271,
+        "genetic_score": 0.6848,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112116",
+        "gene_symbol": "IL17F",
+        "overall_score": 0.4271,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "M-1095",
+          "BIMEKIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000204498",
+        "gene_symbol": "NFKBIL1",
+        "overall_score": 0.4259,
+        "genetic_score": 0.3526,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000156234",
+        "gene_symbol": "CXCL13",
+        "overall_score": 0.4258,
+        "genetic_score": 0.6509,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000081059",
+        "gene_symbol": "TCF7",
+        "overall_score": 0.4254,
+        "genetic_score": 0.696,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000133789",
+        "gene_symbol": "SWAP70",
+        "overall_score": 0.4254,
+        "genetic_score": 0.6918,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000174125",
+        "gene_symbol": "TLR1",
+        "overall_score": 0.4251,
+        "genetic_score": 0.6839,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000203963",
+        "gene_symbol": "C1orf141",
+        "overall_score": 0.4242,
+        "genetic_score": 0.6978,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000124608",
+        "gene_symbol": "AARS2",
+        "overall_score": 0.4239,
+        "genetic_score": 0.6963,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000197208",
+        "gene_symbol": "SLC22A4",
+        "overall_score": 0.423,
+        "genetic_score": 0.2551,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000057663",
+        "gene_symbol": "ATG5",
+        "overall_score": 0.4219,
+        "genetic_score": 0.6837,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000168243",
+        "gene_symbol": "GNG4",
+        "overall_score": 0.4194,
+        "genetic_score": 0.6702,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000142606",
+        "gene_symbol": "MMEL1",
+        "overall_score": 0.4179,
+        "genetic_score": 0.6822,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000112977",
+        "gene_symbol": "DAP",
+        "overall_score": 0.4176,
+        "genetic_score": 0.6803,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164400",
+        "gene_symbol": "CSF2",
+        "overall_score": 0.4165,
+        "genetic_score": 0.1973,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "OTILIMAB",
+          "LENZILUMAB",
+          "NAMILUMAB",
+          "PLONMARLIMAB",
+          "PEXASTIMOGENE DEVACIREPVEC"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000065675",
+        "gene_symbol": "PRKCQ",
+        "overall_score": 0.415,
+        "genetic_score": 0.6787,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CEP-2563",
+          "MIDOSTAURIN",
+          "GSK-690693",
+          "UCN-01",
+          "SOTRASTAURIN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000096433",
+        "gene_symbol": "ITPR3",
+        "overall_score": 0.4149,
+        "genetic_score": 0.6732,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000155849",
+        "gene_symbol": "ELMO1",
+        "overall_score": 0.4106,
+        "genetic_score": 0.641,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000226979",
+        "gene_symbol": "LTA",
+        "overall_score": 0.4097,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "BAMINERCEPT",
+          "PATECLIZUMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000165025",
+        "gene_symbol": "SYK",
+        "overall_score": 0.4095,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "R-112",
+          "ENTOSPLETINIB",
+          "CERDULATINIB",
+          "R-343",
+          "FOSTAMATINIB DISODIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000120659",
+        "gene_symbol": "TNFSF11",
+        "overall_score": 0.4086,
+        "genetic_score": 0.602,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "DENOSUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000085978",
+        "gene_symbol": "ATG16L1",
+        "overall_score": 0.4063,
+        "genetic_score": 0.6507,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000135605",
+        "gene_symbol": "TEC",
+        "overall_score": 0.4061,
+        "genetic_score": 0.63,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "RITLECITINIB TOSYLATE",
+          "RITLECITINIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000138386",
+        "gene_symbol": "NAB1",
+        "overall_score": 0.4055,
+        "genetic_score": 0.6605,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000082482",
+        "gene_symbol": "KCNK2",
+        "overall_score": 0.4049,
+        "genetic_score": 0.6661,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ENFLURANE",
+          "DESFLURANE",
+          "SEVOFLURANE",
+          "HALOTHANE",
+          "ISOFLURANE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000153814",
+        "gene_symbol": "JAZF1",
+        "overall_score": 0.4027,
+        "genetic_score": 0.6591,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000142224",
+        "gene_symbol": "IL19",
+        "overall_score": 0.4016,
+        "genetic_score": 0.5227,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000166428",
+        "gene_symbol": "PLD4",
+        "overall_score": 0.4015,
+        "genetic_score": 0.6388,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000196126",
+        "gene_symbol": "HLA-DRB1",
+        "overall_score": 0.4005,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "PLOVAMER ACETATE",
+          "APOLIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000057657",
+        "gene_symbol": "PRDM1",
+        "overall_score": 0.3949,
+        "genetic_score": 0.6295,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000081026",
+        "gene_symbol": "MAGI3",
+        "overall_score": 0.3934,
+        "genetic_score": 0.6453,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000153093",
+        "gene_symbol": "ACOXL",
+        "overall_score": 0.3933,
+        "genetic_score": 0.6401,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000188316",
+        "gene_symbol": "ENO4",
+        "overall_score": 0.3931,
+        "genetic_score": 0.6327,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000185811",
+        "gene_symbol": "IKZF1",
+        "overall_score": 0.3893,
+        "genetic_score": 0.607,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000120337",
+        "gene_symbol": "TNFSF18",
+        "overall_score": 0.3893,
+        "genetic_score": 0.6258,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000204520",
+        "gene_symbol": "MICA",
+        "overall_score": 0.3886,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000196262",
+        "gene_symbol": "PPIA",
+        "overall_score": 0.3875,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SCY 635",
+          "ALISPORIVIR",
+          "CYCLOSPORINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000067715",
+        "gene_symbol": "SYT1",
+        "overall_score": 0.3874,
+        "genetic_score": 0.6179,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000140030",
+        "gene_symbol": "GPR65",
+        "overall_score": 0.3863,
+        "genetic_score": 0.6045,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000196391",
+        "gene_symbol": "ZNF774",
+        "overall_score": 0.3852,
+        "genetic_score": 0.6336,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000137288",
+        "gene_symbol": "UQCC2",
+        "overall_score": 0.3843,
+        "genetic_score": 0.6321,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000136869",
+        "gene_symbol": "TLR4",
+        "overall_score": 0.3836,
+        "genetic_score": 0.5756,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "ERITORAN TETRASODIUM",
+          "ERITORAN",
+          "RESATORVID"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000138795",
+        "gene_symbol": "LEF1",
+        "overall_score": 0.3835,
+        "genetic_score": 0.6066,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000112033",
+        "gene_symbol": "PPARD",
+        "overall_score": 0.3825,
+        "genetic_score": 0.6225,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "AVE0847",
+          "GW501516",
+          "CHIGLITAZAR",
+          "ELAFIBRANOR",
+          "FONADELPAR"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000177468",
+        "gene_symbol": "OLIG3",
+        "overall_score": 0.3812,
+        "genetic_score": 0.615,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000129993",
+        "gene_symbol": "CBFA2T3",
+        "overall_score": 0.3799,
+        "genetic_score": 0.6249,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000204516",
+        "gene_symbol": "MICB",
+        "overall_score": 0.3797,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000140368",
+        "gene_symbol": "PSTPIP1",
+        "overall_score": 0.3787,
+        "genetic_score": 0.6172,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000185070",
+        "gene_symbol": "FLRT2",
+        "overall_score": 0.377,
+        "genetic_score": 0.6145,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000076554",
+        "gene_symbol": "TPD52",
+        "overall_score": 0.3766,
+        "genetic_score": 0.6163,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000115896",
+        "gene_symbol": "PLCL1",
+        "overall_score": 0.374,
+        "genetic_score": 0.6056,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000065361",
+        "gene_symbol": "ERBB3",
+        "overall_score": 0.3731,
+        "genetic_score": 0.6044,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "AV-203",
+          "VANDETANIB",
+          "PATRITUMAB",
+          "DULIGOTUZUMAB",
+          "MM-111"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000026103",
+        "gene_symbol": "FAS",
+        "overall_score": 0.3729,
+        "genetic_score": 0.5743,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000131196",
+        "gene_symbol": "NFATC1",
+        "overall_score": 0.3704,
+        "genetic_score": 0.5819,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000186635",
+        "gene_symbol": "ARAP1",
+        "overall_score": 0.3702,
+        "genetic_score": 0.6057,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000103522",
+        "gene_symbol": "IL21R",
+        "overall_score": 0.3698,
+        "genetic_score": 0.5692,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000215912",
+        "gene_symbol": "TTC34",
+        "overall_score": 0.3694,
+        "genetic_score": 0.6014,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000123106",
+        "gene_symbol": "CCDC91",
+        "overall_score": 0.3676,
+        "genetic_score": 0.6047,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000166501",
+        "gene_symbol": "PRKCB",
+        "overall_score": 0.3666,
+        "genetic_score": 0.5851,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CEP-2563",
+          "MIDOSTAURIN",
+          "GSK-690693",
+          "ENZASTAURIN",
+          "UCN-01"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000118094",
+        "gene_symbol": "TREH",
+        "overall_score": 0.3659,
+        "genetic_score": 0.6019,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000013725",
+        "gene_symbol": "CD6",
+        "overall_score": 0.3656,
+        "genetic_score": 0.5921,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "ITOLIZUMAB",
+          "ONCOLYSIN CD6"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000079691",
+        "gene_symbol": "CARMIL1",
+        "overall_score": 0.3644,
+        "genetic_score": 0.5994,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000118655",
+        "gene_symbol": "DCLRE1B",
+        "overall_score": 0.362,
+        "genetic_score": 0.5917,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000083307",
+        "gene_symbol": "GRHL2",
+        "overall_score": 0.3613,
+        "genetic_score": 0.5933,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000173531",
+        "gene_symbol": "MST1",
+        "overall_score": 0.3605,
+        "genetic_score": 0.5532,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000077238",
+        "gene_symbol": "IL4R",
+        "overall_score": 0.36,
+        "genetic_score": 0.5719,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "DUPILUMAB",
+          "CINTREDEKIN BESUDOTOX"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000147138",
+        "gene_symbol": "GPR174",
+        "overall_score": 0.3589,
+        "genetic_score": 0.5904,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000007866",
+        "gene_symbol": "TEAD3",
+        "overall_score": 0.3578,
+        "genetic_score": 0.5875,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000116288",
+        "gene_symbol": "PARK7",
+        "overall_score": 0.3577,
+        "genetic_score": 0.5578,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000166949",
+        "gene_symbol": "SMAD3",
+        "overall_score": 0.3559,
+        "genetic_score": 0.5577,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000152402",
+        "gene_symbol": "GUCY1A2",
+        "overall_score": 0.3558,
+        "genetic_score": 0.581,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "OLINCIGUAT",
+          "SODIUM NITROPRUSSIDE",
+          "METHYLENE BLUE ANHYDROUS",
+          "VERICIGUAT",
+          "RUNCACIGUAT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000102524",
+        "gene_symbol": "TNFSF13B",
+        "overall_score": 0.3555,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "TIBULIZUMAB",
+          "BRIOBACEPT",
+          "BLISIBIMOD",
+          "ATACICEPT",
+          "ROZIBAFUSP ALFA"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000118007",
+        "gene_symbol": "STAG1",
+        "overall_score": 0.3547,
+        "genetic_score": 0.5827,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000030110",
+        "gene_symbol": "BAK1",
+        "overall_score": 0.3547,
+        "genetic_score": 0.5786,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000135426",
+        "gene_symbol": "TESPA1",
+        "overall_score": 0.3544,
+        "genetic_score": 0.5719,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000187796",
+        "gene_symbol": "CARD9",
+        "overall_score": 0.3543,
+        "genetic_score": 0.5775,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000267673",
+        "gene_symbol": "FDX2",
+        "overall_score": 0.3525,
+        "genetic_score": 0.5798,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000136997",
+        "gene_symbol": "MYC",
+        "overall_score": 0.3512,
+        "genetic_score": 0.554,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000163687",
+        "gene_symbol": "DNASE1L3",
+        "overall_score": 0.3511,
+        "genetic_score": 0.5655,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000109320",
+        "gene_symbol": "NFKB1",
+        "overall_score": 0.3494,
+        "genetic_score": 0.5243,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "EDASALONEXENT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000137501",
+        "gene_symbol": "SYTL2",
+        "overall_score": 0.3482,
+        "genetic_score": 0.5728,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000122359",
+        "gene_symbol": "ANXA11",
+        "overall_score": 0.3482,
+        "genetic_score": 0.5716,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000139287",
+        "gene_symbol": "TPH2",
+        "overall_score": 0.3478,
+        "genetic_score": 0.5715,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "TELOTRISTAT ETIPRATE",
+          "TELOTRISTAT",
+          "TELOTRISTAT ETHYL"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000186642",
+        "gene_symbol": "PDE2A",
+        "overall_score": 0.3472,
+        "genetic_score": 0.5275,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PENTOXIFYLLINE",
+          "DIPYRIDAMOLE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000089012",
+        "gene_symbol": "SIRPG",
+        "overall_score": 0.3466,
+        "genetic_score": 0.5693,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000168214",
+        "gene_symbol": "RBPJ",
+        "overall_score": 0.3465,
+        "genetic_score": 0.5342,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000064999",
+        "gene_symbol": "ANKS1A",
+        "overall_score": 0.3461,
+        "genetic_score": 0.5694,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000153064",
+        "gene_symbol": "BANK1",
+        "overall_score": 0.3453,
+        "genetic_score": 0.5282,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000163349",
+        "gene_symbol": "HIPK1",
+        "overall_score": 0.3447,
+        "genetic_score": 0.5664,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112062",
+        "gene_symbol": "MAPK14",
+        "overall_score": 0.3437,
+        "genetic_score": 0.5043,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "LOSMAPIMOD",
+          "PEXMETINIB",
+          "RALIMETINIB",
+          "BMS-582949",
+          "PH-797804"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000075618",
+        "gene_symbol": "FSCN1",
+        "overall_score": 0.3427,
+        "genetic_score": 0.5568,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000138592",
+        "gene_symbol": "USP8",
+        "overall_score": 0.3421,
+        "genetic_score": 0.5627,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000117114",
+        "gene_symbol": "ADGRL2",
+        "overall_score": 0.3418,
+        "genetic_score": 0.559,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000183117",
+        "gene_symbol": "CSMD1",
+        "overall_score": 0.3416,
+        "genetic_score": 0.5607,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000100368",
+        "gene_symbol": "CSF2RB",
+        "overall_score": 0.3413,
+        "genetic_score": 0.5089,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CIBINETIDE",
+          "SARGRAMOSTIM",
+          "MAVRILIMUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000170500",
+        "gene_symbol": "LONRF2",
+        "overall_score": 0.3405,
+        "genetic_score": 0.5595,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164308",
+        "gene_symbol": "ERAP2",
+        "overall_score": 0.3399,
+        "genetic_score": 0.5179,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "TOSEDOSTAT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185436",
+        "gene_symbol": "IFNLR1",
+        "overall_score": 0.3389,
+        "genetic_score": 0.5375,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "PEGINTERFERON LAMBDA-1A"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000124614",
+        "gene_symbol": "RPS10",
+        "overall_score": 0.3383,
+        "genetic_score": 0.5555,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ELX-02",
+          "ZOLIMOMAB ARITOX",
+          "TELIMOMAB ARITOX",
+          "CITATUZUMAB BOGATOX",
+          "ATALUREN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112273",
+        "gene_symbol": "HDGFL1",
+        "overall_score": 0.3381,
+        "genetic_score": 0.5562,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000173578",
+        "gene_symbol": "XCR1",
+        "overall_score": 0.3353,
+        "genetic_score": 0.5499,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000133110",
+        "gene_symbol": "POSTN",
+        "overall_score": 0.3351,
+        "genetic_score": 0.5277,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000196811",
+        "gene_symbol": "CHRNG",
+        "overall_score": 0.3332,
+        "genetic_score": 0.5471,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MIVACURIUM",
+          "ATRACURIUM",
+          "RAPACURONIUM BROMIDE",
+          "DOXACURIUM",
+          "DECAMETHONIUM"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000123096",
+        "gene_symbol": "SSPN",
+        "overall_score": 0.333,
+        "genetic_score": 0.5477,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000138772",
+        "gene_symbol": "ANXA3",
+        "overall_score": 0.3329,
+        "genetic_score": 0.5361,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000170345",
+        "gene_symbol": "FOS",
+        "overall_score": 0.3328,
+        "genetic_score": 0.5096,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000170525",
+        "gene_symbol": "PFKFB3",
+        "overall_score": 0.3325,
+        "genetic_score": 0.5278,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000183715",
+        "gene_symbol": "OPCML",
+        "overall_score": 0.3322,
+        "genetic_score": 0.5464,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000087116",
+        "gene_symbol": "ADAMTS2",
+        "overall_score": 0.332,
+        "genetic_score": 0.5394,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000171735",
+        "gene_symbol": "CAMTA1",
+        "overall_score": 0.3319,
+        "genetic_score": 0.546,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000115604",
+        "gene_symbol": "IL18R1",
+        "overall_score": 0.3313,
+        "genetic_score": 0.5333,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "IBOCTADEKIN"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000170485",
+        "gene_symbol": "NPAS2",
+        "overall_score": 0.3313,
+        "genetic_score": 0.5415,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000075426",
+        "gene_symbol": "FOSL2",
+        "overall_score": 0.3313,
+        "genetic_score": 0.5417,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000149289",
+        "gene_symbol": "ZC3H12C",
+        "overall_score": 0.331,
+        "genetic_score": 0.5423,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000183722",
+        "gene_symbol": "LHFPL6",
+        "overall_score": 0.3309,
+        "genetic_score": 0.5443,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000187164",
+        "gene_symbol": "SHTN1",
+        "overall_score": 0.3307,
+        "genetic_score": 0.5435,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000151136",
+        "gene_symbol": "ABTB3",
+        "overall_score": 0.3305,
+        "genetic_score": 0.5437,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000108576",
+        "gene_symbol": "SLC6A4",
+        "overall_score": 0.3299,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SIBUTRAMINE HYDROCHLORIDE",
+          "CENTANAFADINE",
+          "BICIFADINE",
+          "DULOXETINE HYDROCHLORIDE",
+          "MIDOMAFETAMINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000125676",
+        "gene_symbol": "THOC2",
+        "overall_score": 0.3298,
+        "genetic_score": 0.542,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000197635",
+        "gene_symbol": "DPP4",
+        "overall_score": 0.3297,
+        "genetic_score": 0.4917,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SITAGLIPTIN FUMARATE",
+          "SITAGLIPTIN PHOSPHATE",
+          "TRELAGLIPTIN",
+          "EVOGLIPTIN",
+          "OMARIGLIPTIN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000107249",
+        "gene_symbol": "GLIS3",
+        "overall_score": 0.3293,
+        "genetic_score": 0.5402,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000081237",
+        "gene_symbol": "PTPRC",
+        "overall_score": 0.3288,
+        "genetic_score": 0.4939,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "BC8 131I"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000152954",
+        "gene_symbol": "NRSN1",
+        "overall_score": 0.3282,
+        "genetic_score": 0.5368,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000131507",
+        "gene_symbol": "NDFIP1",
+        "overall_score": 0.3281,
+        "genetic_score": 0.5258,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000143013",
+        "gene_symbol": "LMO4",
+        "overall_score": 0.3279,
+        "genetic_score": 0.5393,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000111913",
+        "gene_symbol": "RIPOR2",
+        "overall_score": 0.3278,
+        "genetic_score": 0.5392,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000170579",
+        "gene_symbol": "DLGAP1",
+        "overall_score": 0.3276,
+        "genetic_score": 0.5377,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000120280",
+        "gene_symbol": "TASL",
+        "overall_score": 0.3276,
+        "genetic_score": 0.5382,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000165092",
+        "gene_symbol": "ALDH1A1",
+        "overall_score": 0.3274,
+        "genetic_score": 0.5386,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000188730",
+        "gene_symbol": "VWC2",
+        "overall_score": 0.327,
+        "genetic_score": 0.5379,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000116761",
+        "gene_symbol": "CTH",
+        "overall_score": 0.3269,
+        "genetic_score": 0.5335,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000197561",
+        "gene_symbol": "ELANE",
+        "overall_score": 0.3265,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ALVELESTAT",
+          "DEPELESTAT",
+          "SIVELESTAT",
+          ".ALPHA.1-PROTEINASE INHIBITOR HUMAN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000113763",
+        "gene_symbol": "UNC5A",
+        "overall_score": 0.3263,
+        "genetic_score": 0.5367,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000115009",
+        "gene_symbol": "CCL20",
+        "overall_score": 0.3262,
+        "genetic_score": 0.5164,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000169914",
+        "gene_symbol": "OTUD3",
+        "overall_score": 0.3261,
+        "genetic_score": 0.5364,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000112053",
+        "gene_symbol": "SLC26A8",
+        "overall_score": 0.326,
+        "genetic_score": 0.5362,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000197818",
+        "gene_symbol": "SLC9A8",
+        "overall_score": 0.3257,
+        "genetic_score": 0.5352,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000069482",
+        "gene_symbol": "GAL",
+        "overall_score": 0.3257,
+        "genetic_score": 0.496,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000172572",
+        "gene_symbol": "PDE3A",
+        "overall_score": 0.3256,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ENOXIMONE",
+          "OXTRIPHYLLINE",
+          "DIPYRIDAMOLE",
+          "AMINOPHYLLINE",
+          "PENTOXIFYLLINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000073282",
+        "gene_symbol": "TP63",
+        "overall_score": 0.3249,
+        "genetic_score": 0.5154,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000080854",
+        "gene_symbol": "IGSF9B",
+        "overall_score": 0.3247,
+        "genetic_score": 0.5342,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000166037",
+        "gene_symbol": "CEP57",
+        "overall_score": 0.3247,
+        "genetic_score": 0.5342,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000151789",
+        "gene_symbol": "ZNF385D",
+        "overall_score": 0.3242,
+        "genetic_score": 0.5333,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000116667",
+        "gene_symbol": "C1orf21",
+        "overall_score": 0.3242,
+        "genetic_score": 0.5332,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000204842",
+        "gene_symbol": "ATXN2",
+        "overall_score": 0.3241,
+        "genetic_score": 0.5298,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000125637",
+        "gene_symbol": "PSD4",
+        "overall_score": 0.324,
+        "genetic_score": 0.5329,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000079263",
+        "gene_symbol": "SP140",
+        "overall_score": 0.3236,
+        "genetic_score": 0.5277,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000187122",
+        "gene_symbol": "SLIT1",
+        "overall_score": 0.3234,
+        "genetic_score": 0.532,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000178175",
+        "gene_symbol": "ZNF366",
+        "overall_score": 0.3232,
+        "genetic_score": 0.5317,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000154319",
+        "gene_symbol": "FAM167A",
+        "overall_score": 0.3231,
+        "genetic_score": 0.5279,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000182308",
+        "gene_symbol": "DCAF4L1",
+        "overall_score": 0.3226,
+        "genetic_score": 0.5306,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000257315",
+        "gene_symbol": "ZBED6",
+        "overall_score": 0.3224,
+        "genetic_score": 0.5303,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000137818",
+        "gene_symbol": "RPLP1",
+        "overall_score": 0.321,
+        "genetic_score": 0.5279,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ELX-02",
+          "ZOLIMOMAB ARITOX",
+          "TELIMOMAB ARITOX",
+          "ATALUREN",
+          "CITATUZUMAB BOGATOX"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000171522",
+        "gene_symbol": "PTGER4",
+        "overall_score": 0.3208,
+        "genetic_score": 0.4911,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "RIVENPROST",
+          "GRAPIPRANT",
+          "DINOPROSTONE",
+          "VORBIPIPRANT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000116852",
+        "gene_symbol": "KIF21B",
+        "overall_score": 0.3196,
+        "genetic_score": 0.5192,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000135048",
+        "gene_symbol": "CEMIP2",
+        "overall_score": 0.3196,
+        "genetic_score": 0.523,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000196600",
+        "gene_symbol": "SLC22A25",
+        "overall_score": 0.3194,
+        "genetic_score": 0.5097,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000147883",
+        "gene_symbol": "CDKN2B",
+        "overall_score": 0.3191,
+        "genetic_score": 0.5241,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000280165",
+        "gene_symbol": "PCDH20",
+        "overall_score": 0.3191,
+        "genetic_score": 0.5249,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000117616",
+        "gene_symbol": "RSRP1",
+        "overall_score": 0.3189,
+        "genetic_score": 0.5246,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000061273",
+        "gene_symbol": "HDAC7",
+        "overall_score": 0.3188,
+        "genetic_score": 0.5153,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PANOBINOSTAT",
+          "ROMIDEPSIN",
+          "CUDC-101",
+          "BELINOSTAT",
+          "GIVINOSTAT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000108691",
+        "gene_symbol": "CCL2",
+        "overall_score": 0.3188,
+        "genetic_score": 0.4767,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "CARLUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000145623",
+        "gene_symbol": "OSMR",
+        "overall_score": 0.3185,
+        "genetic_score": 0.5109,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "VIXARELIMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000089250",
+        "gene_symbol": "NOS1",
+        "overall_score": 0.3177,
+        "genetic_score": 0.5006,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "TILARGININE ACETATE",
+          "TILARGININE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000009413",
+        "gene_symbol": "REV3L",
+        "overall_score": 0.3169,
+        "genetic_score": 0.5176,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000106689",
+        "gene_symbol": "LHX2",
+        "overall_score": 0.3168,
+        "genetic_score": 0.5212,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164684",
+        "gene_symbol": "ZNF704",
+        "overall_score": 0.3167,
+        "genetic_score": 0.521,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000140718",
+        "gene_symbol": "FTO",
+        "overall_score": 0.3167,
+        "genetic_score": 0.4779,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "BISANTRENE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000163689",
+        "gene_symbol": "CFAP20DC",
+        "overall_score": 0.3163,
+        "genetic_score": 0.5203,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000178828",
+        "gene_symbol": "RNF186",
+        "overall_score": 0.3161,
+        "genetic_score": 0.52,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000172969",
+        "gene_symbol": "FRG2C",
+        "overall_score": 0.3149,
+        "genetic_score": 0.518,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000116833",
+        "gene_symbol": "NR5A2",
+        "overall_score": 0.3142,
+        "genetic_score": 0.5169,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000095110",
+        "gene_symbol": "NXPE1",
+        "overall_score": 0.3139,
+        "genetic_score": 0.5163,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000107796",
+        "gene_symbol": "ACTA2",
+        "overall_score": 0.3137,
+        "genetic_score": 0.5143,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000058673",
+        "gene_symbol": "ZC3H11A",
+        "overall_score": 0.3134,
+        "genetic_score": 0.5155,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000173253",
+        "gene_symbol": "DMRT2",
+        "overall_score": 0.3129,
+        "genetic_score": 0.5147,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000153310",
+        "gene_symbol": "CYRIB",
+        "overall_score": 0.3126,
+        "genetic_score": 0.4912,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000272325",
+        "gene_symbol": "NUDT3",
+        "overall_score": 0.3123,
+        "genetic_score": 0.5137,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185650",
+        "gene_symbol": "ZFP36L1",
+        "overall_score": 0.3114,
+        "genetic_score": 0.5113,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000204291",
+        "gene_symbol": "COL15A1",
+        "overall_score": 0.3106,
+        "genetic_score": 0.5079,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "OCRIPLASMIN",
+          "COLLAGENASE CLOSTRIDIUM HISTOLYTICUM"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000213047",
+        "gene_symbol": "DENND1B",
+        "overall_score": 0.3105,
+        "genetic_score": 0.5087,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000166415",
+        "gene_symbol": "WDR72",
+        "overall_score": 0.3095,
+        "genetic_score": 0.5091,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000157933",
+        "gene_symbol": "SKI",
+        "overall_score": 0.3094,
+        "genetic_score": 0.509,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000005020",
+        "gene_symbol": "SKAP2",
+        "overall_score": 0.3092,
+        "genetic_score": 0.5066,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000137309",
+        "gene_symbol": "HMGA1",
+        "overall_score": 0.3086,
+        "genetic_score": 0.4929,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000214357",
+        "gene_symbol": "NEURL1B",
+        "overall_score": 0.3084,
+        "genetic_score": 0.5072,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000036828",
+        "gene_symbol": "CASR",
+        "overall_score": 0.3082,
+        "genetic_score": 0.4848,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ASP7991",
+          "EVOCALCET",
+          "ETELCALCETIDE HYDROCHLORIDE",
+          "ETELCALCETIDE",
+          "CINACALCET"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000124678",
+        "gene_symbol": "TCP11",
+        "overall_score": 0.3082,
+        "genetic_score": 0.5069,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000124203",
+        "gene_symbol": "ZNF831",
+        "overall_score": 0.3078,
+        "genetic_score": 0.5057,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185668",
+        "gene_symbol": "POU3F1",
+        "overall_score": 0.3077,
+        "genetic_score": 0.5017,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000163171",
+        "gene_symbol": "CDC42EP3",
+        "overall_score": 0.3072,
+        "genetic_score": 0.5053,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000091138",
+        "gene_symbol": "SLC26A3",
+        "overall_score": 0.3071,
+        "genetic_score": 0.5052,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000135898",
+        "gene_symbol": "GPR55",
+        "overall_score": 0.3066,
+        "genetic_score": 0.4705,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000058335",
+        "gene_symbol": "RASGRF1",
+        "overall_score": 0.3063,
+        "genetic_score": 0.4654,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000144647",
+        "gene_symbol": "POMGNT2",
+        "overall_score": 0.3063,
+        "genetic_score": 0.5038,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000145882",
+        "gene_symbol": "PCYOX1L",
+        "overall_score": 0.3062,
+        "genetic_score": 0.5037,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000100311",
+        "gene_symbol": "PDGFB",
+        "overall_score": 0.3059,
+        "genetic_score": 0.4955,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "PEGPLERANIB SODIUM"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000019144",
+        "gene_symbol": "PHLDB1",
+        "overall_score": 0.3058,
+        "genetic_score": 0.5031,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000237693",
+        "gene_symbol": "IRGM",
+        "overall_score": 0.3058,
+        "genetic_score": 0.5016,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000172175",
+        "gene_symbol": "MALT1",
+        "overall_score": 0.3055,
+        "genetic_score": 0.4591,
+        "max_clinical_phase": 0,
+        "known_drugs": [
+          "MEPAZINE ACETATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000204356",
+        "gene_symbol": "NELFE",
+        "overall_score": 0.3046,
+        "genetic_score": 0.4996,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000178573",
+        "gene_symbol": "MAF",
+        "overall_score": 0.3037,
+        "genetic_score": 0.494,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000282608",
+        "gene_symbol": "ADORA3",
+        "overall_score": 0.3034,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CAFFEINE CITRATE",
+          "OXTRIPHYLLINE",
+          "PICLIDENOSON",
+          "THEOPHYLLINE",
+          "ADENOSINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000188404",
+        "gene_symbol": "SELL",
+        "overall_score": 0.3033,
+        "genetic_score": 0.4474,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "RIVIPANSEL",
+          "BIMOSIAMOSE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000164332",
+        "gene_symbol": "UBLCP1",
+        "overall_score": 0.3022,
+        "genetic_score": 0.4906,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000188488",
+        "gene_symbol": "SERPINA5",
+        "overall_score": 0.3017,
+        "genetic_score": 0.4963,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000157131",
+        "gene_symbol": "C8A",
+        "overall_score": 0.3016,
+        "genetic_score": 0.4962,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000118922",
+        "gene_symbol": "KLF12",
+        "overall_score": 0.301,
+        "genetic_score": 0.4841,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000170162",
+        "gene_symbol": "VGLL2",
+        "overall_score": 0.3003,
+        "genetic_score": 0.494,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000136014",
+        "gene_symbol": "USP44",
+        "overall_score": 0.3002,
+        "genetic_score": 0.4937,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000111540",
+        "gene_symbol": "RAB5B",
+        "overall_score": 0.3,
+        "genetic_score": 0.4935,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000121879",
+        "gene_symbol": "PIK3CA",
+        "overall_score": 0.2985,
+        "genetic_score": 0.4469,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "DS-7423",
+          "BAY-1082439",
+          "PANULISIB",
+          "ALPELISIB",
+          "PILARALISIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000117592",
+        "gene_symbol": "PRDX6",
+        "overall_score": 0.2983,
+        "genetic_score": 0.4884,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000138448",
+        "gene_symbol": "ITGAV",
+        "overall_score": 0.2982,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "RG-7594",
+          "ABCIXIMAB",
+          "CILENGITIDE",
+          "IMGN-388",
+          "ABITUZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000088305",
+        "gene_symbol": "DNMT3B",
+        "overall_score": 0.2973,
+        "genetic_score": 0.4818,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000182771",
+        "gene_symbol": "GRID1",
+        "overall_score": 0.2971,
+        "genetic_score": 0.4888,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000134504",
+        "gene_symbol": "KCTD1",
+        "overall_score": 0.297,
+        "genetic_score": 0.4874,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164849",
+        "gene_symbol": "GPR146",
+        "overall_score": 0.2969,
+        "genetic_score": 0.4884,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000154928",
+        "gene_symbol": "EPHB1",
+        "overall_score": 0.2964,
+        "genetic_score": 0.483,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "VANDETANIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000170516",
+        "gene_symbol": "COX7B2",
+        "overall_score": 0.2964,
+        "genetic_score": 0.4875,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000107968",
+        "gene_symbol": "MAP3K8",
+        "overall_score": 0.2961,
+        "genetic_score": 0.4831,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "TILPISERTIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000186767",
+        "gene_symbol": "SPIN4",
+        "overall_score": 0.296,
+        "genetic_score": 0.4869,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000130876",
+        "gene_symbol": "SLC7A10",
+        "overall_score": 0.2957,
+        "genetic_score": 0.4864,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000145214",
+        "gene_symbol": "DGKQ",
+        "overall_score": 0.2951,
+        "genetic_score": 0.4778,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000112339",
+        "gene_symbol": "HBS1L",
+        "overall_score": 0.295,
+        "genetic_score": 0.4853,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000213221",
+        "gene_symbol": "DNLZ",
+        "overall_score": 0.2948,
+        "genetic_score": 0.485,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000138081",
+        "gene_symbol": "FBXO11",
+        "overall_score": 0.2945,
+        "genetic_score": 0.4844,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000163600",
+        "gene_symbol": "ICOS",
+        "overall_score": 0.2945,
+        "genetic_score": 0.4618,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "MEDI-570",
+          "ROZIBAFUSP ALFA",
+          "FELADILIMAB",
+          "VOPRATELIMAB"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000106617",
+        "gene_symbol": "PRKAG2",
+        "overall_score": 0.2942,
+        "genetic_score": 0.484,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ACADESINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000183625",
+        "gene_symbol": "CCR3",
+        "overall_score": 0.294,
+        "genetic_score": 0.4508,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000080709",
+        "gene_symbol": "KCNN2",
+        "overall_score": 0.293,
+        "genetic_score": 0.4808,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000136861",
+        "gene_symbol": "CDK5RAP2",
+        "overall_score": 0.2921,
+        "genetic_score": 0.479,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000078589",
+        "gene_symbol": "P2RY10",
+        "overall_score": 0.2921,
+        "genetic_score": 0.4799,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000198793",
+        "gene_symbol": "MTOR",
+        "overall_score": 0.2918,
+        "genetic_score": 0.4363,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "VISTUSERTIB",
+          "DS-7423",
+          "SAPANISERTIB",
+          "ONATASERTIB",
+          "PANULISIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000112175",
+        "gene_symbol": "BMP5",
+        "overall_score": 0.2916,
+        "genetic_score": 0.4688,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000145555",
+        "gene_symbol": "MYO10",
+        "overall_score": 0.2907,
+        "genetic_score": 0.4781,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000181072",
+        "gene_symbol": "CHRM2",
+        "overall_score": 0.2906,
+        "genetic_score": 0.478,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "FESOTERODINE",
+          "GLYCOPYRRONIUM TOSYLATE",
+          "TOLTERODINE TARTRATE",
+          "TROSPIUM",
+          "SOLIFENACIN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000134352",
+        "gene_symbol": "IL6ST",
+        "overall_score": 0.2905,
+        "genetic_score": 0.1327,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "SATRALIZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000138031",
+        "gene_symbol": "ADCY3",
+        "overall_score": 0.2897,
+        "genetic_score": 0.4766,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000011485",
+        "gene_symbol": "PPP5C",
+        "overall_score": 0.2893,
+        "genetic_score": 0.4744,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "LB-100"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000182557",
+        "gene_symbol": "SPNS3",
+        "overall_score": 0.2885,
+        "genetic_score": 0.4746,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000161896",
+        "gene_symbol": "IP6K3",
+        "overall_score": 0.2885,
+        "genetic_score": 0.4746,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000080802",
+        "gene_symbol": "CNOT4",
+        "overall_score": 0.2879,
+        "genetic_score": 0.4735,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000174989",
+        "gene_symbol": "FBXW8",
+        "overall_score": 0.2878,
+        "genetic_score": 0.4734,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000155657",
+        "gene_symbol": "TTN",
+        "overall_score": 0.2875,
+        "genetic_score": 0.4699,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000156194",
+        "gene_symbol": "PPEF2",
+        "overall_score": 0.2859,
+        "genetic_score": 0.4702,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000187678",
+        "gene_symbol": "SPRY4",
+        "overall_score": 0.2856,
+        "genetic_score": 0.4698,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000187775",
+        "gene_symbol": "DNAH17",
+        "overall_score": 0.2856,
+        "genetic_score": 0.4698,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000186153",
+        "gene_symbol": "WWOX",
+        "overall_score": 0.2852,
+        "genetic_score": 0.4691,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000116106",
+        "gene_symbol": "EPHA4",
+        "overall_score": 0.285,
+        "genetic_score": 0.4688,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "VANDETANIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000078098",
+        "gene_symbol": "FAP",
+        "overall_score": 0.2846,
+        "genetic_score": 0.4222,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "SIBROTUZUMAB",
+          "SIMLUKAFUSP ALFA",
+          "F19 131I"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000180316",
+        "gene_symbol": "PNPLA1",
+        "overall_score": 0.2846,
+        "genetic_score": 0.4682,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000145996",
+        "gene_symbol": "CDKAL1",
+        "overall_score": 0.2843,
+        "genetic_score": 0.4611,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000151693",
+        "gene_symbol": "ASAP2",
+        "overall_score": 0.284,
+        "genetic_score": 0.4651,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000196199",
+        "gene_symbol": "MPHOSPH8",
+        "overall_score": 0.2832,
+        "genetic_score": 0.4659,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000109471",
+        "gene_symbol": "IL2",
+        "overall_score": 0.2829,
+        "genetic_score": 0.4129,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000117020",
+        "gene_symbol": "AKT3",
+        "overall_score": 0.2829,
+        "genetic_score": 0.4635,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "XL-418",
+          "TAS0612",
+          "CAPIVASERTIB",
+          "AFURESERTIB",
+          "LY-2780301"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000189337",
+        "gene_symbol": "KAZN",
+        "overall_score": 0.2829,
+        "genetic_score": 0.4653,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000111245",
+        "gene_symbol": "MYL2",
+        "overall_score": 0.2828,
+        "genetic_score": 0.4652,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "DANICAMTIV",
+          "OMECAMTIV MECARBIL",
+          "MAVACAMTEN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000140575",
+        "gene_symbol": "IQGAP1",
+        "overall_score": 0.2825,
+        "genetic_score": 0.4611,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000213079",
+        "gene_symbol": "SCAF8",
+        "overall_score": 0.2819,
+        "genetic_score": 0.4637,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000103154",
+        "gene_symbol": "NECAB2",
+        "overall_score": 0.2816,
+        "genetic_score": 0.4633,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000151834",
+        "gene_symbol": "GABRA2",
+        "overall_score": 0.2813,
+        "genetic_score": 0.4612,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PRIMIDONE",
+          "CLOBAZAM",
+          "METHYPRYLON",
+          "ACAMPROSATE",
+          "REMIMAZOLAM BESYLATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000186187",
+        "gene_symbol": "ZNRF1",
+        "overall_score": 0.2813,
+        "genetic_score": 0.4627,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000121316",
+        "gene_symbol": "PLBD1",
+        "overall_score": 0.2813,
+        "genetic_score": 0.4597,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000108510",
+        "gene_symbol": "MED13",
+        "overall_score": 0.281,
+        "genetic_score": 0.4622,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000170279",
+        "gene_symbol": "C7orf33",
+        "overall_score": 0.2809,
+        "genetic_score": 0.4621,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000157884",
+        "gene_symbol": "CIB4",
+        "overall_score": 0.2807,
+        "genetic_score": 0.4617,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000188257",
+        "gene_symbol": "PLA2G2A",
+        "overall_score": 0.2805,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "VARESPLADIB METHYL",
+          "VARESPLADIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000198742",
+        "gene_symbol": "SMURF1",
+        "overall_score": 0.2804,
+        "genetic_score": 0.4613,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000172159",
+        "gene_symbol": "FRMD3",
+        "overall_score": 0.2804,
+        "genetic_score": 0.4612,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000071127",
+        "gene_symbol": "WDR1",
+        "overall_score": 0.2803,
+        "genetic_score": 0.4485,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000184216",
+        "gene_symbol": "IRAK1",
+        "overall_score": 0.2802,
+        "genetic_score": 0.4376,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PACRITINIB",
+          "PACRITINIB CITRATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000259207",
+        "gene_symbol": "ITGB3",
+        "overall_score": 0.28,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ABCIXIMAB",
+          "ZALUNFIBAN",
+          "CILENGITIDE",
+          "EPTIFIBATIDE",
+          "ABITUZUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000128000",
+        "gene_symbol": "ZNF780B",
+        "overall_score": 0.2798,
+        "genetic_score": 0.4602,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000132975",
+        "gene_symbol": "GPR12",
+        "overall_score": 0.2797,
+        "genetic_score": 0.4601,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000169071",
+        "gene_symbol": "ROR2",
+        "overall_score": 0.2797,
+        "genetic_score": 0.4578,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000182348",
+        "gene_symbol": "ZNF804B",
+        "overall_score": 0.2795,
+        "genetic_score": 0.4598,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000138768",
+        "gene_symbol": "USO1",
+        "overall_score": 0.2795,
+        "genetic_score": 0.451,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000173198",
+        "gene_symbol": "CYSLTR1",
+        "overall_score": 0.2795,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ZAFIRLUKAST",
+          "MONTELUKAST SODIUM",
+          "CR-3465",
+          "PRANLUKAST",
+          "MONTELUKAST"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000140950",
+        "gene_symbol": "MEAK7",
+        "overall_score": 0.2795,
+        "genetic_score": 0.4597,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000115232",
+        "gene_symbol": "ITGA4",
+        "overall_score": 0.279,
+        "genetic_score": 0.4198,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ABRILUMAB",
+          "FIRATEGRAST",
+          "VEDOLIZUMAB",
+          "NATALIZUMAB",
+          "UCB-1184197"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000162642",
+        "gene_symbol": "C1orf52",
+        "overall_score": 0.2787,
+        "genetic_score": 0.4584,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000162739",
+        "gene_symbol": "SLAMF6",
+        "overall_score": 0.2786,
+        "genetic_score": 0.4299,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000069764",
+        "gene_symbol": "PLA2G10",
+        "overall_score": 0.2784,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "VARESPLADIB METHYL"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000101421",
+        "gene_symbol": "CHMP4B",
+        "overall_score": 0.2782,
+        "genetic_score": 0.4576,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000100376",
+        "gene_symbol": "SIRAL2",
+        "overall_score": 0.278,
+        "genetic_score": 0.4546,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000116117",
+        "gene_symbol": "PARD3B",
+        "overall_score": 0.2779,
+        "genetic_score": 0.4571,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000183230",
+        "gene_symbol": "CTNNA3",
+        "overall_score": 0.2779,
+        "genetic_score": 0.4571,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000132938",
+        "gene_symbol": "MTUS2",
+        "overall_score": 0.2779,
+        "genetic_score": 0.4571,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000188107",
+        "gene_symbol": "EYS",
+        "overall_score": 0.2779,
+        "genetic_score": 0.4571,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000185231",
+        "gene_symbol": "MC2R",
+        "overall_score": 0.2778,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "COSYNTROPIN",
+          "CORTICOTROPIN",
+          "CORTICOTROPIN ZINC HYDROXIDE",
+          "SERACTIDE ACETATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000145681",
+        "gene_symbol": "HAPLN1",
+        "overall_score": 0.2773,
+        "genetic_score": 0.4209,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000180871",
+        "gene_symbol": "CXCR2",
+        "overall_score": 0.2772,
+        "genetic_score": 0.4314,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "NAVARIXIN ANHYDROUS",
+          "SX-682",
+          "DANIRIXIN",
+          "NAVARIXIN",
+          "ELUBRIXIN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000144724",
+        "gene_symbol": "PTPRG",
+        "overall_score": 0.2771,
+        "genetic_score": 0.4545,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000147099",
+        "gene_symbol": "HDAC8",
+        "overall_score": 0.2767,
+        "genetic_score": 0.4532,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PANOBINOSTAT",
+          "ROMIDEPSIN",
+          "CUDC-101",
+          "BELINOSTAT",
+          "GIVINOSTAT"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000179630",
+        "gene_symbol": "LACC1",
+        "overall_score": 0.2765,
+        "genetic_score": 0.4458,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000066468",
+        "gene_symbol": "FGFR2",
+        "overall_score": 0.2763,
+        "genetic_score": 0.4479,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "FUTIBATINIB",
+          "XL-999",
+          "DERAZANTINIB",
+          "BRIVANIB ALANINATE",
+          "ORANTINIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000108219",
+        "gene_symbol": "TSPAN14",
+        "overall_score": 0.2763,
+        "genetic_score": 0.4544,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000162927",
+        "gene_symbol": "PUS10",
+        "overall_score": 0.2761,
+        "genetic_score": 0.4522,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000167210",
+        "gene_symbol": "LOXHD1",
+        "overall_score": 0.2756,
+        "genetic_score": 0.4533,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000203985",
+        "gene_symbol": "LDLRAD1",
+        "overall_score": 0.2755,
+        "genetic_score": 0.4532,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000155256",
+        "gene_symbol": "ZFYVE27",
+        "overall_score": 0.2755,
+        "genetic_score": 0.4531,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000134109",
+        "gene_symbol": "EDEM1",
+        "overall_score": 0.275,
+        "genetic_score": 0.4523,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000084734",
+        "gene_symbol": "GCKR",
+        "overall_score": 0.2747,
+        "genetic_score": 0.4411,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000107551",
+        "gene_symbol": "RASSF4",
+        "overall_score": 0.2744,
+        "genetic_score": 0.4486,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000164659",
+        "gene_symbol": "ELAPOR2",
+        "overall_score": 0.2742,
+        "genetic_score": 0.4511,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000172340",
+        "gene_symbol": "SUCLG2",
+        "overall_score": 0.2735,
+        "genetic_score": 0.4493,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000196639",
+        "gene_symbol": "HRH1",
+        "overall_score": 0.2732,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "BROMPHENIRAMINE MALEATE",
+          "DEXCHLORPHENIRAMINE MALEATE",
+          "DIPHENHYDRAMINE CITRATE",
+          "DOXEPIN",
+          "TERFENADINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000073910",
+        "gene_symbol": "FRY",
+        "overall_score": 0.2732,
+        "genetic_score": 0.4463,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000205268",
+        "gene_symbol": "PDE7A",
+        "overall_score": 0.2729,
+        "genetic_score": 0.4033,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PENTOXIFYLLINE",
+          "FLAVOXATE",
+          "DIPYRIDAMOLE",
+          "FLAVOXATE HYDROCHLORIDE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000124493",
+        "gene_symbol": "GRM4",
+        "overall_score": 0.2728,
+        "genetic_score": 0.4487,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "FOLIGLURAX"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000136141",
+        "gene_symbol": "LRCH1",
+        "overall_score": 0.2727,
+        "genetic_score": 0.4485,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000169347",
+        "gene_symbol": "GP2",
+        "overall_score": 0.2725,
+        "genetic_score": 0.4471,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000146535",
+        "gene_symbol": "GNA12",
+        "overall_score": 0.2721,
+        "genetic_score": 0.4466,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000162341",
+        "gene_symbol": "TPCN2",
+        "overall_score": 0.2721,
+        "genetic_score": 0.446,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000165650",
+        "gene_symbol": "PDZD8",
+        "overall_score": 0.2713,
+        "genetic_score": 0.4463,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000105339",
+        "gene_symbol": "DENND3",
+        "overall_score": 0.2713,
+        "genetic_score": 0.4463,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000115091",
+        "gene_symbol": "ACTR3",
+        "overall_score": 0.2711,
+        "genetic_score": 0.446,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000121807",
+        "gene_symbol": "CCR2",
+        "overall_score": 0.2711,
+        "genetic_score": 0.3955,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "AZD2423",
+          "ILACIRNON",
+          "MK-0812",
+          "JNJ-41443532",
+          "BMS-741672"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000011105",
+        "gene_symbol": "TSPAN9",
+        "overall_score": 0.2704,
+        "genetic_score": 0.4267,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000119403",
+        "gene_symbol": "PHF19",
+        "overall_score": 0.2704,
+        "genetic_score": 0.4356,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000151623",
+        "gene_symbol": "NR3C2",
+        "overall_score": 0.2703,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PF-03882845",
+          "LY2623091",
+          "EPLERENONE",
+          "DESOXYCORTICOSTERONE ACETATE",
+          "CANRENONE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000121440",
+        "gene_symbol": "PDZRN3",
+        "overall_score": 0.2699,
+        "genetic_score": 0.4439,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000100364",
+        "gene_symbol": "KIAA0930",
+        "overall_score": 0.2699,
+        "genetic_score": 0.4439,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000129484",
+        "gene_symbol": "PARP2",
+        "overall_score": 0.2697,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "OLAPARIB",
+          "TALAZOPARIB TOSYLATE",
+          "SENAPARIB",
+          "PAMIPARIB",
+          "RUCAPARIB CAMSYLATE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000168071",
+        "gene_symbol": "CCDC88B",
+        "overall_score": 0.2695,
+        "genetic_score": 0.4434,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000101544",
+        "gene_symbol": "ADNP2",
+        "overall_score": 0.2694,
+        "genetic_score": 0.4431,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000143799",
+        "gene_symbol": "PARP1",
+        "overall_score": 0.2694,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "OLAPARIB",
+          "TALAZOPARIB TOSYLATE",
+          "SENAPARIB",
+          "RUCAPARIB CAMSYLATE",
+          "PAMIPARIB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185567",
+        "gene_symbol": "AHNAK2",
+        "overall_score": 0.2691,
+        "genetic_score": 0.4386,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000134138",
+        "gene_symbol": "MEIS2",
+        "overall_score": 0.2683,
+        "genetic_score": 0.4413,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000145819",
+        "gene_symbol": "ARHGAP26",
+        "overall_score": 0.2681,
+        "genetic_score": 0.441,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000157554",
+        "gene_symbol": "ERG",
+        "overall_score": 0.2677,
+        "genetic_score": 0.4336,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000171094",
+        "gene_symbol": "ALK",
+        "overall_score": 0.2671,
+        "genetic_score": 0.433,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "CERITINIB",
+          "ALECTINIB",
+          "ALECTINIB HYDROCHLORIDE",
+          "CEP-37440",
+          "ASP-3026"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185053",
+        "gene_symbol": "SGCZ",
+        "overall_score": 0.2663,
+        "genetic_score": 0.4381,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000172380",
+        "gene_symbol": "GNG12",
+        "overall_score": 0.2663,
+        "genetic_score": 0.4375,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000138316",
+        "gene_symbol": "ADAMTS14",
+        "overall_score": 0.266,
+        "genetic_score": 0.4376,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000082781",
+        "gene_symbol": "ITGB5",
+        "overall_score": 0.2658,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "ABITUZUMAB",
+          "CILENGITIDE",
+          "INTETUMUMAB"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000152422",
+        "gene_symbol": "XRCC4",
+        "overall_score": 0.2652,
+        "genetic_score": 0.4296,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000144460",
+        "gene_symbol": "NYAP2",
+        "overall_score": 0.265,
+        "genetic_score": 0.436,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000089177",
+        "gene_symbol": "KIF16B",
+        "overall_score": 0.265,
+        "genetic_score": 0.436,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000188517",
+        "gene_symbol": "COL25A1",
+        "overall_score": 0.265,
+        "genetic_score": 0.436,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000073417",
+        "gene_symbol": "PDE8A",
+        "overall_score": 0.2648,
+        "genetic_score": 0.3932,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "PENTOXIFYLLINE",
+          "FLAVOXATE",
+          "DIPYRIDAMOLE",
+          "FLAVOXATE HYDROCHLORIDE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000137142",
+        "gene_symbol": "IGFBPL1",
+        "overall_score": 0.2642,
+        "genetic_score": 0.433,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000157693",
+        "gene_symbol": "TMEM268",
+        "overall_score": 0.264,
+        "genetic_score": 0.4343,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000011275",
+        "gene_symbol": "RNF216",
+        "overall_score": 0.2637,
+        "genetic_score": 0.4337,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000160752",
+        "gene_symbol": "FDPS",
+        "overall_score": 0.2617,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "ZOLEDRONIC ACID",
+          "PAMIDRONIC ACID",
+          "ZOLEDRONIC ACID ANHYDROUS",
+          "RISEDRONATE SODIUM",
+          "RISEDRONIC ACID"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000133195",
+        "gene_symbol": "SLC39A11",
+        "overall_score": 0.2612,
+        "genetic_score": 0.4296,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000178764",
+        "gene_symbol": "ZHX2",
+        "overall_score": 0.2607,
+        "genetic_score": 0.4169,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000204604",
+        "gene_symbol": "ZNF468",
+        "overall_score": 0.2601,
+        "genetic_score": 0.4278,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000124160",
+        "gene_symbol": "NCOA5",
+        "overall_score": 0.26,
+        "genetic_score": 0.4263,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000128512",
+        "gene_symbol": "DOCK4",
+        "overall_score": 0.2595,
+        "genetic_score": 0.4244,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000003400",
+        "gene_symbol": "CASP10",
+        "overall_score": 0.2594,
+        "genetic_score": 0.4267,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "EMRICASAN"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000184985",
+        "gene_symbol": "SORCS2",
+        "overall_score": 0.2593,
+        "genetic_score": 0.4265,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000169403",
+        "gene_symbol": "PTAFR",
+        "overall_score": 0.2593,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 4,
+        "known_drugs": [
+          "MINOPAFANT",
+          "RUPATADINE"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000185651",
+        "gene_symbol": "UBE2L3",
+        "overall_score": 0.2589,
+        "genetic_score": 0.423,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000151718",
+        "gene_symbol": "WWC2",
+        "overall_score": 0.2588,
+        "genetic_score": 0.4258,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000127472",
+        "gene_symbol": "PLA2G5",
+        "overall_score": 0.2587,
+        "genetic_score": 0.0,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "VARESPLADIB METHYL"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000107957",
+        "gene_symbol": "SH3PXD2A",
+        "overall_score": 0.2585,
+        "genetic_score": 0.4246,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000213066",
+        "gene_symbol": "CEP43",
+        "overall_score": 0.2584,
+        "genetic_score": 0.4233,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000146197",
+        "gene_symbol": "SCUBE3",
+        "overall_score": 0.2584,
+        "genetic_score": 0.4238,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000198108",
+        "gene_symbol": "CHSY3",
+        "overall_score": 0.2582,
+        "genetic_score": 0.4247,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000143067",
+        "gene_symbol": "ZNF697",
+        "overall_score": 0.2578,
+        "genetic_score": 0.4241,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000160223",
+        "gene_symbol": "ICOSLG",
+        "overall_score": 0.2571,
+        "genetic_score": 0.3872,
+        "max_clinical_phase": 2,
+        "known_drugs": [
+          "AMG-557"
+        ],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000124766",
+        "gene_symbol": "SOX4",
+        "overall_score": 0.257,
+        "genetic_score": 0.3961,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000156113",
+        "gene_symbol": "KCNMA1",
+        "overall_score": 0.2564,
+        "genetic_score": 0.3994,
+        "max_clinical_phase": 3,
+        "known_drugs": [
+          "ANDOLAST",
+          "BMS-223131",
+          "FLINDOKALNER"
+        ],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000006468",
+        "gene_symbol": "ETV1",
+        "overall_score": 0.2564,
+        "genetic_score": 0.4217,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000104450",
+        "gene_symbol": "SPAG1",
+        "overall_score": 0.2556,
+        "genetic_score": 0.4189,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000214814",
+        "gene_symbol": "FER1L6",
+        "overall_score": 0.255,
+        "genetic_score": 0.4194,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000134030",
+        "gene_symbol": "CTIF",
+        "overall_score": 0.2549,
+        "genetic_score": 0.4193,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000113742",
+        "gene_symbol": "CPEB4",
+        "overall_score": 0.2542,
+        "genetic_score": 0.4182,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000143365",
+        "gene_symbol": "RORC",
+        "overall_score": 0.2542,
+        "genetic_score": 0.3752,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000164715",
+        "gene_symbol": "LMTK2",
+        "overall_score": 0.2538,
+        "genetic_score": 0.4135,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000165495",
+        "gene_symbol": "PKNOX2",
+        "overall_score": 0.2533,
+        "genetic_score": 0.4167,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000214960",
+        "gene_symbol": "CRPPA",
+        "overall_score": 0.2533,
+        "genetic_score": 0.403,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000122507",
+        "gene_symbol": "BBS9",
+        "overall_score": 0.2532,
+        "genetic_score": 0.4157,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000293584",
+        "gene_symbol": "ENSG00000293584",
+        "overall_score": 0.2526,
+        "genetic_score": 0.4155,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000198589",
+        "gene_symbol": "LRBA",
+        "overall_score": 0.2524,
+        "genetic_score": 0.4144,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "small_molecule"
+      },
+      {
+        "target_id": "ENSG00000151500",
+        "gene_symbol": "THYN1",
+        "overall_score": 0.2521,
+        "genetic_score": 0.4147,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      },
+      {
+        "target_id": "ENSG00000144229",
+        "gene_symbol": "THSD7B",
+        "overall_score": 0.252,
+        "genetic_score": 0.4144,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "antibody"
+      },
+      {
+        "target_id": "ENSG00000184305",
+        "gene_symbol": "CCSER1",
+        "overall_score": 0.252,
+        "genetic_score": 0.4144,
+        "max_clinical_phase": 0,
+        "known_drugs": [],
+        "tractability_class": "difficult"
+      }
+    ],
+    "source": "get_open_targets_disease_targets",
+    "efo_id": "EFO_0000685"
+  }
+}

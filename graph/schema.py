@@ -206,15 +206,18 @@ EVIDENCE_TIERS: dict[str, dict] = {
 DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
     "RA": {
         "cell_types":        ["CD4_T_cell"],
-        "primary_tissue":    "Whole_Blood",
-        "gtex_tissue":       "Whole_Blood",
+        "primary_tissue":    "CD4_T_cell",
+        # GTEx has no CD4+ T cell tissue. Whole_Blood is used only as a last-resort
+        # fallback when eQTL Catalogue (OneK1K CD4+ T cell) returns nothing for a gene.
+        # The sc_eqtl_study / sc_eqtl_cell_types fields below are the primary eQTL source.
+        "gtex_tissue":       "Whole_Blood",   # fallback only — not cell-type-matched for RA
         "gtex_tissues_secondary": ["Spleen"],
         "perturb_seq_source": "czi_2025_cd4t_perturb",
         "scperturb_dataset": "czi_2025_cd4t_perturb",
         "lincs_cell_line":   None,
         "pqtl_study_priority": ["Sun2023", "Sun2018", "Ferkingstad2021"],
         "pqtl_key_genes": ["IL6R", "PTPN22", "CTLA4", "CD80", "MS4A1"],
-        "sc_eqtl_study":   "OneK1K",
+        "sc_eqtl_study":   "OneK1K",          # Yazar 2022 — 982 donors, 14 PBMC cell types
         "sc_eqtl_cell_types": ["CD4_T_cell", "B_cell", "monocyte"],
         "notes": (
             "RA: CD4+ Th1/Th17 synovial inflammation. CZI CD4+ T Perturb-seq (GSE314342) is "
@@ -234,7 +237,7 @@ DISEASE_CELL_TYPE_MAP: dict[str, dict] = {
         # Liver covers LDLR/PCSK9/HMGCR (hepatic lipid); heart for cardiomyocyte-specific genes.
         "gtex_tissues_secondary": ["Liver", "Heart_Left_Ventricle", "Artery_Coronary"],
         "perturb_seq_source": "schnitzler_cad_vascular",  # 332 CAD GWAS genes in HCASMC/HAEC
-        "scperturb_dataset": "Schnitzler_GSE210681",
+        "scperturb_dataset": "schnitzler_cad_vascular",
         "lincs_cell_line":   "VCAP",           # LINCS proxy — best available for metabolic
         # pQTL instruments — key for LPA (no eQTL; driven by kringle repeat number)
         "pqtl_study_priority": ["Sun2023", "Sun2018", "Ferkingstad2021"],
@@ -384,4 +387,6 @@ _DISEASE_SHORT_NAMES_FOR_ANCHORS: dict[str, str] = {
     "rheumatoid arthritis":              "RA",
     "ra":                                "RA",
     "seropositive rheumatoid arthritis": "RA",
+    "age-related macular degeneration":  "AMD",
+    "macular degeneration":              "AMD",
 }

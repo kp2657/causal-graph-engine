@@ -2,7 +2,6 @@
 test_ota_gamma_estimation.py — Unit tests for the γ_{program→trait} estimation pipeline.
 
 Tests verify:
-  - compute_cnmf_gamma: hypergeometric enrichment logic and boundary conditions
   - estimate_gamma: dispatches to correct sub-estimator; returns valid tier labels
   - compute_ota_gamma: OTA formula summation is correct; NaN propagation
   - Module-level constants imported from config.scoring_thresholds
@@ -13,7 +12,6 @@ import math
 import pytest
 
 from pipelines.ota_gamma_estimation import (
-    compute_cnmf_gamma,
     estimate_gamma,
     compute_ota_gamma,
 )
@@ -30,66 +28,6 @@ EFO = "EFO_0001481"
 AMD_GWAS_GENES = {"CFH", "ARMS2", "C3", "CFB", "CFI", "C9", "VEGFA", "LIPC", "ABO"}
 COMPLEMENT_PROGRAM = {"CFH", "C3", "CFB", "CFD", "C5", "C9", "CLU", "CFHR1", "CFHR3"}
 UNRELATED_GENES = {"BRCA1", "TP53", "KRAS", "EGFR", "MYC"}
-
-
-# ---------------------------------------------------------------------------
-# compute_cnmf_gamma — hypergeometric enrichment
-# ---------------------------------------------------------------------------
-
-class TestComputeCnmfGamma:
-    def test_returns_none_for_empty_program(self):
-        result = compute_cnmf_gamma(set(), AMD_GWAS_GENES, PROGRAM, TRAIT)
-        assert result is None
-
-    def test_returns_none_for_empty_gwas(self):
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, set(), PROGRAM, TRAIT)
-        assert result is None
-
-    def test_returns_none_below_min_overlap(self):
-        """Single gene overlap → insufficient evidence; should return None."""
-        tiny_gwas = {"CFH"}
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, tiny_gwas, PROGRAM, TRAIT)
-        assert result is None
-
-    def test_enriched_complement_program(self):
-        """Large overlap between complement program and AMD GWAS → positive gamma."""
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT)
-        assert result is not None
-        assert result["gamma"] > 0
-        assert result["gamma"] <= 1.0
-
-    def test_no_enrichment_for_unrelated_genes(self):
-        """Program of unrelated genes against AMD GWAS → no enrichment."""
-        result = compute_cnmf_gamma(UNRELATED_GENES, AMD_GWAS_GENES, PROGRAM, TRAIT)
-        assert result is None
-
-    def test_gamma_in_unit_interval(self):
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT)
-        if result is not None:
-            assert 0.0 < result["gamma"] <= 1.0
-
-    def test_result_has_required_fields(self):
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT)
-        if result is not None:
-            for field in ("gamma", "p_enrichment", "odds_ratio", "n_overlap", "evidence_tier"):
-                assert field in result, f"Missing field: {field}"
-
-    def test_p_value_bounded(self):
-        result = compute_cnmf_gamma(COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT)
-        if result is not None:
-            assert 0.0 <= result["p_enrichment"] <= 1.0
-
-    def test_n_genome_genes_sensitivity(self):
-        """Smaller genome size should yield more significant enrichment."""
-        result_large = compute_cnmf_gamma(
-            COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT, n_genome_genes=20_000
-        )
-        result_small = compute_cnmf_gamma(
-            COMPLEMENT_PROGRAM, AMD_GWAS_GENES, PROGRAM, TRAIT, n_genome_genes=5_000
-        )
-        if result_large and result_small:
-            assert result_small["p_enrichment"] <= result_large["p_enrichment"]
-
 
 
 # ---------------------------------------------------------------------------

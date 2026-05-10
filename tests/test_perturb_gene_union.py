@@ -30,39 +30,34 @@ class TestCollectPerturbseqGenes:
         from orchestrator.pi_orchestrator_v2 import _collect_perturbseq_genes
 
         disease_query = {"disease_name": "age-related macular degeneration"}
-        with patch("pipelines.replogle_parser._PERTURBSEQ_DIR", tmp_path):
+        with patch("pipelines.perturbseq_beta_loader._PERTURBSEQ_DIR", tmp_path):
             result = _collect_perturbseq_genes(disease_query)
         assert result == []
 
     def test_returns_gene_keys_from_cache(self, tmp_path):
         """Beta cache present → returns all gene keys."""
         from orchestrator.pi_orchestrator_v2 import _collect_perturbseq_genes
+        import pipelines.perturbseq_beta_loader as rp
 
-        # Write a minimal beta cache for AMD dataset
-        cache_dir = tmp_path / "replogle_2022_rpe1"
+        # Write a minimal beta cache for CAD dataset (schnitzler_cad_vascular)
+        cache_dir = tmp_path / "schnitzler_cad_vascular"
         cache_dir.mkdir(parents=True)
         cache_data = {
-            "CFH":   {"programs": {"complement": {"beta": -0.8}}},
-            "VEGFA": {"programs": {"angiogenesis": {"beta": 0.4}}},
-            "NOVEL1": {"programs": {"complement": {"beta": 0.2}}},
+            "CCM2":  {"programs": {"endothelial": {"beta": -0.8}}},
+            "PLPP3": {"programs": {"endothelial": {"beta": 0.4}}},
+            "NOVEL1": {"programs": {"endothelial": {"beta": 0.2}}},
         }
         (cache_dir / "beta_cache_abc123.json").write_text(json.dumps(cache_data))
 
-        disease_query = {"disease_name": "age-related macular degeneration"}
-        with patch("orchestrator.pi_orchestrator_v2._collect_perturbseq_genes",
-                   return_value=["CFH", "VEGFA", "NOVEL1"]):
-            from orchestrator.pi_orchestrator_v2 import _collect_perturbseq_genes as fn
-        # Direct test: monkeypatch _PERTURBSEQ_DIR via the replogle_parser module
-        import pipelines.replogle_parser as rp
+        disease_query = {"disease_name": "coronary artery disease"}
         orig = rp._PERTURBSEQ_DIR
         rp._PERTURBSEQ_DIR = tmp_path
         try:
-            from orchestrator.pi_orchestrator_v2 import _collect_perturbseq_genes
             result = _collect_perturbseq_genes(disease_query)
         finally:
             rp._PERTURBSEQ_DIR = orig
 
-        assert set(result) == {"CFH", "VEGFA", "NOVEL1"}
+        assert set(result) == {"CCM2", "PLPP3", "NOVEL1"}
 
     def test_returns_empty_for_unknown_disease(self, tmp_path):
         """Disease not in DISEASE_CELL_TYPE_MAP → no dataset_id → empty list."""
@@ -76,9 +71,10 @@ class TestCollectPerturbseqGenes:
         """When multiple cache files exist, picks the newest."""
         from orchestrator.pi_orchestrator_v2 import _collect_perturbseq_genes
         import time
-        import pipelines.replogle_parser as rp
+        import pipelines.perturbseq_beta_loader as rp
 
-        cache_dir = tmp_path / "replogle_2022_rpe1"
+        # Use CAD dataset (schnitzler_cad_vascular) — AMD was dropped
+        cache_dir = tmp_path / "schnitzler_cad_vascular"
         cache_dir.mkdir(parents=True)
 
         old_cache = {"OLD_GENE": {}}
@@ -90,7 +86,7 @@ class TestCollectPerturbseqGenes:
         new_path = cache_dir / "beta_cache_new.json"
         new_path.write_text(json.dumps(new_cache))
 
-        disease_query = {"disease_name": "age-related macular degeneration"}
+        disease_query = {"disease_name": "coronary artery disease"}
         orig = rp._PERTURBSEQ_DIR
         rp._PERTURBSEQ_DIR = tmp_path
         try:

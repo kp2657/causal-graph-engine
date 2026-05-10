@@ -9,8 +9,7 @@ on a disease trait.
 
 γ estimation sources (in decreasing reliability):
   1. Live OT L2G score proxy: mean locus→gene score across program genes
-  2. Hypergeometric GWAS enrichment: program gene overlap with GWAS hits
-  3. Provisional fallback: zero (no evidence)
+  2. Zero (no evidence)
 """
 from __future__ import annotations
 
@@ -26,7 +25,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from models.evidence import GeneTraitAssociation
 from config.scoring_thresholds import (
-    SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P,
+    SLDSC_BYSTANDER_WEIGHT, SLDSC_TAU_SIGNIFICANT_P, SLDSC_GAMMA_FLOOR,
     TIMEPOINT_ACTIVATION_BIAS_MIN,
 )
 
@@ -70,109 +69,6 @@ class GammaInfo(TypedDict, total=False):
     pmid: str
 
 
-# PROVISIONAL_GAMMAS removed — all γ values must be data-derived via
-# estimate_gamma_live (aggregated OT L2G) or compute_cnmf_gamma
-# (GWAS enrichment). No hardcoded fallbacks.
-PROVISIONAL_GAMMAS: dict[tuple[str, str], dict] = {}
-
-
-def compute_cnmf_gamma(
-    program_gene_set: set[str],
-    gwas_hits: set[str],
-    program_id: str,
-    trait: str,
-    n_genome_genes: int = 20_000,
-) -> dict | None:
-    """
-    Compute γ_{program→disease} for a data-driven cNMF program via GWAS enrichment.
-
-    Uses a one-sided Fisher's exact test: are GWAS-implicated genes over-represented
-    in the cNMF program gene set relative to the genome background?
-
-    This is NOT circular: cNMF programs are defined from expression data (Perturb-seq /
-    scRNA-seq), independent of GWAS. GWAS hits are only used to *score* the programs,
-    not to *define* them. Compare to PROVISIONAL_GAMMAS which use MSigDB Hallmarks
-    (curated from the literature using the same disease knowledge as GWAS).
-
-    Args:
-        program_gene_set: Genes in the cNMF program (from cnmf_runner gene_loadings)
-        gwas_hits:        Genes implicated by GWAS (finemapped or p < 5e-8 nearest gene)
-        program_id:       Identifier for this program
-        trait:            Disease/trait name
-        n_genome_genes:   Background genome size for Fisher's test
-
-    Returns:
-        {"gamma", "p_enrichment", "odds_ratio", "n_overlap", "evidence_tier", "data_source"}
-        or None if insufficient overlap (n_overlap < 2).
-    """
-    if not program_gene_set or not gwas_hits:
-        return None
-
-    overlap   = program_gene_set & gwas_hits
-    n_overlap = len(overlap)
-    if n_overlap < 2:
-        return None
-
-    # Fisher's exact test (one-sided: enrichment)
-    a = n_overlap                              # program ∩ GWAS
-    b = len(program_gene_set) - n_overlap      # program \ GWAS
-    c = len(gwas_hits) - n_overlap             # GWAS \ program
-    d = n_genome_genes - a - b - c             # neither
-
-    if b < 0 or c < 0 or d < 0:
-        return None
-
-    try:
-        import math as _m
-        # Use hypergeometric approximation for p-value
-        # P(X >= k) where X ~ Hypergeometric(N, K, n)
-        # N=total genes, K=GWAS hits, n=program size, k=overlap
-        N = n_genome_genes
-        K = len(gwas_hits)
-        n = len(program_gene_set)
-        k = n_overlap
-
-        # Log-probability using log-factorials (Stirling approximation via lgamma)
-        def _log_hyper_pmf(k: int, N: int, K: int, n: int) -> float:
-            from math import lgamma
-            if k < 0 or k > min(K, n):
-                return float("-inf")
-            return (
-                lgamma(K + 1) - lgamma(k + 1) - lgamma(K - k + 1)
-                + lgamma(N - K + 1) - lgamma(n - k + 1) - lgamma(N - K - n + k + 1)
-                - lgamma(N + 1) + lgamma(n + 1) + lgamma(N - n + 1)
-            )
-
-        # P-value = P(X >= k) = sum_{j=k}^{min(K,n)} P(X=j)
-        log_probs = [_log_hyper_pmf(j, N, K, n) for j in range(k, min(K, n) + 1)]
-        max_lp = max(log_probs)
-        p_enrich = min(1.0, _m.exp(max_lp) * sum(_m.exp(lp - max_lp) for lp in log_probs))
-
-        # Odds ratio (small-sample)
-        odds_ratio = (a * d) / ((b + 1e-6) * (c + 1e-6))
-
-        # γ = clamp(-log10(p) × sign(OR - 1), 0, 1) — positive enrichment only
-        if odds_ratio <= 1.0 or p_enrich >= 0.1:
-            return None  # no meaningful enrichment
-
-        gamma_raw = min(1.0, -_m.log10(max(p_enrich, 1e-10)) / 5.0)  # saturates at p=1e-5
-
-        tier = "Tier3_Provisional" if p_enrich < 0.05 else "provisional_virtual"
-
-        return {
-            "gamma":          round(gamma_raw, 4),
-            "p_enrichment":   round(p_enrich, 6),
-            "odds_ratio":     round(odds_ratio, 3),
-            "n_overlap":      n_overlap,
-            "overlap_genes":  sorted(overlap)[:10],
-            "evidence_tier":  tier,
-            "data_source":    "cNMF_GWAS_enrichment",
-            "program":        program_id,
-            "trait":          trait,
-        }
-    except (ValueError, ArithmeticError, OverflowError) as _e:
-        logger.warning("hypergeometric enrichment math error (program=%r): %s", program_id, _e)
-        return None
 
 
 
@@ -212,6 +108,7 @@ def compute_ota_gamma(
     gamma_estimates: dict[str, dict],
     skip_programs: frozenset[str] | None = None,
     program_activation_biases: dict[str, float] | None = None,
+    program_gwas_t: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute the Ota composite γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait}).
@@ -258,17 +155,39 @@ def compute_ota_gamma(
         if gamma_val is None and isinstance(beta_info, dict):
             gamma_val = beta_info.get("program_gamma")
 
+        # Fallback: when no OT L2G / S-LDSC gamma exists, use gwas_t as a signed
+        # proxy.  gwas_t = mean Vt loading of GWAS-perturbed genes / SEM on that
+        # axis.  Positive → axis enriched for GWAS signal (small positive γ proxy);
+        # negative → axis depleted (small negative γ proxy).  Scale to ~0.01 per
+        # unit gwas_t so the fallback stays well below OT L2G magnitudes (0.1–0.5).
+        # This prevents programs with a valid β from being silently excluded solely
+        # because OT L2G returned no enrichment for that axis.
+        if gamma_val is None and program_gwas_t is not None:
+            _gt = program_gwas_t.get(program)
+            if _gt is not None and _gt == _gt:   # exists and not NaN
+                gamma_val = math.copysign(min(abs(_gt), 10.0), _gt) * 0.01
+                if gamma_info is None:
+                    gamma_info = {}
+                if isinstance(gamma_info, dict):
+                    gamma_info = dict(gamma_info)
+                    gamma_info.setdefault("gamma_source_type", "gwas_t_fallback")
+                    gamma_info.setdefault("gamma_se", abs(gamma_val) * 1.0)  # high uncertainty
+
         if beta_val is None or gamma_val is None:
             continue
-        # NaN beta means "no data" — skip rather than contribute 0 × γ,
-        # which would silently erase program→trait evidence.
+        # NaN beta means "no data" — skip rather than contribute 0 × γ.
         if isinstance(beta_val, float) and math.isnan(beta_val):
             continue
+        # Skip programs with negligible heritability enrichment. A large β on a
+        # near-zero-γ program (e.g. β=2.0, γ=-0.013) contributes < 0.03 to the
+        # OTA sum but inflates σ and can flip sign when many accumulate.
+        # γ_SE-weighting alone is insufficient when SE << |γ| (weight ≈ 1.0).
+        if abs(gamma_val) < SLDSC_GAMMA_FLOOR:
+            continue
 
-        # Cap β magnitude at ±2.0: values beyond this indicate non-specific
-        # global perturbation effects (e.g. ribosomal KO, global stress response)
-        # rather than program-specific causal effects.
-        beta_val = max(-2.0, min(2.0, float(beta_val)))
+        # Do NOT cap z-scored β: z-scores are continuous and extreme values carry
+        # real signal (e.g. CCM2 z=3.38 on C10).  The old ±2.0 cap originated from
+        # NES saturation in GSEA and does not apply to Vt z-scores.
 
         # γ SE-weighted contribution: programs with high GWAS uncertainty (few L2G
         # genes, noisy enrichment) are down-weighted relative to well-grounded ones.
@@ -276,7 +195,7 @@ def compute_ota_gamma(
         # ~0.5 (se=gamma, dispersed signal). Preserves direction; just scales magnitude.
         gamma_se = gamma_info.get("gamma_se") if isinstance(gamma_info, dict) else None
         if gamma_se is None:
-            gamma_se = abs(gamma_val) * 0.50  # fallback: 50% SE assumed when unknown
+            gamma_se = abs(gamma_val) * 0.50  # conservative prior (50% CV) when γ SE not reported
         gamma_weight = 1.0 / (1.0 + float(gamma_se))
 
         # S-LDSC bystander filter: programs with τ ≤ 0 (no GWAS heritability enrichment)
@@ -306,8 +225,12 @@ def compute_ota_gamma(
         # are Rest-dominant. Zhu et al. (2025) Fig 7A: these clusters are not enriched
         # for RA/SLE/T1D heritability. Discount by SLDSC_BYSTANDER_WEIGHT (0.30) when
         # activation data is available and program is Rest-dominant.
+        # SVD components are exempt: they span both conditions simultaneously, so a low
+        # Stim/Rest ratio reflects cross-condition structure, not bystander identity.
+        # The criterion was validated empirically on NMF programs only.
+        _is_svd_program = "_SVD_" in program
         _activation_bias = (
-            program_activation_biases.get(program) if program_activation_biases else None
+            program_activation_biases.get(program) if (program_activation_biases and not _is_svd_program) else None
         )
         _activation_discounted = False
         if _activation_bias is not None and float(_activation_bias) < TIMEPOINT_ACTIVATION_BIAS_MIN:
@@ -339,24 +262,44 @@ def compute_ota_gamma(
 
     # Dominant tier = lowest (most reliable) tier
     tier_priority = {
-        "Tier1_Interventional": 1,
-        "Tier2_Convergent": 2,
-        "Tier3_Provisional": 3,
-        "moderate_transferred": 3,
-        "moderate_grn": 3,
-        "provisional_virtual": 4,
+        "Tier1_Interventional":   1,
+        "Tier2_Convergent":       2,
+        "Tier2_eQTL_direction":   2,
+        "Tier2_PerturbNominated": 2,
+        "Tier3_Provisional":      3,
+        "moderate_transferred":   3,
+        "moderate_grn":           3,
+        "provisional_virtual":    4,  # β has no h5ad basis — excluded from graph by calculator
+        "no_perturb_data":        4,  # no programs contributed to OTA sum (tiers_used empty)
     }
     if tiers_used:
         dominant_tier = min(tiers_used, key=lambda t: tier_priority.get(t, 99))
     else:
-        dominant_tier = "provisional_virtual"
+        dominant_tier = "no_perturb_data"
+
+    # top_programs: raw β footprint across all programs where |β| is substantial.
+    # Uses β (not β×γ) so GPS convergence sees the gene's full program membership
+    # regardless of which programs have a known disease γ. program_contributions
+    # (above) retains the β×γ ranking for OTA scoring.
+    _beta_footprint: dict[str, float] = {}
+    for _prog, _binfo in beta_estimates.items():
+        if skip_programs and _prog in skip_programs:
+            continue
+        if not isinstance(_binfo, dict):
+            continue
+        _b = _binfo.get("beta")
+        if _b is None or (isinstance(_b, float) and math.isnan(_b)):
+            continue
+        _bf = float(_b)   # z-scores: no cap — extreme values are real signal
+        if abs(_bf) >= 0.05:
+            _beta_footprint[_prog] = round(_bf, 4)
 
     return {
         "gene":                    gene,
         "trait":                   trait,
         "ota_gamma":               round(ota_gamma, 4),
         "program_contributions":   contributions[:10],  # top 10
-        "top_programs":            {c["program"]: c["contribution"] for c in contributions[:5]},
+        "top_programs":            _beta_footprint,
         "dominant_tier":           dominant_tier,
         "n_programs_contributing": len(contributions),
         "n_programs_total":        len(beta_estimates),
@@ -495,6 +438,7 @@ def compute_ota_gamma_with_uncertainty(
     genebayes_result: dict | None = None,
     skip_programs: frozenset[str] | None = None,
     program_activation_biases: dict[str, float] | None = None,
+    program_gwas_t: dict[str, float] | None = None,
 ) -> dict:
     """
     Compute Ota composite γ with 95% CI and optional GeneBayes grounding.
@@ -518,11 +462,13 @@ def compute_ota_gamma_with_uncertainty(
         "moderate_transferred": 0.35,
         "moderate_grn":         0.40,
         "provisional_virtual":  0.70,
+        "no_perturb_data":      0.70,
     }
 
     base = compute_ota_gamma(gene, trait, beta_estimates, gamma_estimates,
                              skip_programs=skip_programs,
-                             program_activation_biases=program_activation_biases)
+                             program_activation_biases=program_activation_biases,
+                             program_gwas_t=program_gwas_t)
 
     variance = 0.0
     for prog, beta_info in beta_estimates.items():
@@ -561,29 +507,22 @@ def compute_ota_gamma_with_uncertainty(
             g = float(g_info)
             s_g = abs(g) * 0.30
 
+        # Mirror the floor from compute_ota_gamma: skip weak-γ programs in variance
+        if abs(g) < SLDSC_GAMMA_FLOOR:
+            continue
+
         variance += g * g * s_b * s_b + b * b * s_g * s_g
 
     sigma_ota = math.sqrt(variance) if variance > 0 else 0.5 # wide prior if no data
     ota_gamma = base["ota_gamma"]
 
-    # --- Dataset 1 Convergence: GeneBayes Grounding ---
+    # WES burden is used for directional annotation only (via _wes_concordance_check).
+    # Backman2021 log-ORs are not regularised posteriors: sparse-carrier genes produce
+    # extreme ORs (e.g. MLN OR=25.6) that would inflate OTA γ when used as Bayesian
+    # priors. The Ota framework γ = Σ β×γ is the authoritative causal estimate.
     fused_gamma = ota_gamma
     sigma_fused = sigma_ota
     gb_note = ""
-
-    if genebayes_result:
-        # Weiner et al. (Nature 2023) GeneBayes posterior mean and SE
-        gb_mean = genebayes_result.get("burden_beta")
-        gb_se   = genebayes_result.get("burden_se")
-        
-        if gb_mean is not None and gb_se is not None and gb_se > 0:
-            # Precision-weighted fusion (Bayesian Update)
-            w_gb  = 1.0 / (gb_se ** 2)
-            w_ota = 1.0 / (sigma_ota ** 2)
-            
-            fused_gamma = (gb_mean * w_gb + ota_gamma * w_ota) / (w_gb + w_ota)
-            sigma_fused = math.sqrt(1.0 / (w_gb + w_ota))
-            gb_note = f"Fused with GeneBayes direct prior (beta={gb_mean:.3f}, se={gb_se:.3f})"
 
     return {
         **base,

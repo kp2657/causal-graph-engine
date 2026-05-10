@@ -1,17 +1,22 @@
 """
 gps_transcriptional_convergence.py
 
-Hypothesis-generation annotation linking GPS reversers to genetic anchor genes via
-shared NMF program overlap.
+Links GPS compound reversers to genetic anchor genes via program-space dot product.
+
+Convergence score = Σ_P (|z_rges_P| × |β_{gene→P}|)
+
+where z_rges_P comes from the compound's program_vector (built by gps_disease_screen.py
+across all program reversal screens) and β_{gene→P} comes from the gene's top_programs
+field (raw Perturb-seq β footprint, |β| ≥ 0.05).
+
+This is the GPS analogue of the OTA formula: γ_{gene→trait} = Σ_P (β_{gene→P} × γ_{P→trait}).
+A compound converges with a gene when both have strong signal in the same programs.
 
 NOTE: This is NOT causal evidence. GPS screens use CMAP profiles from cancer cell lines
 (MCF7, A549, etc.) which do not match the disease cell types used for target nomination
 (endothelial cells for CAD, CD4+ T cells for RA). Convergence scores indicate compounds
 worth investigating in the correct cell type — not validation of genetic targets.
-Output field: 'convergent_genetic_targets_hypothesis_hypothesis' (annotation only; never used in scoring).
-
-Convergence score = Σ_P (|reverser_z_rges_on_P| × |anchor_weight_on_P|) / n_shared_programs
-Protein-coding filter: excludes lncRNA/pseudogene artifacts (AL*, AC*, LINC* prefixes).
+Output field: 'convergent_genetic_targets_hypothesis' (annotation only; never used in scoring).
 """
 from __future__ import annotations
 
@@ -22,108 +27,109 @@ log = logging.getLogger(__name__)
 
 def compute_gps_genetic_convergence(
     disease_reversers: list[dict],
-    program_reversers: dict[str, list[dict]],  # program_id → [{compound_id, z_rges, ...}]
-    genetic_anchors: list[dict],               # [{target_gene, top_programs: {prog: weight}}]
+    program_reversers: dict[str, list[dict]],
+    genetic_anchors: list[dict],
     min_z_rges: float = 1.5,
-    min_convergence_score: float = 0.1,
+    min_convergence_score: float = 0.0,
 ) -> dict[str, list[dict]]:
     """
-    For each compound (disease + program reversers), find convergent genetic anchors.
+    For each compound, score convergence with every genetic anchor gene.
 
-    Returns: dict[compound_id → list of {
-        "gene": str,
-        "convergence_score": float,
-        "shared_programs": list[str],
-        "n_shared": int,
-    }] sorted by convergence_score descending.
+    Convergence score = Σ_P (|z_rges_P| × |β_{gene→P}|)
+      z_rges_P  — compound's reversal strength on program P (from program_vector)
+      β_{gene→P} — gene's raw Perturb-seq loading on program P (from top_programs)
+
+    Compounds without a program_vector (disease-state-only reversers) receive no
+    hypothesis: they reversed the full disease signature but cannot be attributed to
+    specific programs, so the dot product is undefined.
+
+    Returns: {compound_id → list[{gene, convergence_score, shared_programs, n_shared}]}
+             sorted by convergence_score descending, capped at top_n_per_compound.
     """
-    # ------------------------------------------------------------------
-    # Build compound_programs: compound_id → {program_id: |z_rges|}
-    # For program reversers: collect programs where |z_rges| >= min_z_rges
-    # For disease reversers: they reversed the full disease signature —
-    #   use all programs equally (uniform weight = 1.0)
-    # ------------------------------------------------------------------
-    compound_programs: dict[str, dict[str, float]] = {}
+    # Build compound_program_vectors from program_vector field on hits.
+    # Only program reversers have meaningful vectors; disease-state reversers
+    # may have an empty program_vector if they never appeared in a program screen.
+    compound_vectors: dict[str, dict[str, float]] = {}
 
-    # Program reversers: compound appears in specific programs
-    for prog_id, hits in program_reversers.items():
+    for hits in program_reversers.values():
         for hit in hits:
             cid = hit.get("compound_id", "")
-            if not cid:
-                continue
-            z = abs(hit.get("z_rges") or hit.get("rges") or 0.0)
-            if z < min_z_rges:
-                continue
-            if cid not in compound_programs:
-                compound_programs[cid] = {}
-            # Keep the max z_rges if the compound appears in multiple programs
-            existing = compound_programs[cid].get(prog_id, 0.0)
-            compound_programs[cid][prog_id] = max(existing, z)
+            pv  = hit.get("program_vector") or {}
+            if cid and pv:
+                # Merge: if compound appeared in multiple program screens, union vectors
+                existing = compound_vectors.get(cid, {})
+                for prog, z in pv.items():
+                    if prog not in existing or abs(z) > abs(existing[prog]):
+                        existing[prog] = z
+                compound_vectors[cid] = existing
 
-    # Disease reversers: uniform weight across all programs that appear in anchors
-    all_anchor_programs: set[str] = set()
-    for anchor in genetic_anchors:
-        tp = anchor.get("top_programs") or {}
-        if isinstance(tp, dict):
-            all_anchor_programs.update(tp.keys())
-
+    # Also include disease reversers that have a program_vector (compounds that
+    # appeared in both disease-state and program screens)
     for hit in disease_reversers:
         cid = hit.get("compound_id", "")
-        if not cid:
-            continue
-        # Disease reversers don't have per-program z_rges — use uniform weight 1.0
-        # If already in compound_programs (also a program reverser), don't overwrite
-        if cid not in compound_programs:
-            compound_programs[cid] = {prog: 1.0 for prog in all_anchor_programs}
+        pv  = hit.get("program_vector") or {}
+        if cid and pv and cid not in compound_vectors:
+            compound_vectors[cid] = {k: v for k, v in pv.items()}
 
-    # ------------------------------------------------------------------
-    # Build anchor_programs: gene → {program_id: |weight|}
-    # ------------------------------------------------------------------
-    anchor_programs: dict[str, dict[str, float]] = {}
+    # Filter by min_z_rges: only keep programs where |z| is meaningful
+    filtered_vectors: dict[str, dict[str, float]] = {}
+    for cid, pv in compound_vectors.items():
+        fv = {p: z for p, z in pv.items() if abs(z) >= min_z_rges}
+        if fv:
+            filtered_vectors[cid] = fv
+
+    if not filtered_vectors:
+        return {}
+
+    # Build gene β-footprints from anchor top_programs (raw β, set in Session 95)
+    anchor_betas: dict[str, dict[str, float]] = {}
     for anchor in genetic_anchors:
         gene = anchor.get("target_gene", "")
         if not gene:
             continue
+        # Exclude non-coding artifacts
+        if gene.startswith(("AL", "AC", "LINC", "SNHG", "MIR")):
+            continue
         tp = anchor.get("top_programs") or {}
         if not isinstance(tp, dict):
             continue
-        anchor_programs[gene] = {prog: abs(float(w)) for prog, w in tp.items() if w is not None}
+        betas = {prog: abs(float(w)) for prog, w in tp.items()
+                 if w is not None and abs(float(w)) >= 0.05}
+        if betas:
+            anchor_betas[gene] = betas
 
-    # ------------------------------------------------------------------
-    # Compute convergence scores for all compound × anchor pairs
-    # ------------------------------------------------------------------
+    if not anchor_betas:
+        return {}
+
+    top_n_per_compound = 30
     result: dict[str, list[dict]] = {}
 
-    for cid, comp_progs in compound_programs.items():
+    for cid, pv in filtered_vectors.items():
         convergent: list[dict] = []
 
-        for gene, anc_progs in anchor_programs.items():
-            # Exclude lncRNA / pseudogene artifacts from convergence annotation
-            if gene.startswith(("AL", "AC", "LINC", "SNHG", "MIR")):
-                continue
-            shared = set(comp_progs.keys()) & set(anc_progs.keys())
+        for gene, gene_betas in anchor_betas.items():
+            shared = set(pv.keys()) & set(gene_betas.keys())
             if not shared:
                 continue
 
-            n_shared = len(shared)
-            score_sum = sum(comp_progs[p] * anc_progs[p] for p in shared)
-            convergence_score = score_sum / (n_shared + 1e-8)
+            # Dot product: |z_rges_P| × |β_{gene→P}|
+            score = sum(abs(pv[p]) * gene_betas[p] for p in shared)
 
-            if convergence_score >= min_convergence_score:
+            if score > min_convergence_score:
                 convergent.append({
                     "gene":              gene,
-                    "convergence_score": round(convergence_score, 4),
+                    "convergence_score": round(score, 4),
                     "shared_programs":   sorted(shared),
-                    "n_shared":          n_shared,
+                    "n_shared":          len(shared),
                 })
 
         if convergent:
             convergent.sort(key=lambda x: -x["convergence_score"])
-            result[cid] = convergent
+            result[cid] = convergent[:top_n_per_compound]
 
     log.debug(
-        "GPS transcriptional convergence: %d/%d compounds have convergent anchors",
-        len(result), len(compound_programs),
+        "GPS convergence (dot product): %d/%d compounds have convergent anchors",
+        len(result), len(filtered_vectors),
     )
     return result
 
@@ -135,11 +141,11 @@ def annotate_reversers_with_convergence(
     **kwargs,
 ) -> tuple[list[dict], dict[str, list[dict]]]:
     """
-    In-place annotate reversers with convergence info.
-    Adds 'convergent_genetic_targets_hypothesis' key to each reverser's annotation dict.
-    Returns updated (disease_reversers, program_reversers).
+    Annotate reversers with convergence hypothesis.
+    Adds 'convergent_genetic_targets_hypothesis' to each reverser's annotation dict.
 
-    If genetic_anchors is None or empty, returns inputs unchanged.
+    Disease reversers without a program_vector get an empty list — they reversed
+    the full disease signature but lack program-level attribution.
     """
     if not genetic_anchors:
         return disease_reversers, program_reversers
@@ -151,26 +157,21 @@ def annotate_reversers_with_convergence(
         **kwargs,
     )
 
-    # Annotate disease reversers
-    for hit in disease_reversers:
+    def _annotate(hit: dict) -> None:
         cid = hit.get("compound_id", "")
-        convergent_targets = convergence_map.get(cid, [])
+        targets = convergence_map.get(cid, [])
         ann = hit.get("annotation")
         if isinstance(ann, dict):
-            ann["convergent_genetic_targets_hypothesis"] = convergent_targets
+            ann["convergent_genetic_targets_hypothesis"] = targets
         else:
-            hit["annotation"] = {"convergent_genetic_targets_hypothesis": convergent_targets}
+            hit["annotation"] = {"convergent_genetic_targets_hypothesis": targets}
 
-    # Annotate program reversers
-    for prog_id, hits in program_reversers.items():
+    for hit in disease_reversers:
+        _annotate(hit)
+
+    for hits in program_reversers.values():
         for hit in hits:
-            cid = hit.get("compound_id", "")
-            convergent_targets = convergence_map.get(cid, [])
-            ann = hit.get("annotation")
-            if isinstance(ann, dict):
-                ann["convergent_genetic_targets_hypothesis"] = convergent_targets
-            else:
-                hit["annotation"] = {"convergent_genetic_targets_hypothesis": convergent_targets}
+            _annotate(hit)
 
     return disease_reversers, program_reversers
 
@@ -191,7 +192,6 @@ def summarize_convergence(
     """
     convergent_pairs: list[dict] = []
 
-    # Disease reversers
     n_disease_convergent = 0
     for hit in disease_reversers:
         ann = hit.get("annotation") or {}
@@ -207,10 +207,9 @@ def summarize_convergence(
                     "programs":    t["shared_programs"],
                 })
 
-    # Program reversers — count unique compound_ids with convergence
     seen_prog_compounds: set[str] = set()
     prog_convergent_ids: set[str] = set()
-    for prog_id, hits in program_reversers.items():
+    for hits in program_reversers.values():
         for hit in hits:
             cid = hit.get("compound_id", "")
             seen_prog_compounds.add(cid)
@@ -219,7 +218,6 @@ def summarize_convergence(
             if targets:
                 prog_convergent_ids.add(cid)
                 for t in targets:
-                    # Avoid duplicate pairs already added from disease_reversers
                     pair = {
                         "compound_id": cid,
                         "gene":        t["gene"],

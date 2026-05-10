@@ -265,12 +265,14 @@ class TestPerturbationGenomicsAgent:
 
     @patch("pipelines.ota_beta_estimation.estimate_beta")
     @patch("mcp_servers.burden_perturb_server.get_gene_perturbation_effect")
+    @patch("pipelines.cnmf_programs.get_svd_programs_for_disease")
     @patch("pipelines.cnmf_programs.get_programs_for_disease")
     @patch("mcp_servers.burden_perturb_server.get_program_gene_loadings")
     @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
     def test_biology_cross_check_flags_mismatch(
-        self, mock_eqtl, mock_loadings, mock_programs, mock_perturb, mock_estimate
+        self, mock_eqtl, mock_loadings, mock_programs, mock_svd, mock_perturb, mock_estimate
     ):
+        mock_svd.return_value = {"programs": []}
         mock_programs.return_value = {"programs": MOCK_PROGRAMS}
         # PCSK9 → lipid_metabolism should be negative; return positive to trigger warning
         # estimate_beta is called per (gene, program_id); use side_effect for per-program betas
@@ -290,13 +292,15 @@ class TestPerturbationGenomicsAgent:
 
     @patch("pipelines.ota_beta_estimation.estimate_beta")
     @patch("mcp_servers.burden_perturb_server.get_gene_perturbation_effect")
+    @patch("pipelines.cnmf_programs.get_svd_programs_for_disease")
     @patch("pipelines.cnmf_programs.get_programs_for_disease")
     @patch("mcp_servers.burden_perturb_server.get_program_gene_loadings")
     @patch("mcp_servers.gwas_genetics_server.query_gtex_eqtl")
     def test_tier2_eqtl_activates_when_tier1_absent(
-        self, mock_eqtl, mock_loadings, mock_programs, mock_perturb, mock_estimate
+        self, mock_eqtl, mock_loadings, mock_programs, mock_svd, mock_perturb, mock_estimate
     ):
         """Tier 2 (eQTL-MR) β activates when GTEx returns a significant eQTL."""
+        mock_svd.return_value = {"programs": []}
         mock_programs.return_value = {"programs": MOCK_PROGRAMS}
         # GTEx returns a strong liver eQTL for PCSK9
         mock_eqtl.return_value = {
