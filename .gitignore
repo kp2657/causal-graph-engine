@@ -14,6 +14,14 @@ data/**
 # Regenerate with: python -m orchestrator.pi_orchestrator_v2 analyze_disease_v2 "<disease>"
 !data/analyze_coronary_artery_disease.md
 !data/analyze_rheumatoid_arthritis.md
+# Frozen gene lists — pin OT nominations for reproducibility
+!data/checkpoints/cad_gene_list.json
+!data/checkpoints/ra_gene_list.json
+# S-LDSC τ* coefficients — pin γ(P→trait) weights for reproducibility
+!data/ldsc/results/CAD_cNMF_program_taus.json
+!data/ldsc/results/RA_GeneticNMF_Stim48hr_program_taus.json
+!data/ldsc/results/CAD_loo_discounts.json
+!data/ldsc/results/RA_loo_discounts.json
 # Tier4 checkpoints contain full intermediate data and can be very large
 data/checkpoints/*__tier4.json
 !data/exports/
