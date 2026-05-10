@@ -120,9 +120,9 @@ The causal graph is constructed in Kùzu (embedded graph DB) and exported to RDF
 | Enamine HTS SMILES library | GPS4Drugs Docker | Compound identifiers, SMILES, CID |
 | `data/checkpoints/{slug}__tier4.json` | — | Input/output checkpoint |
 
-Targets are partitioned into Tier 1 (Tier1_Interventional: direct Perturb-seq β), Tier 2 (Tier2_Convergent: multi-evidence convergence), and Tier 3 (Tier3_Provisional: eQTL/pQTL only). Within each tier, targets are sorted by −|ota_gamma|.
+Targets are annotated into evidence tiers — Tier 1 (Tier1_Interventional: direct Perturb-seq β), Tier 2 (Tier2_Convergent: multi-evidence convergence), and Tier 3 (Tier3_Provisional: eQTL/pQTL only) — as metadata only. The global ranked list is sorted by −|ota_gamma| with no tier-based partitioning; tier is a separate annotation field.
 
-GPS screens two phenotypes: (1) the disease DEG signature (disease-state reversal); (2) each GeneticNMF program signature independently (program reversal). RGES scores are Z-normalised against a 500-permutation background null. Disease-state reversers are called at Z_RGES < −3.5σ; program reversers at Z_RGES < −2.0σ. GPS results annotate the target list with chemical hypotheses and are never propagated back into γ.
+GPS screens two phenotypes: (1) the disease DEG signature (disease-state reversal); (2) each GeneticNMF program signature independently (program reversal). RGES scores are Z-normalised against a 500-permutation background null. Disease-state reversers are called at Z_RGES < −3.5σ; program reversers at Z_RGES < −3.5σ. GPS results annotate the target list with chemical hypotheses and are never propagated back into γ.
 
 ---
 
@@ -191,7 +191,7 @@ Five annotation-only modules ran post-scoring without modifying γ or primary or
 
 ### GPS transcriptional screen
 
-After genetic prioritisation, we ran a connectivity-map-style transcriptional screen [15,17] using GPS4Drugs [16] against the Enamine HTS compound library. GPS screened two phenotypes per disease: (1) the disease differential expression signature (identifying disease-state reversers); (2) each GeneticNMF program gene set independently (identifying program-specific reversers). RGES scores were Z-normalised against a 500-permutation gene-permutation null. Disease-state reversers were called at Z_RGES < −3.5σ; program reversers at Z_RGES < −2.0σ.
+After genetic prioritisation, we ran a connectivity-map-style transcriptional screen [15,17] using GPS4Drugs [16] against the Enamine HTS compound library. GPS screened two phenotypes per disease: (1) the disease differential expression signature (identifying disease-state reversers); (2) each GeneticNMF program gene set independently (identifying program-specific reversers). RGES scores were Z-normalised against a 500-permutation gene-permutation null. Disease-state reversers were called at Z_RGES < −3.5σ; program reversers at Z_RGES < −3.5σ.
 
 GPS compounds were placed in the program landscape visualisation at the loading-weighted centroid of OTA target genes in their reversed programs, connecting transcriptional mechanism to chemical identity. GPS results annotate the target list with chemical hypotheses and are never propagated back into OTA γ.
 
