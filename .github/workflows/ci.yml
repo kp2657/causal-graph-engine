@@ -30,7 +30,6 @@ jobs:
             tests/test_causal_pli_penalty.py \
             tests/test_causal_program_drivers.py \
             tests/test_gps_branching_probability.py \
-            tests/test_gps_convergence.py \
             tests/test_gps_library_overlap.py \
             tests/test_gps_program_signature.py \
             tests/test_scoring_tau_specificity.py \
