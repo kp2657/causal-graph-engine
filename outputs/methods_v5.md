@@ -169,7 +169,7 @@ For each program, we computed GWAS χ² enrichment by assigning each SNP to prog
 
 > γ(P→RA) = τ*(P) / max(τ*)
 
-This is a deliberate architectural choice: the directional information for RA is carried by the β signs in the Perturb-seq data rather than by separately estimated eQTL direction scores (which are noisy for diffuse, non-coding RA heritability). Because all 8 active programs carry positive τ*, the OTA γ(gene→RA) = Σ β × τ* inherits the sign of the net KO effect on heritable programs, and all 788 ranked targets have γ>0. Target ranking by |γ| is the meaningful discriminator; sign is not used for therapeutic direction inference in RA.
+This is a deliberate architectural choice: the directional information for RA is carried by the β signs in the Perturb-seq data rather than by separately estimated eQTL direction scores (which are noisy for diffuse, non-coding RA heritability). Because all 8 active programs carry positive τ*, the OTA γ(gene→RA) = Σ β × τ* inherits the sign of the net KO effect on heritable programs, and all 496 ranked targets have γ>0. Target ranking by |γ| is the meaningful discriminator; sign is not used for therapeutic direction inference in RA.
 
 Program τ* values are stored in `data/ldsc/results/{CAD_cNMF,RA_GeneticNMF_Stim48hr}_program_taus.json` and loaded by `gamma_loader.py`. The beta key (`RA_GeneticNMF_Stim48hr_C01`) and gamma key must match exactly for the OTA product to be non-zero.
 
@@ -213,18 +213,18 @@ A single pipeline produced ranked targets for CAD (cardiac endothelial programs)
 | Perturb-seq library | Schnitzler GSE210681 | CZI CD4+ T (Zhu 2025) |
 | KO genes (programs) | 2,344 (k=60 cNMF) | 11,281 Stim48hr (k=30 GeneticNMF) |
 | γ architecture | S-LDSC τ* (cNMF, 31 programs τ*>0) | Raw S-LDSC τ* (GeneticNMF Stim48hr, 8 programs τ*>0) |
-| Ranked targets | 1,454 | 788 |
+| Ranked targets | 1,689 | 496 |
 | GPS screen | Disease-state + 60 programs | Disease-state + 30 programs |
 
 ### CAD target landscape
 
-We prioritised 1,454 targets through 31 high-heritability cardiac endothelial cNMF programs (τ*>0). Against seven Schnitzler et al. Fig. 2c benchmark genes with GWAS colocalization evidence, we recover all seven (7/7, 100%) in the ranked list. OTA γ sign agrees with the Schnitzler KD phenotype for four: *PLPP3* (γ>0, KD increases risk ✓), *NOS3* (γ>0 ✓), *COL4A1* (γ<0, KD reduces risk ✓), and *COL4A2* (γ<0 ✓). Three are discordant: *EXOC3L2* and *CALCRL* score γ<0 (OTA sees them as driving protective programs), while the Schnitzler library shows KD increases risk — plausibly reflecting cNMF program assignment to protective endothelial identity programs whose KD is atherogenic. *LOX* scores γ>0 (OTA: KO amplifies disease-risk programs), but Schnitzler KD reduces risk. These three discordances are mechanistically interpretable rather than random: cNMF program geometry assigns atheroprotective suppressors and atherogenic drivers to the same high-τ* programs in some cases.
+We prioritised 1,689 targets through 31 high-heritability cardiac endothelial cNMF programs (τ*>0). Against seven Schnitzler et al. Fig. 2c benchmark genes with GWAS colocalization evidence, we recover all seven (7/7, 100%) in the ranked list. OTA γ sign agrees with the Schnitzler KD phenotype for four: *PLPP3* (γ>0, KD increases risk ✓), *NOS3* (γ>0 ✓), *COL4A1* (γ<0, KD reduces risk ✓), and *COL4A2* (γ<0 ✓). Three are discordant: *EXOC3L2* and *CALCRL* score γ<0 (OTA sees them as driving protective programs), while the Schnitzler library shows KD increases risk — plausibly reflecting cNMF program assignment to protective endothelial identity programs whose KD is atherogenic. *LOX* scores γ>0 (OTA: KO amplifies disease-risk programs), but Schnitzler KD reduces risk. These three discordances are mechanistically interpretable rather than random: cNMF program geometry assigns atheroprotective suppressors and atherogenic drivers to the same high-τ* programs in some cases.
 
 *PGF* was excluded from the benchmark: it is absent from the Schnitzler CRISPRi library and therefore cannot be validated through this comparison.
 
 ### RA target landscape
 
-We prioritised 788 targets through 8 GeneticNMF Stim48hr programs with τ*>0 (C25=1.000 down to C28=0.005 after normalisation by max τ*). Against 11 clinically validated RA targets whose primary CD4+ T-cell mechanism is represented in the 11,281-gene CZI library, all 11 are recovered in the 788-target ranked list (11/11, 100%; Table 2).
+We prioritised 496 targets through 8 GeneticNMF Stim48hr programs with τ*>0 (C25=1.000 down to C28=0.005 after normalisation by max τ*). Against 11 clinically validated RA targets whose primary CD4+ T-cell mechanism is represented in the 11,281-gene CZI library, all 11 are recovered in the 788-target ranked list (11/11, 100%; Table 2).
 
 The GeneticNMF OTA γ for RA is unsigned in a practically discriminating sense: because all 8 heritable programs have τ*>0, the sign of γ(gene→RA) reflects the net direction of KO effects on heritable program activation, not the direction of therapeutic effect. Most validated targets show γ>0 (KO activates heritable immune programs), which may reflect compensatory immune-program upregulation following disruption of any major signalling axis. Target ranking by |γ| is informative; sign is not used for therapeutic direction inference in RA. Genes with the largest |γ| are those whose KO most strongly modulates the heritable programs: *IL12RB2* (rank 3, γ=0.691), *ICOS* (rank 4, γ=0.661), *CD226* (rank 22, γ=0.381), and *TRAF1* (rank 32, γ=0.354).
 
