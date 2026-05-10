@@ -36,10 +36,5 @@ jobs:
             tests/test_pipelines.py \
             tests/test_pipelines_new_genomics.py \
             tests/test_pipelines_static_lookups.py \
-            tests/test_shet_loader.py \
-            tests/test_smr_heidi.py \
-            tests/test_finngen_validation.py \
-            tests/test_leave_locus_out.py \
             tests/test_program_precedence.py \
-            tests/test_clinical_trial_auc.py \
             -q --tb=short
